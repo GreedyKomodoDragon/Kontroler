@@ -26,7 +26,7 @@ import (
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/pods"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
@@ -179,8 +179,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	podAllocator := pods.NewPodAllocator(clientset)
-	scheduler := scheduler.NewScheduleManager(podAllocator, dbManager)
+	jobAllocator := jobs.NewJobAllocator(clientset)
+	jobWatcher := jobs.NewJobWatcher(clientset)
+	scheduler := scheduler.NewScheduleManager(jobAllocator, jobWatcher, dbManager)
 	go scheduler.Run()
 
 	setupLog.Info("starting manager")

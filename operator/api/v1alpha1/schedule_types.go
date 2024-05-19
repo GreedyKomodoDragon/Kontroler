@@ -32,6 +32,9 @@ type ScheduleSpec struct {
 
 	// Command to run on the container
 	Command []string `json:"command,omitempty"`
+
+	// Args to pass to container
+	Args []string `json:"args,omitempty"`
 }
 
 // ScheduleStatus defines the observed state of Schedule

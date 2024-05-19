@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/pods"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -14,14 +14,16 @@ type SchedulerManager interface {
 }
 
 type schedulerManager struct {
-	podAllocator pods.PodAllocator
+	jobAllocator jobs.JobAllocator
+	jobWatcher   jobs.JobWatcher
 	dbManager    db.DbManager
 }
 
-func NewScheduleManager(podAllocator pods.PodAllocator, dbManager db.DbManager) SchedulerManager {
+func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatcher, dbManager db.DbManager) SchedulerManager {
 	return &schedulerManager{
-		podAllocator: podAllocator,
+		jobAllocator: jobAllocator,
 		dbManager:    dbManager,
+		jobWatcher:   jobWatcher,
 	}
 }
 
@@ -37,17 +39,27 @@ func (s *schedulerManager) Run() {
 		}
 
 		for _, job := range jobs {
+			// Start watcher first
+			if ok := s.jobWatcher.IsWatching("operator-system"); !ok {
+				if err := s.jobWatcher.StartWatcher("operator-system"); err != nil {
+					log.Log.Error(err, "failed to start watching namespace for pods", "namespace", "operator-system")
+				}
+
+				log.Log.Info("started watching new namespace", "namespace", "operator-system")
+			}
+
 			name := "-" + generateRandomName()
-			id, err := s.podAllocator.AllocatePod(context.Background(), job.Id, string(job.Id)+name, job.ImageName, job.Command, "operator-system")
+			id, err := s.jobAllocator.AllocateJob(context.Background(), job.Id, string(job.Id)+name, job.ImageName, job.Command, job.Args, "operator-system")
 			if err != nil {
 				log.Log.Error(err, "failed to allocate a new pod")
 				continue
 			}
 
+			log.Log.Info("new pod allocated", "namespace", "operator-system")
+
 			if err := s.dbManager.UpdateNextTime(context.Background(), job.Id, job.Schedule); err != nil {
 				log.Log.Error(err, "failed to update next time", "podId", id)
 			}
-
 		}
 
 		tmr.Reset(time.Minute)

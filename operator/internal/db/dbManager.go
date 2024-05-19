@@ -11,10 +11,11 @@ type CronJob struct {
 	Schedule  string
 	ImageName string
 	Command   []string
+	Args      []string
 }
 type DbManager interface {
 	InitaliseDatabase(ctx context.Context) error
-	UpsertCronJob(ctx context.Context, id types.UID, schedule string, imageName string, command []string) error
+	UpsertCronJob(ctx context.Context, id types.UID, schedule string, imageName string, command []string, args []string) error
 	DeleteCronJob(ctx context.Context, id types.UID) error
 	GetAllCronJobs(ctx context.Context) ([]*CronJob, error)
 	GetCronJobsToStart(ctx context.Context) ([]CronJob, error)

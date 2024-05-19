@@ -66,7 +66,7 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1alpha1.Schedule) error {
-	return r.DbManager.UpsertCronJob(context.Background(), schedule.UID, schedule.Spec.CronSchedule, schedule.Spec.ImageName, schedule.Spec.Command)
+	return r.DbManager.UpsertCronJob(context.Background(), schedule.UID, schedule.Spec.CronSchedule, schedule.Spec.ImageName, schedule.Spec.Command, schedule.Spec.Args)
 }
 
 func (r *ScheduleReconciler) deleteScheduleFromDatabase(uid types.UID) error {

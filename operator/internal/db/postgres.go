@@ -45,14 +45,15 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
             schedule VARCHAR(255),
             imageName VARCHAR(255),
 			nextTime TIMESTAMP,
-			command TEXT[]
+			command TEXT[],
+			args TEXT[]
         )
     `)
 
 	return err
 }
 
-func (p *postgresManager) UpsertCronJob(ctx context.Context, id types.UID, schedule string, imageName string, command []string) error {
+func (p *postgresManager) UpsertCronJob(ctx context.Context, id types.UID, schedule string, imageName string, command []string, args []string) error {
 	// Parse the cron expression
 	sched, err := p.parser.Parse(schedule)
 	if err != nil {
@@ -64,11 +65,11 @@ func (p *postgresManager) UpsertCronJob(ctx context.Context, id types.UID, sched
 
 	// Insert or update data into the table
 	_, err = p.conn.Exec(ctx, `
-	INSERT INTO schedules (uid, schedule, imageName, nextTime, command)
-	VALUES ($1, $2, $3, to_timestamp($4), $5)
+	INSERT INTO schedules (uid, schedule, imageName, nextTime, command, args)
+	VALUES ($1, $2, $3, to_timestamp($4), $5, $6)
 	ON CONFLICT (uid)
-	DO UPDATE SET schedule = EXCLUDED.schedule, imageName = EXCLUDED.imageName, nextTime = EXCLUDED.nextTime, command = EXCLUDED.command
-	`, id, schedule, imageName, nextTime.Unix(), command)
+	DO UPDATE SET schedule = EXCLUDED.schedule, imageName = EXCLUDED.imageName, nextTime = EXCLUDED.nextTime, command = EXCLUDED.command, args = EXCLUDED.args
+	`, id, schedule, imageName, nextTime.Unix(), command, args)
 
 	return err
 }
@@ -86,7 +87,7 @@ func (p *postgresManager) DeleteCronJob(ctx context.Context, id types.UID) error
 }
 
 func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error) {
-	rows, err := p.conn.Query(ctx, `SELECT uid, schedule, imageName, command FROM schedules`)
+	rows, err := p.conn.Query(ctx, `SELECT uid, schedule, imageName, command, args FROM schedules`)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +100,9 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 			schedule  string
 			imageName string
 			command   []string
+			args      []string
 		)
-		if err := rows.Scan(&id, &schedule, &imageName, &command); err != nil {
+		if err := rows.Scan(&id, &schedule, &imageName, &command, &args); err != nil {
 			return nil, err
 		}
 		cronJobs = append(cronJobs, &CronJob{
@@ -108,6 +110,7 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 			Schedule:  schedule,
 			ImageName: imageName,
 			Command:   command,
+			Args:      args,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -119,7 +122,7 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 
 func (p *postgresManager) GetCronJobsToStart(ctx context.Context) ([]CronJob, error) {
 	rows, err := p.conn.Query(ctx, `
-        SELECT uid, schedule, imageName
+        SELECT uid, schedule, imageName, command, args
         FROM schedules
         WHERE nextTime <= NOW()
     `)
@@ -131,7 +134,7 @@ func (p *postgresManager) GetCronJobsToStart(ctx context.Context) ([]CronJob, er
 	var cronJobs []CronJob
 	for rows.Next() {
 		var job CronJob
-		if err := rows.Scan(&job.Id, &job.Schedule, &job.ImageName); err != nil {
+		if err := rows.Scan(&job.Id, &job.Schedule, &job.ImageName, &job.Command, &job.Args); err != nil {
 			return nil, err
 		}
 

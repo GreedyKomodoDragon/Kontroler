@@ -34,6 +34,11 @@ spec:
           spec:
             description: ScheduleSpec defines the desired state of Schedule
             properties:
+              args:
+                description: Args to pass to container
+                items:
+                  type: string
+                type: array
               command:
                 description: Command to run on the container
                 items:
