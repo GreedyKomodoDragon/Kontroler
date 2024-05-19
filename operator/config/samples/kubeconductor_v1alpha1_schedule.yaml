@@ -3,5 +3,7 @@ kind: Schedule
 metadata:
   name: schedule-sample
 spec:
-  cronSchedule: "* * * * *"
-  imageName: "image"
+  cronSchedule: "*/5 * * * *"
+  imageName: "alpine:latest"
+  command:
+  - echo "hello world"

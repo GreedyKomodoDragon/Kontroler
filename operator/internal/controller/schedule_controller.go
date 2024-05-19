@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,12 +26,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 )
 
 // ScheduleReconciler reconciles a Schedule object
 type ScheduleReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	DbManager db.DbManager
 }
 
 //+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=schedules,verbs=get;list;watch;create;update;patch;delete
@@ -47,7 +48,7 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// Handle case where Schedule object is not found
 		if errors.IsNotFound(err) {
 			// Schedule object was deleted, delete it from the database if present
-			if err := r.deleteScheduleFromDatabase(req.NamespacedName); err != nil {
+			if err := r.deleteScheduleFromDatabase(schedule.UID); err != nil {
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
@@ -65,13 +66,11 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1alpha1.Schedule) error {
-	fmt.Println("storing in the database")
-	return nil
+	return r.DbManager.UpsertCronJob(context.Background(), schedule.UID, schedule.Spec.CronSchedule, schedule.Spec.ImageName, schedule.Spec.Command)
 }
 
-func (r *ScheduleReconciler) deleteScheduleFromDatabase(name types.NamespacedName) error {
-	fmt.Println("delete the database")
-	return nil
+func (r *ScheduleReconciler) deleteScheduleFromDatabase(uid types.UID) error {
+	return r.DbManager.DeleteCronJob(context.Background(), uid)
 }
 
 // SetupWithManager sets up the controller with the Manager.

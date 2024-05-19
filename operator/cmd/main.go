@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -20,6 +25,12 @@ import (
 
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/pods"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
+	"github.com/jackc/pgx/v5/pgxpool"
+	cron "github.com/robfig/cron/v3"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -57,7 +68,10 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	logger := zap.New(zap.UseFlagOptions(&opts))
+	logf.SetLogger(logger)
+
+	ctrl.SetLogger(logger)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -107,9 +121,49 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the clientset
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		setupLog.Error(err, "failed to get config")
+		os.Exit(1)
+	}
+
+	// Create a Kubernetes clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		setupLog.Error(err, "failed to create api client")
+		os.Exit(1)
+	}
+
+	// cronParser
+	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dbName := "kubeconductor"
+	dbUser := "postgres"
+	dbPassword := ""
+	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
+
+	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
+	if err != nil {
+		setupLog.Error(err, "failed to create postgres config")
+		os.Exit(1)
+	}
+
+	dbManager, err := db.NewPostgresManager(context.Background(), pgConfig, &specParser)
+	if err != nil {
+		setupLog.Error(err, "failed to create postgres manager")
+		os.Exit(1)
+	}
+
+	if err := dbManager.InitaliseDatabase(context.Background()); err != nil {
+		setupLog.Error(err, "failed to create postgres manager")
+		os.Exit(1)
+	}
+
 	if err = (&controller.ScheduleReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		DbManager: dbManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Schedule")
 		os.Exit(1)
@@ -124,6 +178,10 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+
+	podAllocator := pods.NewPodAllocator(clientset)
+	scheduler := scheduler.NewScheduleManager(podAllocator, dbManager)
+	go scheduler.Run()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

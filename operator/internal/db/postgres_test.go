@@ -8,6 +8,7 @@ import (
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 	"github.com/jackc/pgx/v5/pgxpool"
+	cron "github.com/robfig/cron/v3"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -19,7 +20,7 @@ var (
 	postgresContainer testcontainers.Container
 )
 
-func setupContainer(t *testing.T) {
+func SetupContainer(t *testing.T) {
 	ctx = context.Background()
 
 	dbName := "kubeconductor"
@@ -52,7 +53,7 @@ func teardownContainer(t *testing.T) {
 }
 
 func TestNewPostgresManager_ValidConfig(t *testing.T) {
-	setupContainer(t)
+	SetupContainer(t)
 	defer teardownContainer(t)
 
 	// Get PostgreSQL container endpoint
@@ -71,7 +72,9 @@ func TestNewPostgresManager_ValidConfig(t *testing.T) {
 		t.FailNow()
 	}
 
-	manager, err := db.NewPostgresManager(ctx, config)
+	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	manager, err := db.NewPostgresManager(ctx, config, &specParser)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -81,12 +84,14 @@ func TestNewPostgresManager_ValidConfig(t *testing.T) {
 }
 
 func TestPostgresManager_GetAllCronJobs(t *testing.T) {
-	setupContainer(t)
+	SetupContainer(t)
 	defer teardownContainer(t)
 
 	config := getTestDBConfig(t)
 
-	manager, err := db.NewPostgresManager(ctx, config)
+	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	manager, err := db.NewPostgresManager(ctx, config, &specParser)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -101,9 +106,10 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 	id := types.UID("test-id")
 	schedule := "0 0 * * *"
 	imageName := "test-image"
+	command := []string{`echo "hello world"`}
 
 	// Insert a test cron job
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName)
+	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
@@ -118,18 +124,19 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 	if len(cronJobs) != 1 {
 		t.Fatalf("Expected 1 cron job, got %d", len(cronJobs))
 	}
-	if cronJobs[0].Id != string(id) || cronJobs[0].Schedule != schedule || cronJobs[0].ImageName != imageName {
+	if cronJobs[0].Id != id || cronJobs[0].Schedule != schedule || cronJobs[0].ImageName != imageName {
 		t.Fatalf("Retrieved cron job does not match expected values")
 	}
 }
 
 func TestPostgresManager_UpsertCronJob(t *testing.T) {
-	setupContainer(t)
+	SetupContainer(t)
 	defer teardownContainer(t)
 
 	config := getTestDBConfig(t)
 
-	manager, err := db.NewPostgresManager(ctx, config)
+	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	manager, err := db.NewPostgresManager(ctx, config, &specParser)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -142,20 +149,22 @@ func TestPostgresManager_UpsertCronJob(t *testing.T) {
 	id := types.UID("test-id")
 	schedule := "0 0 * * *"
 	imageName := "test-image"
+	command := []string{`echo "hello world"`}
 
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName)
+	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
 }
 
 func TestPostgresManager_DeleteCronJob(t *testing.T) {
-	setupContainer(t)
+	SetupContainer(t)
 	defer teardownContainer(t)
 
 	config := getTestDBConfig(t)
 
-	manager, err := db.NewPostgresManager(ctx, config)
+	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	manager, err := db.NewPostgresManager(ctx, config, &specParser)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -168,8 +177,9 @@ func TestPostgresManager_DeleteCronJob(t *testing.T) {
 	id := types.UID("test-id")
 	schedule := "0 0 * * *"
 	imageName := "test-image"
+	command := []string{`echo "hello world"`}
 
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName)
+	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}

@@ -34,6 +34,11 @@ spec:
           spec:
             description: ScheduleSpec defines the desired state of Schedule
             properties:
+              command:
+                description: Command to run on the container
+                items:
+                  type: string
+                type: array
               cronSchedule:
                 description: Cron schedule for the job
                 type: string

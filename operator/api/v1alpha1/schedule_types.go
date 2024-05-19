@@ -29,6 +29,9 @@ type ScheduleSpec struct {
 
 	// Name of the Docker image to use for the job
 	ImageName string `json:"imageName,omitempty"`
+
+	// Command to run on the container
+	Command []string `json:"command,omitempty"`
 }
 
 // ScheduleStatus defines the observed state of Schedule

@@ -1,0 +1,3 @@
+export POSTGRES_PASSWORD=$(kubectl get secret --namespace default my-release-postgresql -o jsonpath="{.data.postgres-password}" | base64 -d)
+kubectl run my-release-postgresql-client --rm --tty -i --restart='Never' --namespace default --image docker.io/bitnami/postgresql:16.3.0-debian-12-r6 --env="PGPASSWORD=$POSTGRES_PASSWORD" \
+      --command -- psql --host my-release-postgresql.default.svc.cluster.local -U postgres -d postgres -p 5432
