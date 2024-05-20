@@ -75,6 +75,8 @@ func (p *jobWatcher) StartWatcher(namespace string) error {
 						continue
 					}
 
+					// Get Exitable codes to restart with and backoff limit
+
 					for _, pod := range pods.Items {
 						for _, containerStatus := range pod.Status.ContainerStatuses {
 							if containerStatus.State.Terminated != nil {

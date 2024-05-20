@@ -39,6 +39,10 @@ spec:
                 items:
                   type: string
                 type: array
+              backoffLimit:
+                description: BackoffLimit determines how many times to retry
+                format: int64
+                type: integer
               command:
                 description: Command to run on the container
                 items:

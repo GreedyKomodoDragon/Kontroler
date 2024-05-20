@@ -108,9 +108,10 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 	imageName := "test-image"
 	command := []string{"echo"}
 	args := []string{`"Hello, World!"`}
+	backoffLimit := uint64(0)
 
 	// Insert a test cron job
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args)
+	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args, backoffLimit)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
@@ -152,8 +153,9 @@ func TestPostgresManager_UpsertCronJob(t *testing.T) {
 	imageName := "test-image"
 	command := []string{"echo"}
 	args := []string{`"Hello, World!"`}
+	backoffLimit := uint64(0)
 
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args)
+	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args, backoffLimit)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
@@ -181,8 +183,9 @@ func TestPostgresManager_DeleteCronJob(t *testing.T) {
 	imageName := "test-image"
 	command := []string{"echo"}
 	args := []string{`"Hello, World!"`}
+	backoffLimit := uint64(0)
 
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args)
+	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args, backoffLimit)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}

@@ -25,6 +25,7 @@ func NewJobAllocator(clientset *kubernetes.Clientset) JobAllocator {
 }
 
 func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error) {
+	backoff := int32(0)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -36,6 +37,7 @@ func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name stri
 			},
 		},
 		Spec: batchv1.JobSpec{
+			BackoffLimit: &backoff,
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{

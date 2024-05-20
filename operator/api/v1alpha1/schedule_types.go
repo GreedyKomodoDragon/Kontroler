@@ -35,6 +35,9 @@ type ScheduleSpec struct {
 
 	// Args to pass to container
 	Args []string `json:"args,omitempty"`
+
+	// BackoffLimit determines how many times to retry
+	BackoffLimit uint64 `json:"backoffLimit,omitempty"`
 }
 
 // ScheduleStatus defines the observed state of Schedule
