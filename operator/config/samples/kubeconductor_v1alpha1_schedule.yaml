@@ -1,10 +1,12 @@
 apiVersion: kubeconductor.greedykomodo/v1alpha1
 kind: Schedule
 metadata:
-  name: schedule-sample
+  name: schedule-sample-3
 spec:
-  cronSchedule: "*/2 * * * *"
+  cronSchedule: "*/1 * * * *"
   imageName: "alpine:latest"
   command: ["sh", "-c"]
-  args: ["if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"]
-  backoffLimit: 3
+  args:
+    ["if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"]
+  backoffLimit: 0
+  retryCodes: [8]

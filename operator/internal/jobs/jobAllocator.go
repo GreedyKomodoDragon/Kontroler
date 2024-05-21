@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/utils"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,7 +29,7 @@ func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name stri
 	backoff := int32(0)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name: utils.GenerateRandomName(),
 			Labels: map[string]string{
 				"managed-by": "kubeconductor",
 			},

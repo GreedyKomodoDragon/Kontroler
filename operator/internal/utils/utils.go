@@ -1,4 +1,4 @@
-package scheduler
+package utils
 
 import "math/rand"
 
@@ -9,7 +9,7 @@ var wordList = []string{
 	"chair", "table", "lamp", "sofa", "desk", "bookcase",
 }
 
-func generateRandomName() string {
+func GenerateRandomName() string {
 	// Initialize an empty name
 	var name string
 

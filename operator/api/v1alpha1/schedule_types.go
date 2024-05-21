@@ -38,6 +38,9 @@ type ScheduleSpec struct {
 
 	// BackoffLimit determines how many times to retry
 	BackoffLimit uint64 `json:"backoffLimit,omitempty"`
+
+	// RetryCodes are used to determine if job should be restarted
+	RetryCodes []int32 `json:"retryCodes,omitempty"`
 }
 
 // ScheduleStatus defines the observed state of Schedule

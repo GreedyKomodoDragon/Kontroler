@@ -6,6 +6,7 @@ import (
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/utils"
 	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/types"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
@@ -17,11 +18,11 @@ type SchedulerManager interface {
 
 type schedulerManager struct {
 	jobAllocator jobs.JobAllocator
-	jobWatcher   jobs.JobWatcher
+	jobWatcher   jobs.JobWatcherFactory
 	dbManager    db.DbManager
 }
 
-func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatcher, dbManager db.DbManager) SchedulerManager {
+func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatcherFactory, dbManager db.DbManager) SchedulerManager {
 	return &schedulerManager{
 		jobAllocator: jobAllocator,
 		dbManager:    dbManager,
@@ -33,12 +34,15 @@ func (s *schedulerManager) Run() {
 	tmr := time.NewTimer(time.Minute)
 	for {
 		<-tmr.C
+		log.Log.Info("timer up, begun looking for cronjobs")
 
 		jobs, err := s.dbManager.GetCronJobsToStart(context.Background())
 		if err != nil {
 			tmr.Reset(time.Minute)
 			continue
 		}
+
+		log.Log.Info("number of jobs found", "count", len(jobs))
 
 		for _, job := range jobs {
 			// Start watcher first
@@ -50,10 +54,11 @@ func (s *schedulerManager) Run() {
 				log.Log.Info("started watching new namespace", "namespace", "operator-system")
 			}
 
-			name := "-" + generateRandomName()
+			name := "-" + utils.GenerateRandomName()
 			newUUID, err := uuid.NewUUID()
 			if err != nil {
 				log.Log.Error(err, "failed to generate uuid")
+				continue
 			}
 
 			runID := types.UID(newUUID.String())

@@ -54,6 +54,12 @@ spec:
               imageName:
                 description: Name of the Docker image to use for the job
                 type: string
+              retryCodes:
+                description: RetryCodes are used to determine if job should be restarted
+                items:
+                  format: int32
+                  type: integer
+                type: array
             type: object
           status:
             description: ScheduleStatus defines the observed state of Schedule

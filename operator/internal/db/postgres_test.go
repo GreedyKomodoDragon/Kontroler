@@ -103,15 +103,17 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 		t.Fatalf("InitaliseDatabase returned an error: %v", err)
 	}
 
-	id := types.UID("test-id")
-	schedule := "0 0 * * *"
-	imageName := "test-image"
-	command := []string{"echo"}
-	args := []string{`"Hello, World!"`}
-	backoffLimit := uint64(0)
-
+	cron := db.CronJob{
+		Id:           types.UID("test-id"),
+		Schedule:     "0 0 * * *",
+		ImageName:    "test-image",
+		Command:      []string{"echo"},
+		Args:         []string{`"Hello, World!"`},
+		BackoffLimit: uint64(0),
+		RetryCodes:   []int32{1},
+	}
 	// Insert a test cron job
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args, backoffLimit)
+	err = manager.UpsertCronJob(ctx, &cron)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
@@ -126,7 +128,7 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 	if len(cronJobs) != 1 {
 		t.Fatalf("Expected 1 cron job, got %d", len(cronJobs))
 	}
-	if cronJobs[0].Id != id || cronJobs[0].Schedule != schedule || cronJobs[0].ImageName != imageName {
+	if cronJobs[0].Id != cron.Id || cronJobs[0].Schedule != cron.Schedule || cronJobs[0].ImageName != cron.ImageName {
 		t.Fatalf("Retrieved cron job does not match expected values")
 	}
 }
@@ -148,14 +150,17 @@ func TestPostgresManager_UpsertCronJob(t *testing.T) {
 		t.Fatalf("InitaliseDatabase returned an error: %v", err)
 	}
 
-	id := types.UID("test-id")
-	schedule := "0 0 * * *"
-	imageName := "test-image"
-	command := []string{"echo"}
-	args := []string{`"Hello, World!"`}
-	backoffLimit := uint64(0)
+	cron := db.CronJob{
+		Id:           types.UID("test-id"),
+		Schedule:     "0 0 * * *",
+		ImageName:    "test-image",
+		Command:      []string{"echo"},
+		Args:         []string{`"Hello, World!"`},
+		BackoffLimit: uint64(0),
+		RetryCodes:   []int32{1},
+	}
 
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args, backoffLimit)
+	err = manager.UpsertCronJob(ctx, &cron)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
@@ -178,14 +183,17 @@ func TestPostgresManager_DeleteCronJob(t *testing.T) {
 		t.Fatalf("InitaliseDatabase returned an error: %v", err)
 	}
 
-	id := types.UID("test-id")
-	schedule := "0 0 * * *"
-	imageName := "test-image"
-	command := []string{"echo"}
-	args := []string{`"Hello, World!"`}
-	backoffLimit := uint64(0)
+	cron := db.CronJob{
+		Id:           types.UID("test-id"),
+		Schedule:     "0 0 * * *",
+		ImageName:    "test-image",
+		Command:      []string{"echo"},
+		Args:         []string{`"Hello, World!"`},
+		BackoffLimit: uint64(0),
+		RetryCodes:   []int32{1},
+	}
 
-	err = manager.UpsertCronJob(ctx, id, schedule, imageName, command, args, backoffLimit)
+	err = manager.UpsertCronJob(ctx, &cron)
 	if err != nil {
 		t.Fatalf("UpsertCronJob returned an error: %v", err)
 	}
@@ -197,7 +205,7 @@ func TestPostgresManager_DeleteCronJob(t *testing.T) {
 
 	beforeLen := len(cronjobs)
 
-	err = manager.DeleteCronJob(ctx, id)
+	err = manager.DeleteCronJob(ctx, cron.Id)
 	if err != nil {
 		t.Fatalf("DeleteCronJob returned an error: %v", err)
 	}

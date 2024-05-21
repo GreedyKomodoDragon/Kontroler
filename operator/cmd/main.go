@@ -180,7 +180,7 @@ func main() {
 	}
 
 	jobAllocator := jobs.NewJobAllocator(clientset)
-	jobWatcher := jobs.NewJobWatcher(clientset)
+	jobWatcher := jobs.NewJobWatcherFactory(clientset, jobAllocator, dbManager)
 	scheduler := scheduler.NewScheduleManager(jobAllocator, jobWatcher, dbManager)
 	go scheduler.Run()
 
