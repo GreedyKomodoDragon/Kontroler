@@ -9,4 +9,6 @@ spec:
   args:
     ["if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"]
   backoffLimit: 3
-  retryCodes: [1]
+  conditional:
+    enabled: true
+    retryCodes: [8]

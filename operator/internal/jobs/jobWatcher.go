@@ -98,11 +98,6 @@ func (j *jobWatcher) StartWatching() {
 					}
 
 					jobUid := types.UID(jobId)
-					if err := j.dbManager.IncrementRunCount(context.Background(), jobUid); err != nil {
-						log.Log.Error(err, "failed to increment failure run count", "job", job.Name)
-						continue
-					}
-
 					ok, err := j.dbManager.ShouldRerun(context.Background(), jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 					if err != nil {
 						log.Log.Error(err, "failed to determine if pod should be re-ran", "job", job.Name)
@@ -115,6 +110,11 @@ func (j *jobWatcher) StartWatching() {
 						if err := j.dbManager.MarkRunOutcome(context.TODO(), jobUid, "failed"); err != nil {
 							log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
 						}
+						continue
+					}
+
+					if err := j.dbManager.IncrementRunCount(context.Background(), jobUid); err != nil {
+						log.Log.Error(err, "failed to increment failure run count", "job", job.Name)
 						continue
 					}
 

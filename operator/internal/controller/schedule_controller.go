@@ -66,6 +66,12 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1alpha1.Schedule) error {
+	// Conditional is optional so we want to keep this blank if not enabled
+	retryCodes := []int32{}
+	if schedule.Spec.Conditional.Enabled {
+		retryCodes = schedule.Spec.Conditional.RetryCodes
+	}
+
 	return r.DbManager.UpsertCronJob(context.Background(), &db.CronJob{
 		Id:           schedule.UID,
 		Schedule:     schedule.Spec.CronSchedule,
@@ -73,7 +79,10 @@ func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1al
 		Command:      schedule.Spec.Command,
 		Args:         schedule.Spec.Args,
 		BackoffLimit: schedule.Spec.BackoffLimit,
-		RetryCodes:   schedule.Spec.RetryCodes,
+		ConditionalRetry: db.ConditionalRetry{
+			Enabled:    schedule.Spec.Conditional.Enabled,
+			RetryCodes: retryCodes,
+		},
 	})
 }
 

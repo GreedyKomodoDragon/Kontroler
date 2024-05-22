@@ -7,13 +7,18 @@ import (
 )
 
 type CronJob struct {
-	Id           types.UID
-	Schedule     string
-	ImageName    string
-	Command      []string
-	Args         []string
-	BackoffLimit uint64
-	RetryCodes   []int32
+	Id               types.UID
+	Schedule         string
+	ImageName        string
+	Command          []string
+	Args             []string
+	BackoffLimit     uint64
+	ConditionalRetry ConditionalRetry
+}
+
+type ConditionalRetry struct {
+	Enabled    bool
+	RetryCodes []int32
 }
 
 type DbManager interface {

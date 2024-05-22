@@ -110,7 +110,10 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 		Command:      []string{"echo"},
 		Args:         []string{`"Hello, World!"`},
 		BackoffLimit: uint64(0),
-		RetryCodes:   []int32{1},
+		ConditionalRetry: db.ConditionalRetry{
+			Enabled:    true,
+			RetryCodes: []int32{1},
+		},
 	}
 	// Insert a test cron job
 	err = manager.UpsertCronJob(ctx, &cron)
@@ -157,7 +160,10 @@ func TestPostgresManager_UpsertCronJob(t *testing.T) {
 		Command:      []string{"echo"},
 		Args:         []string{`"Hello, World!"`},
 		BackoffLimit: uint64(0),
-		RetryCodes:   []int32{1},
+		ConditionalRetry: db.ConditionalRetry{
+			Enabled:    true,
+			RetryCodes: []int32{1},
+		},
 	}
 
 	err = manager.UpsertCronJob(ctx, &cron)
@@ -190,7 +196,10 @@ func TestPostgresManager_DeleteCronJob(t *testing.T) {
 		Command:      []string{"echo"},
 		Args:         []string{`"Hello, World!"`},
 		BackoffLimit: uint64(0),
-		RetryCodes:   []int32{1},
+		ConditionalRetry: db.ConditionalRetry{
+			Enabled:    true,
+			RetryCodes: []int32{1},
+		},
 	}
 
 	err = manager.UpsertCronJob(ctx, &cron)

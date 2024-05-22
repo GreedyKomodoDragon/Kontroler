@@ -48,18 +48,29 @@ spec:
                 items:
                   type: string
                 type: array
+              conditional:
+                description: Used if retries are based on exit codes
+                properties:
+                  enabled:
+                    description: Used to signal if exit codes should be checked in
+                      retries
+                    type: boolean
+                  retryCodes:
+                    description: RetryCodes are used to determine if job should be
+                      restarted
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                required:
+                - enabled
+                type: object
               cronSchedule:
                 description: Cron schedule for the job
                 type: string
               imageName:
                 description: Name of the Docker image to use for the job
                 type: string
-              retryCodes:
-                description: RetryCodes are used to determine if job should be restarted
-                items:
-                  format: int32
-                  type: integer
-                type: array
             type: object
           status:
             description: ScheduleStatus defines the observed state of Schedule

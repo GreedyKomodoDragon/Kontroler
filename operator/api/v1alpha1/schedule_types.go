@@ -39,6 +39,14 @@ type ScheduleSpec struct {
 	// BackoffLimit determines how many times to retry
 	BackoffLimit uint64 `json:"backoffLimit,omitempty"`
 
+	// Used if retries are based on exit codes
+	Conditional ConditionalSpec `json:"conditional,omitempty"`
+}
+
+type ConditionalSpec struct {
+	// Used to signal if exit codes should be checked in retries
+	Enabled bool `json:"enabled"`
+
 	// RetryCodes are used to determine if job should be restarted
 	RetryCodes []int32 `json:"retryCodes,omitempty"`
 }

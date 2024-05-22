@@ -50,7 +50,8 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 			command TEXT[],
 			args TEXT[],
 			backoffLimit BIGINT,
-			retryCodes INTEGER[]
+			retryCodes INTEGER[],
+			conditionalEnabled BOOL
         );
 
 		CREATE TABLE IF NOT EXISTS runs (
@@ -87,11 +88,14 @@ func (p *postgresManager) UpsertCronJob(ctx context.Context, cronJob *CronJob) e
 
 	// Insert or update data into the table
 	_, err = p.conn.Exec(ctx, `
-	INSERT INTO schedules (uid, schedule, imageName, nextTime, command, args, backoffLimit, retryCodes)
-	VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8)
+	INSERT INTO schedules (uid, schedule, imageName, nextTime, command, args, backoffLimit, retryCodes, conditionalEnabled)
+	VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8, $9)
 	ON CONFLICT (uid)
-	DO UPDATE SET schedule = EXCLUDED.schedule, imageName = EXCLUDED.imageName, nextTime = EXCLUDED.nextTime, command = EXCLUDED.command, args = EXCLUDED.args, backoffLimit = EXCLUDED.backoffLimit, retryCodes = EXCLUDED.retryCodes
-	`, cronJob.Id, cronJob.Schedule, cronJob.ImageName, nextTime.Unix(), cronJob.Command, cronJob.Args, cronJob.BackoffLimit, cronJob.RetryCodes)
+	DO UPDATE SET schedule = EXCLUDED.schedule, imageName = EXCLUDED.imageName, nextTime = EXCLUDED.nextTime,
+	command = EXCLUDED.command, args = EXCLUDED.args, backoffLimit = EXCLUDED.backoffLimit, retryCodes = EXCLUDED.retryCodes,
+	conditionalEnabled = EXCLUDED.conditionalEnabled
+	`, cronJob.Id, cronJob.Schedule, cronJob.ImageName, nextTime.Unix(), cronJob.Command, cronJob.Args, cronJob.BackoffLimit,
+		cronJob.ConditionalRetry.RetryCodes, cronJob.ConditionalRetry.Enabled)
 
 	return err
 }
@@ -109,7 +113,7 @@ func (p *postgresManager) DeleteCronJob(ctx context.Context, id types.UID) error
 }
 
 func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error) {
-	rows, err := p.conn.Query(ctx, `SELECT uid, schedule, imageName, command, args, backoffLimit FROM schedules`)
+	rows, err := p.conn.Query(ctx, `SELECT uid, schedule, imageName, command, args, backoffLimit, retryCodes, conditionalEnabled FROM schedules`)
 	if err != nil {
 		return nil, err
 	}
@@ -118,24 +122,28 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 	var cronJobs []*CronJob
 	for rows.Next() {
 		var (
-			id           string
-			schedule     string
-			imageName    string
-			command      []string
-			args         []string
-			backoffLimit uint64
-			retryCodes   []int32
+			id                 string
+			schedule           string
+			imageName          string
+			command            []string
+			args               []string
+			backoffLimit       uint64
+			retryCodes         []int32
+			conditionalEnabled bool
 		)
-		if err := rows.Scan(&id, &schedule, &imageName, &command, &args, &backoffLimit, &retryCodes); err != nil {
+		if err := rows.Scan(&id, &schedule, &imageName, &command, &args, &backoffLimit, &retryCodes, &conditionalEnabled); err != nil {
 			return nil, err
 		}
 		cronJobs = append(cronJobs, &CronJob{
-			Id:         types.UID(id),
-			Schedule:   schedule,
-			ImageName:  imageName,
-			Command:    command,
-			Args:       args,
-			RetryCodes: retryCodes,
+			Id:        types.UID(id),
+			Schedule:  schedule,
+			ImageName: imageName,
+			Command:   command,
+			Args:      args,
+			ConditionalRetry: ConditionalRetry{
+				RetryCodes: retryCodes,
+				Enabled:    conditionalEnabled,
+			},
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -219,7 +227,7 @@ func (p *postgresManager) ShouldRerun(ctx context.Context, runID types.UID, exit
 	SELECT s.backoffLimit, r.numberOfAttempts
 	FROM schedules s
 	INNER JOIN runs r ON s.uid = r.jobUid
-	WHERE r.runUid = $1 AND r.numberOfAttempts <= s.backoffLimit AND $2 = ANY(s.retryCodes);
+	WHERE r.runUid = $1 AND r.numberOfAttempts <= s.backoffLimit AND (s.conditionalEnabled = FALSE or $2 = ANY(s.retryCodes));
     `
 
 	rows, err := p.conn.Query(ctx, query, runID, exitCode)
