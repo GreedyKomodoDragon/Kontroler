@@ -119,8 +119,15 @@ func (j *jobWatcher) StartWatching() {
 					}
 
 					container := pod.Spec.Containers[0]
-					if _, err := j.jobAllocator.AllocateJob(context.Background(), jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace); err != nil {
+					_, podName, err := j.jobAllocator.AllocateJob(context.Background(), jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace)
+					if err != nil {
 						log.Log.Error(err, "failed to allocate new pod")
+						continue
+					}
+
+					if err := j.dbManager.AddPodToRun(context.TODO(), podName, jobUid); err != nil {
+						log.Log.Error(err, "failed to add pod to run")
+						continue
 					}
 
 					log.Log.Info("new job allocated", "jobUid", jobUid)

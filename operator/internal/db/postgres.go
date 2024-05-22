@@ -60,6 +60,11 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 			status VARCHAR(20)
         );
 
+        CREATE TABLE IF NOT EXISTS runPods (
+			podName VARCHAR(255) PRIMARY KEY,
+			runUid VARCHAR(255)
+        );
+
 		COMMIT;
     `)
 
@@ -192,7 +197,7 @@ func (p *postgresManager) UpdateNextTime(ctx context.Context, uid types.UID, sch
 func (p *postgresManager) StartRun(ctx context.Context, jobId, runID types.UID) error {
 	_, err := p.conn.Exec(ctx, `
 	INSERT INTO runs (runUid, jobUid, numberOfAttempts, status)
-	VALUES ($1, $2, 0, 'running');
+	VALUES ($1, $2, 1, 'running');
 	`, runID, jobId)
 
 	return err
@@ -217,7 +222,7 @@ func (p *postgresManager) ShouldRerun(ctx context.Context, runID types.UID, exit
 	WHERE r.runUid = $1 AND r.numberOfAttempts <= s.backoffLimit AND $2 = ANY(s.retryCodes);
     `
 
-    rows, err := p.conn.Query(ctx, query, runID, exitCode)
+	rows, err := p.conn.Query(ctx, query, runID, exitCode)
 	if err != nil {
 		return false, err
 	}
@@ -242,6 +247,15 @@ func (p *postgresManager) MarkRunOutcome(ctx context.Context, runID types.UID, s
 	SET status = $2
 	WHERE runUid = $1;
 	`, runID, status)
+
+	return err
+}
+
+func (p *postgresManager) AddPodToRun(ctx context.Context, podName string, runID types.UID) error {
+	_, err := p.conn.Exec(ctx, `
+	INSERT INTO runPods (podName, runUid)
+	VALUES ($1, $2);
+	`, podName, runID)
 
 	return err
 }

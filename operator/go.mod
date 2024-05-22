@@ -35,8 +35,6 @@ require (
 	github.com/klauspost/compress v1.16.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/sequential v0.5.0 // indirect
 	github.com/moby/sys/user v0.1.0 // indirect
@@ -82,7 +80,7 @@ require (
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/imdario/mergo v0.3.6 // indirect
 	github.com/jackc/pgx/v5 v5.5.5
 	github.com/josharian/intern v1.0.0 // indirect
@@ -98,7 +96,6 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/rs/zerolog v1.32.0
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.31.0
 	go.uber.org/multierr v1.11.0 // indirect

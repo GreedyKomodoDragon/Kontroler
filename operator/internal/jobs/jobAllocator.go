@@ -12,7 +12,7 @@ import (
 )
 
 type JobAllocator interface {
-	AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error)
+	AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, string, error)
 }
 
 type jobAllocator struct {
@@ -25,11 +25,12 @@ func NewJobAllocator(clientset *kubernetes.Clientset) JobAllocator {
 	}
 }
 
-func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error) {
+func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, string, error) {
+	podName := utils.GenerateRandomName()
 	backoff := int32(0)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: utils.GenerateRandomName(),
+			Name: podName,
 			Labels: map[string]string{
 				"managed-by": "kubeconductor",
 			},
@@ -58,8 +59,8 @@ func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name stri
 	// Create the Job
 	createdJob, err := p.clientset.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return createdJob.UID, nil
+	return createdJob.UID, podName, nil
 }

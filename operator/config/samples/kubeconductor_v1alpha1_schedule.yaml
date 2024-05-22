@@ -8,5 +8,5 @@ spec:
   command: ["sh", "-c"]
   args:
     ["if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"]
-  backoffLimit: 0
-  retryCodes: [8]
+  backoffLimit: 3
+  retryCodes: [1]

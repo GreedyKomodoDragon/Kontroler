@@ -27,6 +27,7 @@ type DbManager interface {
 	IncrementRunCount(ctx context.Context, runID types.UID) error
 	ShouldRerun(ctx context.Context, runID types.UID, exitCode int32) (bool, error)
 	MarkRunOutcome(ctx context.Context, runID types.UID, status string) error
+	AddPodToRun(ctx context.Context, podName string, runID types.UID) error
 
 	Close()
 }
