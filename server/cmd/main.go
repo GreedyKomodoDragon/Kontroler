@@ -4,17 +4,24 @@ import (
 	"context"
 	"fmt"
 	"kubeconductor-server/pkg/db"
+	"kubeconductor-server/pkg/kube"
 	"kubeconductor-server/pkg/rest"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"k8s.io/client-go/dynamic"
+	krest "k8s.io/client-go/rest"
+
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
 	dbName, exists := os.LookupEnv("DB_NAME")
 	if !exists {
 		panic("missing DB_NAME")
@@ -35,8 +42,6 @@ func main() {
 		panic("missing DB_PASSWORD")
 	}
 
-	// pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
-
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
 	if err != nil {
 		panic(err)
@@ -47,7 +52,18 @@ func main() {
 		panic(err)
 	}
 
-	app := rest.NewFiberHttpServer(dbManager)
+	config, err := krest.InClusterConfig()
+
+	// Create a dynamic client
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create dynamic client: %v\n", err)
+		os.Exit(1)
+	}
+
+	kubeClient := kube.NewKubeClient(dynamicClient)
+
+	app := rest.NewFiberHttpServer(kubeClient, dbManager)
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)

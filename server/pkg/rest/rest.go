@@ -2,12 +2,13 @@ package rest
 
 import (
 	"kubeconductor-server/pkg/db"
+	"kubeconductor-server/pkg/kube"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
-func NewFiberHttpServer(dbManager db.DbManager) *fiber.App {
+func NewFiberHttpServer(kubeClient kube.KubeClient, dbManager db.DbManager) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
@@ -18,7 +19,7 @@ func NewFiberHttpServer(dbManager db.DbManager) *fiber.App {
 		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
 	}))
 
-	addV1(app, dbManager)
+	addV1(app, kubeClient, dbManager)
 
 	return app
 }

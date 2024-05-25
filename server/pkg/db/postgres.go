@@ -70,7 +70,7 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 }
 
 func (p *postgresManager) GetAllRuns(ctx context.Context) ([]*Run, error) {
-	rows, err := p.conn.Query(ctx, `SELECT podName, runuid FROM runs`)
+	rows, err := p.conn.Query(ctx, `SELECT runuid, jobuid, numberofattempts, status FROM runs`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,16 +79,20 @@ func (p *postgresManager) GetAllRuns(ctx context.Context) ([]*Run, error) {
 	var runs []*Run
 	for rows.Next() {
 		var (
-			id      string
-			podName string
+			runId            string
+			jobId            string
+			numberOfAttempts int64
+			status           string
 		)
-		if err := rows.Scan(&podName, &id); err != nil {
+		if err := rows.Scan(&runId, &jobId, &numberOfAttempts, &status); err != nil {
 			return nil, err
 		}
 
 		runs = append(runs, &Run{
-			RunId:   types.UID(id),
-			PodName: podName,
+			RunId:            types.UID(runId),
+			JobUid:           types.UID(jobId),
+			NumberOfAttempts: numberOfAttempts,
+			Status:           status,
 		})
 	}
 	if err := rows.Err(); err != nil {
