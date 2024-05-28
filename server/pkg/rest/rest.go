@@ -14,8 +14,8 @@ func NewFiberHttpServer(kubeClient kube.KubeClient, dbManager db.DbManager) *fib
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://127.0.0.1:3000",
-		AllowCredentials: true,
+		AllowOrigins:     "*",
+		AllowCredentials: false,
 		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
 	}))
 

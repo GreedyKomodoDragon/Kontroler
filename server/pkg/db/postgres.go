@@ -76,7 +76,7 @@ func (p *postgresManager) GetAllRuns(ctx context.Context) ([]*Run, error) {
 	}
 	defer rows.Close()
 
-	var runs []*Run
+	runs := []*Run{}
 	for rows.Next() {
 		var (
 			runId            string

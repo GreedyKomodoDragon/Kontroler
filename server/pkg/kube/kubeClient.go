@@ -10,9 +10,16 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
+type ScheduleCrds struct {
+	APIVersion string      `json:"apiVersion"`
+	Kind       string      `json:"kind"`
+	Name       string      `json:"name"`
+	Spec       interface{} `json:"spec"`
+}
+
 type KubeClient interface {
 	// GetAllCronJobCrds uses []map[string]interface{} to avoid refactoring on spec changes
-	GetAllCronJobCrds() ([]map[string]interface{}, error)
+	GetAllCronJobCrds() ([]*ScheduleCrds, error)
 }
 
 func NewKubeClient(dynamicClient *dynamic.DynamicClient) KubeClient {
@@ -25,7 +32,7 @@ type kubeClient struct {
 	dynamicClient *dynamic.DynamicClient
 }
 
-func (k *kubeClient) GetAllCronJobCrds() ([]map[string]interface{}, error) {
+func (k *kubeClient) GetAllCronJobCrds() ([]*ScheduleCrds, error) {
 	// Define the CRD group and version
 	grv := schema.GroupVersionResource{
 		Group:    "kubeconductor.greedykomodo",
@@ -39,8 +46,9 @@ func (k *kubeClient) GetAllCronJobCrds() ([]map[string]interface{}, error) {
 		return nil, err
 	}
 
-	specs := []map[string]interface{}{}
-	for _, instance := range instances.Items {
+	items := make([]*ScheduleCrds, len(instances.Items))
+	for i, instance := range instances.Items {
+		instance.GetKind()
 		// Access the spec field from the map
 		spec, found, err := unstructured.NestedMap(instance.Object, "spec")
 		if err != nil {
@@ -50,8 +58,13 @@ func (k *kubeClient) GetAllCronJobCrds() ([]map[string]interface{}, error) {
 			return nil, fmt.Errorf("spec field not found in the object")
 		}
 
-		specs = append(specs, spec)
+		items[i] = &ScheduleCrds{
+			APIVersion: instance.GetAPIVersion(),
+			Kind:       instance.GetKind(),
+			Name:       instance.GetName(),
+			Spec:       spec,
+		}
 	}
 
-	return specs, nil
+	return items, nil
 }
