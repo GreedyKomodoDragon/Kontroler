@@ -16,7 +16,7 @@ const ScheduleComponent = ({ schedule }: Props) => {
         class="flex justify-between items-center cursor-pointer"
         onClick={toggleDetails}
       >
-        <h3 class="text-lg font-semibold">{schedule.metadata.name}</h3>
+        <h3 class="text-lg font-semibold">{schedule.name}</h3>
         <span class="text-sm">{schedule.spec.cronSchedule}</span>
       </div>
       {showDetails() && (

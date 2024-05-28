@@ -15,7 +15,13 @@ const RunComponent = ({ cronJobRun }: Props) => {
       <div class="flex justify-between items-center">
         <h3 class="text-lg font-semibold">Run ID: {cronJobRun.id}</h3>
         <span
-          class={`text-sm px-2 py-1 rounded ${cronJobRun.finalStatus === "Success" ? "bg-green-500" : "bg-red-500"}`}
+          class={`capitalize text-md text-black px-2 py-1 rounded ${
+            cronJobRun.finalStatus === "failed"
+              ? "bg-red-500"
+              : cronJobRun.finalStatus !== "successful"
+                ? "bg-blue-500"
+                : "bg-green-500"
+          }`}
         >
           {cronJobRun.finalStatus}
         </span>
@@ -29,6 +35,9 @@ const RunComponent = ({ cronJobRun }: Props) => {
         </p>
         <p>
           <strong>End Time:</strong> {cronJobRun.endTime}
+        </p>
+        <p class="mt-2">
+          <strong>Attempts:</strong> {cronJobRun.attempts}
         </p>
         <h4 class="text-lg font-semibold mt-2">
           <button

@@ -8,6 +8,7 @@ export interface CronJobRun {
   cronJobName: string;
   startTime: string;
   endTime: string;
-  finalStatus: "Success" | "Failed";
+  finalStatus: string;
+  attempts: number;
   pods: Pod[];
 }

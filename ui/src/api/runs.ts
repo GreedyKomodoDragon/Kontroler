@@ -1,16 +1,20 @@
-// src/api/cronJobRuns.ts
-
+import axios from "axios";
 import { CronJobRun } from "../types/runs";
 
 export async function getCronJobRuns(): Promise<CronJobRun[]> {
-  // Dummy data
-  const dummyCronJobRuns: CronJobRun[] = [
-    {
-      id: "1",
-      cronJobName: "example-cron-job-1",
+  const result = await axios.get("http://localhost:8080/api/v1/single/run", {});
+  const list: CronJobRun[] = [];
+
+  const runs = result.data.runs;
+
+  for (let i = 0; i < runs.length; i++) {
+    list.push({
+      id: runs[i].runId,
+      cronJobName: runs[i].jobUid,
+      attempts: runs[i].numberOfAttempts,
       startTime: "2024-05-25T08:00:00Z",
       endTime: "2024-05-25T08:05:00Z",
-      finalStatus: "Success",
+      finalStatus: runs[i].status,
       pods: [
         {
           id: "pod-1",
@@ -21,29 +25,8 @@ export async function getCronJobRuns(): Promise<CronJobRun[]> {
           exitCode: 0,
         },
       ],
-    },
-    {
-      id: "2",
-      cronJobName: "example-cron-job-2",
-      startTime: "2024-05-25T09:00:00Z",
-      endTime: "2024-05-25T09:05:00Z",
-      finalStatus: "Failed",
-      pods: [
-        {
-          id: "pod-3",
-          exitCode: 1,
-        },
-        {
-          id: "pod-4",
-          exitCode: 0,
-        },
-      ],
-    },
-    // Add more dummy cron job runs as needed
-  ];
+    });
+  }
 
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  return dummyCronJobRuns;
+  return list;
 }

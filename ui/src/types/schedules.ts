@@ -1,7 +1,3 @@
-export interface Metadata {
-  name: string;
-}
-
 export interface Conditional {
   enabled: boolean;
   retryCodes: number[];
@@ -19,6 +15,6 @@ export interface Spec {
 export interface Schedule {
   apiVersion: string;
   kind: string;
-  metadata: Metadata;
+  name: string;
   spec: Spec;
 }
