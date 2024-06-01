@@ -73,6 +73,7 @@ func (j *jobWatcher) StartWatching() {
 					LabelSelector: fmt.Sprintf("job-name=%s", job.Name),
 				})
 				if err != nil {
+					// TODO: Mark in DB as missing pods
 					log.Log.Error(err, "failed to list pods for job", "job", job.Name)
 					continue
 				}
@@ -83,23 +84,27 @@ func (j *jobWatcher) StartWatching() {
 				for _, pod := range pods.Items {
 					jobId, ok := job.Annotations["kubeconductor/schedule-uid"]
 					if !ok {
+						// TODO: Mark in DB as missing annotations
 						log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
 						continue
 					}
 
 					if len(pod.Status.ContainerStatuses) == 0 {
+						// TODO: Mark in DB as no containers
 						log.Log.Error(err, "does not seem to be any containers?", "job", job.Name)
 						continue
 					}
 
 					if pod.Status.ContainerStatuses[0].State.Terminated == nil {
-						log.Log.Error(err, "failed to increment failure run count", "job", job.Name)
+						// TODO: Mark in DB as missing status information on pod
+						log.Log.Error(err, "missing status informationt", "job", job.Name)
 						continue
 					}
 
 					jobUid := types.UID(jobId)
 					ok, err := j.dbManager.ShouldRerun(context.Background(), jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 					if err != nil {
+						// TODO: Mark in DB as failed
 						log.Log.Error(err, "failed to determine if pod should be re-ran", "job", job.Name)
 						continue
 					}
@@ -121,6 +126,7 @@ func (j *jobWatcher) StartWatching() {
 					container := pod.Spec.Containers[0]
 					_, podName, err := j.jobAllocator.AllocateJob(context.Background(), jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace)
 					if err != nil {
+						// TODO: Mark this as the job failing!
 						log.Log.Error(err, "failed to allocate new pod")
 						continue
 					}

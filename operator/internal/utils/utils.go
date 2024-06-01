@@ -1,7 +1,10 @@
 package utils
 
-import "math/rand"
+import (
+	"math/rand"
+)
 
+// TODO: make this loadable from a configmap
 var wordList = []string{
 	"apple", "banana", "cherry", "orange", "grape", "pear",
 	"dog", "cat", "rabbit", "hamster", "turtle", "goldfish",
@@ -14,7 +17,7 @@ func GenerateRandomName() string {
 	var name string
 
 	// Choose a random number of words to combine (between 2 and 3)
-	numWords := rand.Intn(2) + 2
+	numWords := 3
 
 	// Choose random words and combine them
 	for i := 0; i < numWords; i++ {
