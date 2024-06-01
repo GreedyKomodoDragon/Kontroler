@@ -1,6 +1,11 @@
+import { Conditional } from "./schedules";
+
 export interface CronJob {
-  name: string;
+  id: string;
   schedule: string;
-  status: string;
-  retries: number;
+  imageName: string;
+  command: string[];
+  args: string[];
+  backoffLimit: number;
+  conditionalRetry: Conditional;
 }

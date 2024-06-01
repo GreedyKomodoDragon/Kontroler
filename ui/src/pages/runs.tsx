@@ -18,7 +18,7 @@ const Runs: Component = () => {
       <h2 class="text-2xl font-semibold mb-4">CronJob Runs</h2>
       <div>
         {cronJobRuns().map((cronJobRun, index) => (
-          <RunsComponent key={index} cronJobRun={cronJobRun} />
+          <RunsComponent key={cronJobRun.id} cronJobRun={cronJobRun} />
         ))}
       </div>
     </div>
