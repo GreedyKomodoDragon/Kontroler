@@ -57,6 +57,47 @@ func (j *jobWatcher) StartWatching() {
 					continue
 				}
 
+				// Extract failure details
+				pods, err := j.clientSet.CoreV1().Pods(j.namespace).List(context.TODO(), metav1.ListOptions{
+					LabelSelector: fmt.Sprintf("job-name=%s", job.Name),
+				})
+				if err != nil {
+					// TODO: Mark in DB as missing pods
+					log.Log.Error(err, "failed to list pods for job", "job", job.Name)
+					continue
+				}
+
+				log.Log.Info("number of pods in job", "jobUid", job.UID, "count", len(pods.Items))
+
+				// Get Exitable codes to restart with and backoff limit
+				for _, pod := range pods.Items {
+					jobId, ok := job.Annotations["kubeconductor/schedule-uid"]
+					if !ok {
+						// TODO: Mark in DB as missing annotations
+						log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
+						continue
+					}
+
+					if len(pod.Status.ContainerStatuses) == 0 {
+						// TODO: Mark in DB as no containers
+						log.Log.Error(err, "does not seem to be any containers?", "job", job.Name)
+						continue
+					}
+
+					if pod.Status.ContainerStatuses[0].State.Terminated == nil {
+						// TODO: Mark in DB as missing status information on pod
+						log.Log.Error(err, "missing status informationt", "job", job.Name)
+						continue
+					}
+
+					jobUid := types.UID(jobId)
+					if err := j.dbManager.AddPodToRun(context.TODO(), pod.Name, jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode); err != nil {
+						// TODO: Mark in DB as missing status information on pod
+						log.Log.Error(err, "unable to add exit code", "podUID", pod.UID, "podName", pod.Name)
+						continue
+					}
+				}
+
 				jobUid := types.UID(jobId)
 				if err := j.dbManager.MarkRunOutcome(context.TODO(), jobUid, "successful"); err != nil {
 					log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
@@ -102,6 +143,12 @@ func (j *jobWatcher) StartWatching() {
 					}
 
 					jobUid := types.UID(jobId)
+					if err := j.dbManager.AddPodToRun(context.TODO(), pod.Name, jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode); err != nil {
+						// TODO: Mark in DB as missing status information on pod
+						log.Log.Error(err, "unable to add exit code", "podUID", pod.UID, "podName", pod.Name)
+						continue
+					}
+
 					ok, err := j.dbManager.ShouldRerun(context.Background(), jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 					if err != nil {
 						// TODO: Mark in DB as failed
@@ -124,15 +171,9 @@ func (j *jobWatcher) StartWatching() {
 					}
 
 					container := pod.Spec.Containers[0]
-					_, podName, err := j.jobAllocator.AllocateJob(context.Background(), jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace)
-					if err != nil {
+					if _, err := j.jobAllocator.AllocateJob(context.Background(), jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace); err != nil {
 						// TODO: Mark this as the job failing!
 						log.Log.Error(err, "failed to allocate new pod")
-						continue
-					}
-
-					if err := j.dbManager.AddPodToRun(context.TODO(), podName, jobUid); err != nil {
-						log.Log.Error(err, "failed to add pod to run")
 						continue
 					}
 

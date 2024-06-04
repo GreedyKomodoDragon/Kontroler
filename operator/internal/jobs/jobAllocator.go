@@ -14,7 +14,7 @@ import (
 )
 
 type JobAllocator interface {
-	AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, string, error)
+	AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error)
 }
 
 type jobAllocator struct {
@@ -27,7 +27,7 @@ func NewJobAllocator(clientset *kubernetes.Clientset) JobAllocator {
 	}
 }
 
-func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, string, error) {
+func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error) {
 	backoff := int32(0)
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -68,11 +68,11 @@ func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name stri
 				continue
 			}
 
-			return "", "", err
+			return "", err
 		}
 
-		return createdJob.UID, job.ObjectMeta.Name, nil
+		return createdJob.UID, nil
 	}
 
-	return "", "", fmt.Errorf("failed to create pod due to naming collisions")
+	return "", fmt.Errorf("failed to create pod due to naming collisions")
 }

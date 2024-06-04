@@ -63,7 +63,7 @@ func (s *schedulerManager) Run() {
 
 			runID := types.UID(newUUID.String())
 
-			id, podName, err := s.jobAllocator.AllocateJob(context.Background(), runID, string(job.Id)+name, job.ImageName, job.Command, job.Args, "operator-system")
+			id, err := s.jobAllocator.AllocateJob(context.Background(), runID, string(job.Id)+name, job.ImageName, job.Command, job.Args, "operator-system")
 			if err != nil {
 				// TODO: Mark this as the job failing!
 				log.Log.Error(err, "failed to allocate a new pod")
@@ -78,10 +78,6 @@ func (s *schedulerManager) Run() {
 
 			if err := s.dbManager.StartRun(context.Background(), job.Id, runID); err != nil {
 				log.Log.Error(err, "failed to mark job as started", "runID", runID, "jobId", job.Id)
-			}
-
-			if err := s.dbManager.AddPodToRun(context.Background(), podName, runID); err != nil {
-				log.Log.Error(err, "failed to add pod to run", "runID", runID)
 			}
 
 		}

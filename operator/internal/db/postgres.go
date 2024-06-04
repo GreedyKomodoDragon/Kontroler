@@ -63,7 +63,8 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 
         CREATE TABLE IF NOT EXISTS runPods (
 			podName VARCHAR(255) PRIMARY KEY,
-			runUid VARCHAR(255)
+			runUid VARCHAR(255),
+			exitcode INTEGER
         );
 
 		COMMIT;
@@ -259,11 +260,11 @@ func (p *postgresManager) MarkRunOutcome(ctx context.Context, runID types.UID, s
 	return err
 }
 
-func (p *postgresManager) AddPodToRun(ctx context.Context, podName string, runID types.UID) error {
+func (p *postgresManager) AddPodToRun(ctx context.Context, podName string, runID types.UID, exitCode int32) error {
 	_, err := p.conn.Exec(ctx, `
-	INSERT INTO runPods (podName, runUid)
-	VALUES ($1, $2);
-	`, podName, runID)
+	INSERT INTO runPods (podName, runUid, exitcode)
+	VALUES ($1, $2, $3);
+	`, podName, runID, exitCode)
 
 	return err
 }
