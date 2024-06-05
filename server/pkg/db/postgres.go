@@ -62,15 +62,18 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 			},
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 
 	return cronJobs, nil
 }
 
-func (p *postgresManager) GetAllRuns(ctx context.Context) ([]*Run, error) {
-	rows, err := p.conn.Query(ctx, `SELECT runuid, jobuid, numberofattempts, status FROM runs`)
+func (p *postgresManager) GetAllRuns(ctx context.Context, limit int, offset int) ([]*Run, error) {
+	rows, err := p.conn.Query(ctx, `
+		SELECT runuid, jobuid, numberofattempts, status
+		FROM runs
+		ORDER BY starttime DESC
+		LIMIT $1 OFFSET $2
+		`, limit, offset)
+
 	if err != nil {
 		return nil, err
 	}
@@ -95,8 +98,35 @@ func (p *postgresManager) GetAllRuns(ctx context.Context) ([]*Run, error) {
 			Status:           status,
 		})
 	}
-	if err := rows.Err(); err != nil {
+
+	return runs, nil
+}
+
+func (p *postgresManager) GetRunsPods(ctx context.Context, runId types.UID) ([]*PodWithExitCode, error) {
+	rows, err := p.conn.Query(ctx, `
+		SELECT podName, exitcode
+		FROM runPods
+		WHERE runUid = $1`, runId)
+
+	if err != nil {
 		return nil, err
+	}
+	defer rows.Close()
+
+	runs := []*PodWithExitCode{}
+	for rows.Next() {
+		var (
+			name     string
+			exitCode int32
+		)
+		if err := rows.Scan(&name, &exitCode); err != nil {
+			return nil, err
+		}
+
+		runs = append(runs, &PodWithExitCode{
+			Name:     name,
+			ExitCode: exitCode,
+		})
 	}
 
 	return runs, nil

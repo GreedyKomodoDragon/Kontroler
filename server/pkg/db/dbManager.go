@@ -28,9 +28,15 @@ type Run struct {
 	Status           string    `json:"status"`
 }
 
+type PodWithExitCode struct {
+	Name     string `json:"name"`
+	ExitCode int32  `json:"exitCode"`
+}
+
 type DbManager interface {
 	GetAllCronJobs(ctx context.Context) ([]*CronJob, error)
-	GetAllRuns(ctx context.Context) ([]*Run, error)
+	GetAllRuns(ctx context.Context, limit int, offset int) ([]*Run, error)
+	GetRunsPods(ctx context.Context, runId types.UID) ([]*PodWithExitCode, error)
 
 	Close()
 }
