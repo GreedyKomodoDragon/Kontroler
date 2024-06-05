@@ -1,3 +1,4 @@
+import { getPods } from "../api/runs";
 import { CronJobRun, Pod } from "../types/runs";
 import { createSignal } from "solid-js";
 
@@ -7,8 +8,18 @@ interface Props {
 
 const RunComponent = ({ cronJobRun }: Props) => {
   const [showPods, setShowPods] = createSignal(false);
+  const [fetched, setFetched] = createSignal(false);
+  const [pods, setPods] = createSignal<Pod[]>([]);
 
-  const togglePods = () => setShowPods(!showPods());
+  const togglePods = async () => {
+    if (!fetched()) {
+      const pds = await getPods(cronJobRun.id);
+      setPods(pds);
+      setFetched(true);
+    }
+
+    setShowPods(!showPods());
+  };
 
   return (
     <div class="bg-gray-800 shadow-md rounded-md p-4 mb-4 text-white">
@@ -50,10 +61,10 @@ const RunComponent = ({ cronJobRun }: Props) => {
         {showPods() && (
           <div>
             <h4 class="text-lg font-semibold mt-2">Pods:</h4>
-            {cronJobRun.pods.map((pod: Pod, index: number) => (
+            {pods().map((pod: Pod, index: number) => (
               <div key={index} class="bg-gray-700 rounded-md p-3 mt-2">
                 <p>
-                  <strong>Pod ID:</strong> {pod.id}
+                  <strong>Pod Name:</strong> {pod.name}
                 </p>
                 <p>
                   <strong>Exit Code:</strong> {pod.exitCode}

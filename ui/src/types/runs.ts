@@ -1,5 +1,5 @@
 export interface Pod {
-  id: string;
+  name: string;
   exitCode: number;
 }
 
@@ -10,5 +10,4 @@ export interface CronJobRun {
   endTime: string;
   finalStatus: string;
   attempts: number;
-  pods: Pod[];
 }

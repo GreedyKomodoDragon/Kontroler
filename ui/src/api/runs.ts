@@ -1,8 +1,11 @@
 import axios from "axios";
-import { CronJobRun } from "../types/runs";
+import { CronJobRun, Pod } from "../types/runs";
 
 export async function getCronJobRuns(): Promise<CronJobRun[]> {
-  const result = await axios.get("http://localhost:8080/api/v1/single/run", {});
+  const result = await axios.get(
+    "http://localhost:8080/api/v1/single/run/1",
+    {},
+  );
   const list: CronJobRun[] = [];
 
   const runs = result.data.runs;
@@ -15,18 +18,19 @@ export async function getCronJobRuns(): Promise<CronJobRun[]> {
       startTime: "2024-05-25T08:00:00Z",
       endTime: "2024-05-25T08:05:00Z",
       finalStatus: runs[i].status,
-      pods: [
-        {
-          id: "pod-1",
-          exitCode: 0,
-        },
-        {
-          id: "pod-2",
-          exitCode: 0,
-        },
-      ],
     });
   }
 
   return list;
+}
+
+export async function getPods(runId: string): Promise<Pod[]> {
+  const result = await axios.get(
+    `http://localhost:8080/api/v1/single/run/${runId}/pods`,
+    {},
+  );
+
+  console.log("hello:", result.data.pods);
+
+  return result.data.pods;
 }
