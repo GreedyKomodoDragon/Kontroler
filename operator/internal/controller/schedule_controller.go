@@ -33,7 +33,7 @@ import (
 type ScheduleReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
-	DbManager db.DbManager
+	DbManager db.DBSchedulerManager
 }
 
 //+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=schedules,verbs=get;list;watch;create;update;patch;delete

@@ -19,13 +19,13 @@ type JobWatcher interface {
 
 type jobWatcher struct {
 	jobAllocator JobAllocator
-	dbManager    db.DbManager
+	dbManager    db.DBSchedulerManager
 	kubeWatcher  watch.Interface
 	clientSet    *kubernetes.Clientset
 	namespace    string
 }
 
-func NewJobWatcher(namespace string, clientSet *kubernetes.Clientset, kubeWatcher watch.Interface, jobAllocator JobAllocator, dbManager db.DbManager) JobWatcher {
+func NewJobWatcher(namespace string, clientSet *kubernetes.Clientset, kubeWatcher watch.Interface, jobAllocator JobAllocator, dbManager db.DBSchedulerManager) JobWatcher {
 	return &jobWatcher{
 		jobAllocator: jobAllocator,
 		dbManager:    dbManager,

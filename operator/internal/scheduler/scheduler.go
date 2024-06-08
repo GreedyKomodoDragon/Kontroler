@@ -19,10 +19,10 @@ type SchedulerManager interface {
 type schedulerManager struct {
 	jobAllocator jobs.JobAllocator
 	jobWatcher   jobs.JobWatcherFactory
-	dbManager    db.DbManager
+	dbManager    db.DBSchedulerManager
 }
 
-func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatcherFactory, dbManager db.DbManager) SchedulerManager {
+func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatcherFactory, dbManager db.DBSchedulerManager) SchedulerManager {
 	return &schedulerManager{
 		jobAllocator: jobAllocator,
 		dbManager:    dbManager,

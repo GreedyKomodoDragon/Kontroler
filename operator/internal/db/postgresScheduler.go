@@ -16,7 +16,7 @@ type postgresManager struct {
 	parser *cron.Parser
 }
 
-func NewPostgresManager(ctx context.Context, config *pgxpool.Config, parser *cron.Parser) (DbManager, error) {
+func NewPostgresSchedulerManager(ctx context.Context, config *pgxpool.Config, parser *cron.Parser) (DBSchedulerManager, error) {
 	if config == nil {
 		return nil, fmt.Errorf("missing config")
 	}

@@ -74,7 +74,7 @@ func TestNewPostgresManager_ValidConfig(t *testing.T) {
 
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	manager, err := db.NewPostgresManager(ctx, config, &specParser)
+	manager, err := db.NewPostgresSchedulerManager(ctx, config, &specParser)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -91,7 +91,7 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	manager, err := db.NewPostgresManager(ctx, config, &specParser)
+	manager, err := db.NewPostgresSchedulerManager(ctx, config, &specParser)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestPostgresManager_UpsertCronJob(t *testing.T) {
 	config := getTestDBConfig(t)
 
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	manager, err := db.NewPostgresManager(ctx, config, &specParser)
+	manager, err := db.NewPostgresSchedulerManager(ctx, config, &specParser)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestPostgresManager_DeleteCronJob(t *testing.T) {
 	config := getTestDBConfig(t)
 
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	manager, err := db.NewPostgresManager(ctx, config, &specParser)
+	manager, err := db.NewPostgresSchedulerManager(ctx, config, &specParser)
 	if err != nil {
 		t.Fatalf("Failed to create manager: %v", err)
 	}

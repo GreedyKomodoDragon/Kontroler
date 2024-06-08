@@ -1,0 +1,51 @@
+apiVersion: kubeconductor.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag
+    app.kubernetes.io/instance: dag-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dag-sample
+spec:
+  schedule: ""
+  task:
+    - name: "random"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [8]
+    - name: "random-b"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [8]
+    - name: "random-c"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [8]

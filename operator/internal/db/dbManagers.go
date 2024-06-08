@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -21,7 +22,7 @@ type ConditionalRetry struct {
 	RetryCodes []int32
 }
 
-type DbManager interface {
+type DBSchedulerManager interface {
 	InitaliseDatabase(ctx context.Context) error
 	UpsertCronJob(ctx context.Context, cron *CronJob) error
 	DeleteCronJob(ctx context.Context, id types.UID) error
@@ -35,4 +36,9 @@ type DbManager interface {
 	AddPodToRun(ctx context.Context, podName string, runID types.UID, exitCode int32) error
 
 	Close()
+}
+
+type DBDAGManager interface {
+	InitaliseDatabase(ctx context.Context) error
+	UpsertDAG(ctx context.Context, dag *v1alpha1.DAG) error
 }

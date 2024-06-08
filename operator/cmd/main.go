@@ -23,14 +23,15 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	cron "github.com/robfig/cron/v3"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
-	"github.com/jackc/pgx/v5/pgxpool"
-	cron "github.com/robfig/cron/v3"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -140,7 +141,7 @@ func main() {
 
 	dbName := "kubeconductor"
 	dbUser := "postgres"
-	dbPassword := ""
+	dbPassword := "Lfr0F9lvJ0"
 	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
@@ -149,7 +150,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbManager, err := db.NewPostgresManager(context.Background(), pgConfig, &specParser)
+	dbManager, err := db.NewPostgresSchedulerManager(context.Background(), pgConfig, &specParser)
 	if err != nil {
 		setupLog.Error(err, "failed to create postgres manager")
 		os.Exit(1)
@@ -166,6 +167,13 @@ func main() {
 		DbManager: dbManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Schedule")
+		os.Exit(1)
+	}
+	if err = (&controller.DAGReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DAG")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

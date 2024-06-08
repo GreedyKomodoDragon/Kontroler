@@ -18,11 +18,11 @@ type JobWatcherFactory interface {
 type jobWatcherFactory struct {
 	clientSet    *kubernetes.Clientset
 	watcherMap   map[string]JobWatcher
-	dbManager    db.DbManager
+	dbManager    db.DBSchedulerManager
 	jobAllocator JobAllocator
 }
 
-func NewJobWatcherFactory(clientSet *kubernetes.Clientset, jobAllocator JobAllocator, dbManager db.DbManager) JobWatcherFactory {
+func NewJobWatcherFactory(clientSet *kubernetes.Clientset, jobAllocator JobAllocator, dbManager db.DBSchedulerManager) JobWatcherFactory {
 	return &jobWatcherFactory{
 		clientSet:    clientSet,
 		watcherMap:   map[string]JobWatcher{},
