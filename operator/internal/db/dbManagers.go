@@ -17,6 +17,17 @@ type CronJob struct {
 	ConditionalRetry ConditionalRetry
 }
 
+type Task struct {
+	Id      int
+	Name    string
+	Image   string
+	Command []string
+	Args    []string
+	// TODO: Implement retries
+	// BackoffLimit     uint64
+	// ConditionalRetry ConditionalRetry
+}
+
 type ConditionalRetry struct {
 	Enabled    bool
 	RetryCodes []int32
@@ -34,11 +45,21 @@ type DBSchedulerManager interface {
 	ShouldRerun(ctx context.Context, runID types.UID, exitCode int32) (bool, error)
 	MarkRunOutcome(ctx context.Context, runID types.UID, status string) error
 	AddPodToRun(ctx context.Context, podName string, runID types.UID, exitCode int32) error
-
-	Close()
 }
 
 type DBDAGManager interface {
+	// InitaliseDatabase will ensure all create requires components such as tables in a relational database are within the database
 	InitaliseDatabase(ctx context.Context) error
-	UpsertDAG(ctx context.Context, dag *v1alpha1.DAG) error
+	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
+	InsertDAG(ctx context.Context, dag *v1alpha1.DAG) error
+	// Create the update to show that a new DAG has been started
+	CreateDAGRun(ctx context.Context, dagId int) (int, error)
+	// Get all the tasks in the DAG that do not have any dependencies
+	GetStartingTasks(ctx context.Context, dagId int) ([]Task, error)
+	// Add an update to show the task has been started
+	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
+	// Within the same transaction, mark the outcome of the task, and get next task(s) in the DAG
+	MarkOutcomeAndGetNextTasks(ctx context.Context, taskId int, outcome string) ([]Task, error)
+	// Update the DAGRun to show the overall outcome
+	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
 }

@@ -94,7 +94,7 @@ func TestUpsertDAG(t *testing.T) {
 	}
 
 	// Test inserting a new DAG
-	err = manager.UpsertDAG(context.Background(), dag)
+	err = manager.InsertDAG(context.Background(), dag)
 	assert.NoError(t, err, "Failed to insert new DAG")
 
 	// Verify the DAG was inserted
@@ -105,7 +105,7 @@ func TestUpsertDAG(t *testing.T) {
 
 	// Test updating the existing DAG
 	dag.Spec.Schedule = "*/10 * * * *"
-	err = manager.UpsertDAG(context.Background(), dag)
+	err = manager.InsertDAG(context.Background(), dag)
 	assert.NoError(t, err, "Failed to update existing DAG")
 
 	// Verify the DAG was updated
@@ -122,7 +122,7 @@ func TestUpsertDAG(t *testing.T) {
 		Image:    "alpine:latest",
 		RunAfter: []string{"task2"},
 	})
-	err = manager.UpsertDAG(context.Background(), dag)
+	err = manager.InsertDAG(context.Background(), dag)
 	assert.NoError(t, err, "Failed to update DAG with additional task")
 
 	// Verify the new task was inserted

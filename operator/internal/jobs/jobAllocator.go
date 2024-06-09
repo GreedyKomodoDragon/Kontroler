@@ -30,9 +30,11 @@ func NewJobAllocator(clientset *kubernetes.Clientset) JobAllocator {
 func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error) {
 	backoff := int32(0)
 	job := &batchv1.Job{
+		// TODO: Refactor this to enable it to be re-used in DAG task
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				"managed-by": "kubeconductor",
+				"managed-by":         "kubeconductor",
+				"kubeconductor/type": "cronjob",
 			},
 			Annotations: map[string]string{
 				"kubeconductor/schedule-uid": string(uid),

@@ -25,12 +25,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 )
 
 // DAGReconciler reconciles a DAG object
 type DAGReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	DbManager db.DBDAGManager
 }
 
 //+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dags,verbs=get;list;watch;create;update;patch;delete
@@ -59,15 +61,15 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	// Schedule object was found, store it in the database
-	if err := r.storeInDatabase(&dag); err != nil {
+	if err := r.storeInDatabase(ctx, &dag); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *DAGReconciler) storeInDatabase(dag *kubeconductorv1alpha1.DAG) error {
-	return nil
+func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kubeconductorv1alpha1.DAG) error {
+	return r.DbManager.InsertDAG(ctx, dag)
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -8,6 +8,7 @@ import (
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/utils"
 	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -17,9 +18,10 @@ type SchedulerManager interface {
 }
 
 type schedulerManager struct {
-	jobAllocator jobs.JobAllocator
-	jobWatcher   jobs.JobWatcherFactory
-	dbManager    db.DBSchedulerManager
+	jobAllocator   jobs.JobAllocator
+	jobWatcher     jobs.JobWatcherFactory
+	dbManager      db.DBSchedulerManager
+	labelSelectors labels.Selector
 }
 
 func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatcherFactory, dbManager db.DBSchedulerManager) SchedulerManager {
@@ -27,6 +29,10 @@ func NewScheduleManager(jobAllocator jobs.JobAllocator, jobWatcher jobs.JobWatch
 		jobAllocator: jobAllocator,
 		dbManager:    dbManager,
 		jobWatcher:   jobWatcher,
+		labelSelectors: labels.Set(map[string]string{
+			"managed-by":         "kubeconductor",
+			"kubeconductor/type": "cronjob",
+		}).AsSelector(),
 	}
 }
 
@@ -47,7 +53,7 @@ func (s *schedulerManager) Run() {
 		for _, job := range jobs {
 			// Start watcher first
 			if ok := s.jobWatcher.IsWatching("operator-system"); !ok {
-				if err := s.jobWatcher.StartWatcher("operator-system"); err != nil {
+				if err := s.jobWatcher.StartWatcher("operator-system", s.labelSelectors); err != nil {
 					log.Log.Error(err, "failed to start watching namespace for pods", "namespace", "operator-system")
 				}
 

@@ -28,6 +28,7 @@ func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron
 
 func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	// Initialize the database schema
+	// TODO: Right-size the columns + select correct types
 	initSQL := `
 CREATE TABLE IF NOT EXISTS DAGs (
     dag_id SERIAL PRIMARY KEY,
@@ -58,6 +59,22 @@ CREATE TABLE IF NOT EXISTS DAG_Tasks (
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
     FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
 );
+
+CREATE TABLE IF NOT EXISTS DAG_Runs (
+	run_id SERIAL PRIMARY KEY,
+    dag_id INTEGER NOT NULL,
+	status VARCHAR(255) NOT NULL,
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
+);
+
+CREATE TABLE IF NOT EXISTS Task_Runs (
+	task_run_id SERIAL PRIMARY KEY,
+	run_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+	status VARCHAR(255) NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
+	FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id),
+);
 `
 
 	if _, err := p.pool.Exec(ctx, initSQL); err != nil {
@@ -67,7 +84,7 @@ CREATE TABLE IF NOT EXISTS DAG_Tasks (
 	return nil
 }
 
-func (p *postgresDAGManager) UpsertDAG(ctx context.Context, dag *v1alpha1.DAG) error {
+func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG) error {
 	// Check if the DAG already exists
 	// Begin transaction
 	tx, err := p.pool.Begin(context.Background())
@@ -75,15 +92,15 @@ func (p *postgresDAGManager) UpsertDAG(ctx context.Context, dag *v1alpha1.DAG) e
 		return err
 	}
 
+	// Rollback transaction if not committed
+	defer tx.Rollback(ctx)
+
 	var existingDAGID int
 	var version int
 	err = tx.QueryRow(ctx, "SELECT dag_id, version FROM DAGs WHERE name = $1", dag.Name).Scan(&existingDAGID, &version)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
-
-	// Rollback transaction if not committed
-	defer tx.Rollback(ctx)
 
 	if existingDAGID != 0 {
 		version++
@@ -162,4 +179,151 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	}
 
 	return nil
+}
+
+func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dagId int) (int, error) {
+	// Map the task to the DAG
+	var dagRunID int
+	if err := p.pool.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, task_id) VALUES ($1, 'running') RETURNING run_id", dagId).Scan(&dagRunID); err != nil {
+		return 0, err
+	}
+
+	return dagRunID, nil
+}
+
+func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([]Task, error) {
+	rows, err := p.pool.Query(ctx, `
+	SELECT t.task_id, t.name, t.image, t.command, t.args,
+	FROM Tasks t
+	LEFT JOIN Dependencies d ON t.task_id = d.task_id
+	WHERE d.task_id IS NULL AND t.dag_id = $1;`, dagId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	tasks := []Task{}
+	for rows.Next() {
+		var task Task
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args); err != nil {
+			return nil, err
+		}
+
+		tasks = append(tasks, task)
+	}
+
+	return tasks, nil
+}
+
+func (p *postgresDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {
+	if _, err := p.pool.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, taskRunId int, outcome string) ([]Task, error) {
+	// Check if the DAG already exists
+	// Begin transaction
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Rollback transaction if not committed
+	defer tx.Rollback(ctx)
+
+	var taskId int
+	err = tx.QueryRow(ctx, "UPDATE Task_Runs SET status = $1 WHERE task_run_id = $2 RETURNING task_id", outcome, taskRunId).Scan(&taskId)
+	if err != nil && err != pgx.ErrNoRows {
+		return nil, err
+	}
+
+	// Exit early if not successful
+	if outcome != "success" {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+
+		return []Task{}, nil
+	}
+
+	rows, err := tx.Query(ctx, `
+	WITH TaskRunInfo AS (
+		SELECT
+			tr.run_id,
+			tr.task_id,
+			tr.status
+		FROM
+			Task_Runs tr
+		WHERE
+			tr.task_run_id = $1
+	),
+	DependenciesStatus AS (
+		SELECT
+			d.task_id,
+			COUNT(*) AS total_dependencies,
+			COUNT(CASE WHEN ts.status = 'success' THEN 1 END) AS successful_dependencies
+		FROM
+			Dependencies d
+		INNER JOIN
+			Task_Runs ts ON d.depends_on_task_id = ts.task_id
+		INNER JOIN
+			TaskRunInfo tri ON ts.run_id = tri.run_id
+		WHERE
+			d.task_id = (SELECT task_id FROM TaskRunInfo)
+		GROUP BY
+			d.task_id
+	)
+	SELECT
+		t.task_id,
+		t.name,
+		t.image,
+		t.command,
+		t.args
+	FROM
+		TaskRunInfo tri
+	INNER JOIN
+		Tasks t ON tri.task_id = t.task_id
+	LEFT JOIN
+		DependenciesStatus ds ON t.task_id = ds.task_id
+	WHERE
+		tri.status = 'pending'
+		AND (ds.total_dependencies IS NULL OR ds.total_dependencies = ds.successful_dependencies);		
+	`, taskRunId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	tasks := []Task{}
+	for rows.Next() {
+		var task Task
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args); err != nil {
+			return nil, err
+		}
+
+		tasks = append(tasks, task)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
+}
+
+func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {
+	var taskRunId int
+	err := p.pool.QueryRow(ctx, "INSERT INTO Task_Runs (run_id, task_id, status) VALUES ($1, $2, 'running') RETURNING task_run_id", runId, taskId).Scan(&taskRunId)
+	if err != nil {
+		return 0, err
+	}
+
+	return taskRunId, nil
 }
