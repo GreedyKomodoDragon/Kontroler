@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -136,4 +137,312 @@ func TestUpsertDAG(t *testing.T) {
 	row := pool.QueryRow(context.Background(), "SELECT version FROM DAGs ORDER BY version DESC")
 	assert.NoError(t, row.Scan(&version), "Failed to get third version")
 	assert.Equal(t, 2, version)
+}
+
+func TestPostgresDAGManager_InsertDAG(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	assert.NoError(t, err)
+}
+
+func TestPostgresDAGManager_CreateDAGRun(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	require.NoError(t, err)
+
+	runID, err := dm.CreateDAGRun(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, runID)
+}
+
+func TestPostgresDAGManager_GetStartingTasks(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo"},
+					Args:    []string{"Hello, World!"},
+					Image:   "alpine:latest",
+				},
+				{
+					Name:     "task2",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, tasks)
+	assert.Len(t, tasks, 1)
+	assert.Equal(t, tasks[0].Name, "task1")
+}
+
+func TestPostgresDAGManager_MarkDAGRunOutcome(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task2",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	require.NoError(t, err)
+
+	runID, err := dm.CreateDAGRun(context.Background(), 1)
+	require.NoError(t, err)
+
+	err = dm.MarkDAGRunOutcome(context.Background(), runID, "success")
+	assert.NoError(t, err)
+}
+
+func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task2",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	require.NoError(t, err)
+
+	runID, err := dm.CreateDAGRun(context.Background(), 1)
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), 1)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, tasks)
+	assert.Len(t, tasks, 1)
+	assert.Equal(t, tasks[0].Name, "task1")
+
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkOutcomeAndGetNextTasks(context.Background(), tasRunID, "success")
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 1)
+	require.Equal(t, tasks[0].Name, "task2")
+}
+
+func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:    "task2",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task3",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1", "task2"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	require.NoError(t, err)
+
+	runID, err := dm.CreateDAGRun(context.Background(), 1)
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 2)
+	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
+
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkOutcomeAndGetNextTasks(context.Background(), tasRunID, "success")
+	require.NoError(t, err)
+	require.Empty(t, tasks)
+}
+
+func TestPostgresDAGManager_MarkTaskAsStarted(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag)
+	require.NoError(t, err)
+
+	runID, err := dm.CreateDAGRun(context.Background(), 1)
+	require.NoError(t, err)
+
+	taskID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, taskID)
 }
