@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/jackc/pgx/v5"
@@ -135,9 +136,21 @@ func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name st
 
 // insertDAG inserts a new DAG object into the database.
 func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1alpha1.DAG, version int) error {
-	var dagID int
-	err := tx.QueryRow(ctx, "INSERT INTO DAGs (name, version, schedule, active) VALUES ($1, $2, $3, TRUE) RETURNING dag_id", dag.Name, version, dag.Spec.Schedule).Scan(&dagID)
+
+	// Parse the cron expression
+	sched, err := p.parser.Parse(dag.Spec.Schedule)
 	if err != nil {
+		return err
+	}
+
+	// Get the next occurrence of the scheduled time
+	nextTime := sched.Next(time.Now())
+
+	var dagID int
+	if err = tx.QueryRow(ctx, `
+	INSERT INTO DAGs (name, version, schedule, active, nextTime) 
+	VALUES ($1, $2, $3, TRUE, $4) 
+	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, nextTime).Scan(&dagID); err != nil {
 		return err
 	}
 
@@ -307,4 +320,66 @@ func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, t
 	}
 
 	return taskRunId, nil
+}
+
+func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	defer tx.Rollback(ctx)
+
+	// Maybe able to cut this down
+	rows, err := tx.Query(ctx, `
+        SELECT dag_id, schedule
+        FROM DAGs
+        WHERE nextTime <= NOW()
+    `)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int
+	schedules := map[int]string{}
+	for rows.Next() {
+		var id int
+		var schedule string
+		if err := rows.Scan(&id, &schedule); err != nil {
+			return nil, err
+		}
+
+		schedules[id] = schedule
+		ids = append(ids, id)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for id, schedule := range schedules {
+		// Parse the cron expression
+		sched, err := p.parser.Parse(schedule)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get the next occurrence of the scheduled time
+		nextTime := sched.Next(time.Now())
+
+		if _, err := tx.Exec(ctx, `
+		UPDATE DAGs 
+		SET nextTime = $1 
+		WHERE dag_id = $2;`, nextTime, id); err != nil {
+			return nil, err
+		}
+
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
 }

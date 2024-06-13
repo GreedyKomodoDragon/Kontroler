@@ -81,6 +81,7 @@ func (p *postgresManager) UpsertCronJob(ctx context.Context, cronJob *CronJob) e
 	nextTime := sched.Next(time.Now())
 
 	// Insert or update data into the table
+	// TODO: Fix this, why do I do it like this??????
 	_, err = p.pool.Exec(ctx, `
 	INSERT INTO schedules (uid, schedule, imageName, nextTime, command, args, backoffLimit, retryCodes, conditionalEnabled)
 	VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8, $9)
