@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/created-by: operator
   name: dag-sample
 spec:
-  schedule: ""
+  schedule: "*/1 * * * *"
   task:
     - name: "random"
       command: ["sh", "-c"]

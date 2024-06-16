@@ -48,12 +48,23 @@ func (d *dagscheduler) Run() {
 				continue
 			}
 
+			runId, err := d.dbManager.CreateDAGRun(ctx, dagId)
+			if err != nil {
+				continue
+			}
+
 			// Provide task to allocator
 			for _, task := range tasks {
-				if err := d.taskAllocator.AllocateTask(task); err != nil {
-					log.Log.Error(err, "failed to allocate task to job", "dag_id", dagId, "task_id", task.Id)
+				taskRunId, err := d.dbManager.MarkTaskAsStarted(ctx, runId, task.Id)
+				if err != nil {
+					log.Log.Error(err, "failed to mask task as stated", "dag_id", dagId, "task_id", task.Id)
 					continue
 				}
+
+				if _, err := d.taskAllocator.AllocateTask(ctx, task, runId, taskRunId); err != nil {
+					log.Log.Error(err, "failed to allocate task to job", "dag_id", dagId, "task_id", task.Id)
+				}
+
 			}
 
 		}

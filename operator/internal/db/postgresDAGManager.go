@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS DAGs (
     name VARCHAR(255) NOT NULL,
 	version INTEGER NOT NULL,
     schedule VARCHAR(255) NOT NULL,
-	active BOOL NOT NULL
+	active BOOL NOT NULL,
+	nexttime TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Tasks (
@@ -148,7 +149,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	var dagID int
 	if err = tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, schedule, active, nextTime) 
+	INSERT INTO DAGs (name, version, schedule, active, nexttime) 
 	VALUES ($1, $2, $3, TRUE, $4) 
 	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, nextTime).Scan(&dagID); err != nil {
 		return err
@@ -312,6 +313,11 @@ func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, tas
 	return tasks, nil
 }
 
+func (p *postgresDAGManager) MarkOutcome(ctx context.Context, taskRunId int, outcome string) error {
+	_, err := p.pool.Exec(ctx, "UPDATE Task_Runs SET status = $1 WHERE task_run_id = $2;", outcome, taskRunId)
+	return err
+}
+
 func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {
 	var taskRunId int
 	err := p.pool.QueryRow(ctx, "INSERT INTO Task_Runs (run_id, task_id, status) VALUES ($1, $2, 'running') RETURNING task_run_id", runId, taskId).Scan(&taskRunId)
@@ -334,7 +340,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, schedule
         FROM DAGs
-        WHERE nextTime <= NOW()
+        WHERE nexttime <= NOW()
     `)
 	if err != nil {
 		return nil, err
