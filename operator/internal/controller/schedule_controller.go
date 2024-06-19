@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,7 +34,7 @@ import (
 type ScheduleReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
-	DbManager db.DbManager
+	DbManager db.DBSchedulerManager
 }
 
 //+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=schedules,verbs=get;list;watch;create;update;patch;delete
@@ -58,14 +59,15 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Schedule object was found, store it in the database
-	if err := r.storeScheduleInDatabase(&schedule); err != nil {
+	fmt.Println("req.NamespacedName.Namespace", req.NamespacedName.Namespace)
+	if err := r.storeScheduleInDatabase(&schedule, req.NamespacedName.Namespace); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1alpha1.Schedule) error {
+func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1alpha1.Schedule, namespace string) error {
 	// Conditional is optional so we want to keep this blank if not enabled
 	retryCodes := []int32{}
 	if schedule.Spec.Conditional.Enabled {
@@ -79,6 +81,7 @@ func (r *ScheduleReconciler) storeScheduleInDatabase(schedule *kubeconductorv1al
 		Command:      schedule.Spec.Command,
 		Args:         schedule.Spec.Args,
 		BackoffLimit: schedule.Spec.BackoffLimit,
+		Namespace:    namespace,
 		ConditionalRetry: db.ConditionalRetry{
 			Enabled:    schedule.Spec.Conditional.Enabled,
 			RetryCodes: retryCodes,

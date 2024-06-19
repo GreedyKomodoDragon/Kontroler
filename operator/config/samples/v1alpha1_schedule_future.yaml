@@ -8,8 +8,13 @@ spec:
   command: ["sh", "-c"]
   args:
     ["if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"]
-  backoffLimit: 3
+  backoff:
+    limit: 3
+    # throws an error if limit does not make the delays if used
+    # is optional, if empty, it is ignored
+    # s,m,h units, avoids having to use regex which is slow
+    delays: [0s, 1s, 2s]
+  # conditional is optional
   conditional:
-    # allows you toggle this on and off, also explicit, not implicit values
     enabled: true
-    retryCodes: [1]
+    retryCodes: [8]

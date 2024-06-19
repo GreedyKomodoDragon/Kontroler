@@ -1,43 +1,47 @@
-package jobs
+package dag
 
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/utils"
-	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 )
 
-type JobAllocator interface {
-	AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error)
+type TaskAllocator interface {
+	AllocateTask(context.Context, db.Task, int, int) (types.UID, error)
 }
 
-type jobAllocator struct {
-	clientset *kubernetes.Clientset
+type taskAllocator struct {
+	clientSet *kubernetes.Clientset
 }
 
-func NewJobAllocator(clientset *kubernetes.Clientset) JobAllocator {
-	return &jobAllocator{
-		clientset: clientset,
+func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
+	return &taskAllocator{
+		clientSet: clientSet,
 	}
 }
 
-func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name string, imageName string, command, args []string, namespace string) (types.UID, error) {
+func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int) (types.UID, error) {
 	backoff := int32(0)
 	job := &batchv1.Job{
 		// TODO: Refactor this to enable it to be re-used in DAG task
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
 				"managed-by":         "kubeconductor",
-				"kubeconductor/type": "cronjob",
+				"kubeconductor/type": "task",
 			},
 			Annotations: map[string]string{
-				"kubeconductor/schedule-uid": string(uid),
+				"kubeconductor/task-rid":  strconv.Itoa(taskRunId),
+				"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -46,10 +50,10 @@ func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name stri
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{
 						{
-							Name:    name,
-							Image:   imageName,
-							Command: command,
-							Args:    args,
+							Name:    task.Name,
+							Image:   task.Image,
+							Command: task.Command,
+							Args:    task.Args,
 						},
 					},
 					RestartPolicy: "Never",
@@ -63,7 +67,8 @@ func (p *jobAllocator) AllocateJob(ctx context.Context, uid types.UID, name stri
 		job.ObjectMeta.Name = utils.GenerateRandomName()
 
 		// Create the Job
-		createdJob, err := p.clientset.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
+		// TODO: Make namespace more dynamic
+		createdJob, err := t.clientSet.BatchV1().Jobs("operator-system").Create(ctx, job, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
 				// just try again with a new name

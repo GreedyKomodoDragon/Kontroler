@@ -23,14 +23,16 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -140,7 +142,7 @@ func main() {
 
 	dbName := "kubeconductor"
 	dbUser := "postgres"
-	dbPassword := ""
+	dbPassword := "Lfr0F9lvJ0"
 	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
@@ -149,16 +151,52 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbManager, err := db.NewPostgresManager(context.Background(), pgConfig, &specParser)
+	pool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
 	if err != nil {
-		setupLog.Error(err, "failed to create postgres manager")
+		setupLog.Error(err, "failed to create postgres pool")
+		os.Exit(1)
+	}
+
+	defer pool.Close()
+
+	dbManager, err := db.NewPostgresSchedulerManager(context.Background(), pool, &specParser)
+	if err != nil {
+		setupLog.Error(err, "failed to create postgres scheduler manager")
 		os.Exit(1)
 	}
 
 	if err := dbManager.InitaliseDatabase(context.Background()); err != nil {
-		setupLog.Error(err, "failed to create postgres manager")
+		setupLog.Error(err, "failed to create scheduler tables")
 		os.Exit(1)
 	}
+
+	dbDAGManager, err := db.NewPostgresDAGManager(context.Background(), pool, &specParser)
+	if err != nil {
+		setupLog.Error(err, "failed to create postgres DAG manager")
+		os.Exit(1)
+	}
+
+	if err := dbDAGManager.InitaliseDatabase(context.Background()); err != nil {
+		setupLog.Error(err, "failed to create DAG tables")
+		os.Exit(1)
+	}
+
+	jobAllocator := jobs.NewJobAllocator(clientset)
+	jobWatcher := jobs.NewJobWatcherFactory(clientset, jobAllocator, dbManager)
+	scheduler := scheduler.NewScheduleManager(jobAllocator, jobWatcher, dbManager)
+	go scheduler.Run()
+
+	taskAllocator := dag.NewTaskAllocator(clientset)
+	taskWatcher, err := dag.NewTaskWatcher(clientset, taskAllocator, dbDAGManager)
+	if err != nil {
+		setupLog.Error(err, "failed to create task watcher")
+		os.Exit(1)
+	}
+
+	taskScheduler := dag.NewDagScheduler(dbDAGManager, taskAllocator)
+
+	go taskScheduler.Run()
+	go taskWatcher.StartWatching()
 
 	if err = (&controller.ScheduleReconciler{
 		Client:    mgr.GetClient(),
@@ -166,6 +204,14 @@ func main() {
 		DbManager: dbManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Schedule")
+		os.Exit(1)
+	}
+	if err = (&controller.DAGReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		DbManager: dbDAGManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DAG")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
@@ -178,11 +224,6 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-
-	jobAllocator := jobs.NewJobAllocator(clientset)
-	jobWatcher := jobs.NewJobWatcherFactory(clientset, jobAllocator, dbManager)
-	scheduler := scheduler.NewScheduleManager(jobAllocator, jobWatcher, dbManager)
-	go scheduler.Run()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

@@ -1,0 +1,27 @@
+# permissions for end users to view dags.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: dag-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: operator
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: dag-viewer-role
+rules:
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
+  - dags
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
+  - dags/status
+  verbs:
+  - get
