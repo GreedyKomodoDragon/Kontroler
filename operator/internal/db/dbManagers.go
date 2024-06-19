@@ -15,6 +15,7 @@ type CronJob struct {
 	Args             []string
 	BackoffLimit     uint64
 	ConditionalRetry ConditionalRetry
+	Namespace        string
 }
 
 type Task struct {

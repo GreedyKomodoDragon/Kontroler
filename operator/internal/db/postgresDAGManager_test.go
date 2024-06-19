@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
@@ -34,24 +35,31 @@ func setupPostgresContainer(t *testing.T) *pgxpool.Pool {
 		Started:          true,
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to start container: %v", err)
 	}
 
 	host, err := postgresC.Host(ctx)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to get container host: %v", err)
 	}
 
 	port, err := postgresC.MappedPort(ctx, "5432")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to get container port: %v", err)
 	}
 
-	databaseURL := "postgres://postgres:password@" + host + ":" + port.Port() + "/testdb"
-	pool, err := pgxpool.New(context.Background(), databaseURL)
+	databaseURL := fmt.Sprintf("postgres://postgres:password@%s:%s/testdb", host, port.Port())
+	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to create pool: %v", err)
 	}
+
+	// Check if we can acquire a connection
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("failed to acquire connection: %v", err)
+	}
+	defer conn.Release()
 
 	return pool
 }
@@ -141,6 +149,7 @@ func TestUpsertDAG(t *testing.T) {
 
 func TestPostgresDAGManager_InsertDAG(t *testing.T) {
 	pool := setupPostgresContainer(t)
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -207,6 +216,7 @@ func TestPostgresDAGManager_CreateDAGRun(t *testing.T) {
 
 func TestPostgresDAGManager_GetStartingTasks(t *testing.T) {
 	pool := setupPostgresContainer(t)
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)

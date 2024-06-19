@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	ctx context.Context
+	ctx context.Context = context.Background()
 )
 
 func TestNewPostgresManager_ValidConfig(t *testing.T) {
 	pool := setupPostgresContainer(t)
+	defer pool.Close()
 
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -29,6 +30,7 @@ func TestNewPostgresManager_ValidConfig(t *testing.T) {
 
 func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 	pool := setupPostgresContainer(t)
+	defer pool.Close()
 
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -38,8 +40,7 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 	}
 
 	// Initialize the database
-	err = manager.InitaliseDatabase(ctx)
-	if err != nil {
+	if err := manager.InitaliseDatabase(ctx); err != nil {
 		t.Fatalf("InitaliseDatabase returned an error: %v", err)
 	}
 
@@ -48,6 +49,7 @@ func TestPostgresManager_GetAllCronJobs(t *testing.T) {
 		Schedule:     "0 0 * * *",
 		ImageName:    "test-image",
 		Command:      []string{"echo"},
+		Namespace:    "test",
 		Args:         []string{`"Hello, World!"`},
 		BackoffLimit: uint64(0),
 		ConditionalRetry: db.ConditionalRetry{

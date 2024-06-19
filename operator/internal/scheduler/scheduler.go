@@ -52,12 +52,12 @@ func (s *schedulerManager) Run() {
 
 		for _, job := range jobs {
 			// Start watcher first
-			if ok := s.jobWatcher.IsWatching("operator-system"); !ok {
-				if err := s.jobWatcher.StartWatcher("operator-system", s.labelSelectors); err != nil {
-					log.Log.Error(err, "failed to start watching namespace for pods", "namespace", "operator-system")
+			if ok := s.jobWatcher.IsWatching(job.Namespace); !ok {
+				if err := s.jobWatcher.StartWatcher(job.Namespace, s.labelSelectors); err != nil {
+					log.Log.Error(err, "failed to start watching namespace for pods", "namespace", job.Namespace)
 				}
 
-				log.Log.Info("started watching new namespace", "namespace", "operator-system")
+				log.Log.Info("started watching new namespace", "namespace", job.Namespace)
 			}
 
 			name := "-" + utils.GenerateRandomName()
@@ -69,14 +69,14 @@ func (s *schedulerManager) Run() {
 
 			runID := types.UID(newUUID.String())
 
-			id, err := s.jobAllocator.AllocateJob(context.Background(), runID, string(job.Id)+name, job.ImageName, job.Command, job.Args, "operator-system")
+			id, err := s.jobAllocator.AllocateJob(context.Background(), runID, string(job.Id)+name, job.ImageName, job.Command, job.Args, job.Namespace)
 			if err != nil {
 				// TODO: Mark this as the job failing!
 				log.Log.Error(err, "failed to allocate a new pod")
 				continue
 			}
 
-			log.Log.Info("new pod allocated", "namespace", "operator-system")
+			log.Log.Info("new pod allocated", "namespace", job.Namespace)
 
 			if err := s.dbManager.UpdateNextTime(context.Background(), job.Id, job.Schedule); err != nil {
 				log.Log.Error(err, "failed to update next time", "podId", id)
@@ -90,5 +90,4 @@ func (s *schedulerManager) Run() {
 
 		tmr.Reset(time.Minute)
 	}
-
 }

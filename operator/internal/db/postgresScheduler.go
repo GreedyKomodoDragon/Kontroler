@@ -30,6 +30,7 @@ func NewPostgresSchedulerManager(ctx context.Context, pool *pgxpool.Pool, parser
 
 func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 	// TODO: work out size of each column
+	fmt.Println("here:", p.pool)
 	_, err := p.pool.Exec(ctx, `
 		BEGIN;
 
@@ -42,7 +43,8 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 			args TEXT[],
 			backoffLimit BIGINT,
 			retryCodes INTEGER[],
-			conditionalEnabled BOOL
+			conditionalEnabled BOOL,
+			namespace VARCHAR(255)
         );
 
 		CREATE TABLE IF NOT EXISTS runs (
@@ -63,6 +65,8 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 		COMMIT;
     `)
 
+	fmt.Println("here 2")
+
 	return err
 }
 
@@ -81,16 +85,15 @@ func (p *postgresManager) UpsertCronJob(ctx context.Context, cronJob *CronJob) e
 	nextTime := sched.Next(time.Now())
 
 	// Insert or update data into the table
-	// TODO: Fix this, why do I do it like this??????
 	_, err = p.pool.Exec(ctx, `
-	INSERT INTO schedules (uid, schedule, imageName, nextTime, command, args, backoffLimit, retryCodes, conditionalEnabled)
-	VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8, $9)
+	INSERT INTO schedules (uid, schedule, imageName, nextTime, command, args, backoffLimit, retryCodes, conditionalEnabled, namespace)
+	VALUES ($1, $2, $3, to_timestamp($4), $5, $6, $7, $8, $9, $10)
 	ON CONFLICT (uid)
 	DO UPDATE SET schedule = EXCLUDED.schedule, imageName = EXCLUDED.imageName, nextTime = EXCLUDED.nextTime,
 	command = EXCLUDED.command, args = EXCLUDED.args, backoffLimit = EXCLUDED.backoffLimit, retryCodes = EXCLUDED.retryCodes,
-	conditionalEnabled = EXCLUDED.conditionalEnabled
+	conditionalEnabled = EXCLUDED.conditionalEnabled, namespace = EXCLUDED.conditionalEnabled
 	`, cronJob.Id, cronJob.Schedule, cronJob.ImageName, nextTime.Unix(), cronJob.Command, cronJob.Args, cronJob.BackoffLimit,
-		cronJob.ConditionalRetry.RetryCodes, cronJob.ConditionalRetry.Enabled)
+		cronJob.ConditionalRetry.RetryCodes, cronJob.ConditionalRetry.Enabled, cronJob.Namespace)
 
 	return err
 }
@@ -108,7 +111,7 @@ func (p *postgresManager) DeleteCronJob(ctx context.Context, id types.UID) error
 }
 
 func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error) {
-	rows, err := p.pool.Query(ctx, `SELECT uid, schedule, imageName, command, args, backoffLimit, retryCodes, conditionalEnabled FROM schedules`)
+	rows, err := p.pool.Query(ctx, `SELECT uid, schedule, imageName, command, args, backoffLimit, retryCodes, conditionalEnabled, namespace FROM schedules`)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +128,9 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 			backoffLimit       uint64
 			retryCodes         []int32
 			conditionalEnabled bool
+			namespace          string
 		)
-		if err := rows.Scan(&id, &schedule, &imageName, &command, &args, &backoffLimit, &retryCodes, &conditionalEnabled); err != nil {
+		if err := rows.Scan(&id, &schedule, &imageName, &command, &args, &backoffLimit, &retryCodes, &conditionalEnabled, &namespace); err != nil {
 			return nil, err
 		}
 		cronJobs = append(cronJobs, &CronJob{
@@ -135,6 +139,7 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 			ImageName: imageName,
 			Command:   command,
 			Args:      args,
+			Namespace: namespace,
 			ConditionalRetry: ConditionalRetry{
 				RetryCodes: retryCodes,
 				Enabled:    conditionalEnabled,
@@ -151,7 +156,7 @@ func (p *postgresManager) GetAllCronJobs(ctx context.Context) ([]*CronJob, error
 func (p *postgresManager) GetCronJobsToStart(ctx context.Context) ([]*CronJob, error) {
 	// Maybe able to cut this down
 	rows, err := p.pool.Query(ctx, `
-        SELECT uid, schedule, imageName, command, args, backoffLimit
+        SELECT uid, schedule, imageName, command, args, backoffLimit, namespace
         FROM schedules
         WHERE nextTime <= NOW()
     `)
@@ -163,7 +168,7 @@ func (p *postgresManager) GetCronJobsToStart(ctx context.Context) ([]*CronJob, e
 	var cronJobs []*CronJob
 	for rows.Next() {
 		var job CronJob
-		if err := rows.Scan(&job.Id, &job.Schedule, &job.ImageName, &job.Command, &job.Args, &job.BackoffLimit); err != nil {
+		if err := rows.Scan(&job.Id, &job.Schedule, &job.ImageName, &job.Command, &job.Args, &job.BackoffLimit, &job.Namespace); err != nil {
 			return nil, err
 		}
 
