@@ -11,18 +11,18 @@ import (
 )
 
 type JobWatcherFactory interface {
-	StartWatcher(namespace string) error
+	StartWatcher(namespace string, labelSelectors labels.Selector) error
 	IsWatching(namespace string) bool
 }
 
 type jobWatcherFactory struct {
 	clientSet    *kubernetes.Clientset
 	watcherMap   map[string]JobWatcher
-	dbManager    db.DbManager
+	dbManager    db.DBSchedulerManager
 	jobAllocator JobAllocator
 }
 
-func NewJobWatcherFactory(clientSet *kubernetes.Clientset, jobAllocator JobAllocator, dbManager db.DbManager) JobWatcherFactory {
+func NewJobWatcherFactory(clientSet *kubernetes.Clientset, jobAllocator JobAllocator, dbManager db.DBSchedulerManager) JobWatcherFactory {
 	return &jobWatcherFactory{
 		clientSet:    clientSet,
 		watcherMap:   map[string]JobWatcher{},
@@ -31,14 +31,10 @@ func NewJobWatcherFactory(clientSet *kubernetes.Clientset, jobAllocator JobAlloc
 	}
 }
 
-func (p *jobWatcherFactory) StartWatcher(namespace string) error {
-	labelSelector := labels.Set(map[string]string{
-		"managed-by": "kubeconductor",
-	}).AsSelector()
-
+func (p *jobWatcherFactory) StartWatcher(namespace string, labelSelectors labels.Selector) error {
 	// Set up job watcher
 	watcher, err := p.clientSet.BatchV1().Jobs(namespace).Watch(context.TODO(), metav1.ListOptions{
-		LabelSelector: labelSelector.String(),
+		LabelSelector: labelSelectors.String(),
 	})
 	if err != nil {
 		log.Log.Error(err, "failed to watch jobs", "namespace", namespace)

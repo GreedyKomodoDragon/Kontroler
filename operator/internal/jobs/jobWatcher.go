@@ -19,13 +19,13 @@ type JobWatcher interface {
 
 type jobWatcher struct {
 	jobAllocator JobAllocator
-	dbManager    db.DbManager
+	dbManager    db.DBSchedulerManager
 	kubeWatcher  watch.Interface
 	clientSet    *kubernetes.Clientset
 	namespace    string
 }
 
-func NewJobWatcher(namespace string, clientSet *kubernetes.Clientset, kubeWatcher watch.Interface, jobAllocator JobAllocator, dbManager db.DbManager) JobWatcher {
+func NewJobWatcher(namespace string, clientSet *kubernetes.Clientset, kubeWatcher watch.Interface, jobAllocator JobAllocator, dbManager db.DBSchedulerManager) JobWatcher {
 	return &jobWatcher{
 		jobAllocator: jobAllocator,
 		dbManager:    dbManager,
@@ -69,38 +69,18 @@ func (j *jobWatcher) StartWatching() {
 
 				log.Log.Info("number of pods in job", "jobUid", job.UID, "count", len(pods.Items))
 
+				jobUid := types.UID(jobId)
+
 				// Get Exitable codes to restart with and backoff limit
 				for _, pod := range pods.Items {
-					jobId, ok := job.Annotations["kubeconductor/schedule-uid"]
-					if !ok {
-						// TODO: Mark in DB as missing annotations
-						log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
-						continue
-					}
-
-					if len(pod.Status.ContainerStatuses) == 0 {
-						// TODO: Mark in DB as no containers
-						log.Log.Error(err, "does not seem to be any containers?", "job", job.Name)
-						continue
-					}
-
-					if pod.Status.ContainerStatuses[0].State.Terminated == nil {
-						// TODO: Mark in DB as missing status information on pod
-						log.Log.Error(err, "missing status informationt", "job", job.Name)
-						continue
-					}
-
-					jobUid := types.UID(jobId)
-					if err := j.dbManager.AddPodToRun(context.TODO(), pod.Name, jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode); err != nil {
-						// TODO: Mark in DB as missing status information on pod
+					if err := j.dbManager.AddPodToRun(context.TODO(), pod.Name, jobUid, 0); err != nil {
 						log.Log.Error(err, "unable to add exit code", "podUID", pod.UID, "podName", pod.Name)
 						continue
 					}
 				}
 
-				jobUid := types.UID(jobId)
 				if err := j.dbManager.MarkRunOutcome(context.TODO(), jobUid, "successful"); err != nil {
-					log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
+					log.Log.Error(err, "failed to add mark run outcome", "job", job.Name)
 				}
 
 				continue

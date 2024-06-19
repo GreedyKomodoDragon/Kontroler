@@ -1,4 +1,5 @@
 ## Append samples of your project ##
 resources:
 - kubeconductor_v1alpha1_schedule.yaml
+- kubeconductor_v1alpha1_dag.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

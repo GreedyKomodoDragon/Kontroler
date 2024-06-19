@@ -1,0 +1,100 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+  name: dags.kubeconductor.greedykomodo
+spec:
+  group: kubeconductor.greedykomodo
+  names:
+    kind: DAG
+    listKind: DAGList
+    plural: dags
+    singular: dag
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DAG is the Schema for the dags API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DAGSpec defines the desired state of DAG
+            properties:
+              schedule:
+                type: string
+              task:
+                items:
+                  description: TaskSpec defines the structure of a task in the DAG
+                  properties:
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    backoff:
+                      description: Backoff defines the backoff strategy for a task
+                      properties:
+                        limit:
+                          type: integer
+                      required:
+                      - limit
+                      type: object
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    conditional:
+                      description: Conditional defines the conditional execution parameters
+                      properties:
+                        enabled:
+                          type: boolean
+                        retryCodes:
+                          items:
+                            type: integer
+                          type: array
+                      required:
+                      - enabled
+                      - retryCodes
+                      type: object
+                    image:
+                      type: string
+                    name:
+                      type: string
+                    runAfter:
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - args
+                  - backoff
+                  - command
+                  - conditional
+                  - image
+                  - name
+                  type: object
+                type: array
+            required:
+            - schedule
+            - task
+            type: object
+          status:
+            description: DAGStatus defines the observed state of DAG
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
