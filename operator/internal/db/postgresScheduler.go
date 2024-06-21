@@ -91,7 +91,7 @@ func (p *postgresManager) UpsertCronJob(ctx context.Context, cronJob *CronJob) e
 	ON CONFLICT (uid)
 	DO UPDATE SET schedule = EXCLUDED.schedule, imageName = EXCLUDED.imageName, nextTime = EXCLUDED.nextTime,
 	command = EXCLUDED.command, args = EXCLUDED.args, backoffLimit = EXCLUDED.backoffLimit, retryCodes = EXCLUDED.retryCodes,
-	conditionalEnabled = EXCLUDED.conditionalEnabled, namespace = EXCLUDED.conditionalEnabled
+	conditionalEnabled = EXCLUDED.conditionalEnabled, namespace = EXCLUDED.namespace
 	`, cronJob.Id, cronJob.Schedule, cronJob.ImageName, nextTime.Unix(), cronJob.Command, cronJob.Args, cronJob.BackoffLimit,
 		cronJob.ConditionalRetry.RetryCodes, cronJob.ConditionalRetry.Enabled, cronJob.Namespace)
 
