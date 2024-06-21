@@ -73,7 +73,58 @@ const Sidebar: Component = () => {
           >
             <polygon points="6 3 20 12 6 21 6 3"></polygon>
           </svg>
-          <span class="text-sm font-medium">Runs</span>
+          <span class="text-sm font-medium">Cron Runs</span>
+        </div>
+      </a>
+      <a
+        class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
+        href="/dags"
+        rel="ugc"
+      >
+        <div class="flex items-center gap-3">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="None"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle cx="18" cy="5" r="3" stroke="white" stroke-width="2" />
+            <circle cx="18" cy="19" r="3" stroke="white" stroke-width="2" />
+            <circle cx="6" cy="12" r="3" stroke="white" stroke-width="2" />
+            <path
+              d="m15.408 6.512-6.814 3.975m6.814 7.001-6.814-3.975"
+              stroke="white"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+
+          <span class="text-sm font-medium">DAGs</span>
+        </div>
+      </a>
+      <a
+        class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
+        href="/dags/runs"
+        rel="ugc"
+      >
+        <div class="flex items-center gap-3">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-5 w-5"
+          >
+            <polygon points="6 3 20 12 6 21 6 3"></polygon>
+          </svg>
+          <span class="text-sm font-medium">DAG Runs</span>
         </div>
       </a>
       <a

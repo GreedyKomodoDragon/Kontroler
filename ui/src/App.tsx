@@ -6,6 +6,7 @@ import Main from "./pages/main";
 import CRDs from "./pages/crds";
 import CronJobs from "./pages/cronjobs";
 import Runs from "./pages/runs";
+import Dags from "./pages/dags";
 
 const App: Component = () => {
   return (
@@ -22,6 +23,7 @@ const App: Component = () => {
             <Route path="/crds" component={CRDs} />
             <Route path="/cronjobs" component={CronJobs} />
             <Route path="/runs" component={Runs} />
+            <Route path="/dags" component={Dags} />
           </Router>
         </div>
       </div>

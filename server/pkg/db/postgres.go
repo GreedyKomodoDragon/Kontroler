@@ -132,6 +132,70 @@ func (p *postgresManager) GetRunsPods(ctx context.Context, runId types.UID) ([]*
 	return runs, nil
 }
 
+// CREATE TABLE IF NOT EXISTS Tasks (
+// 	task_id SERIAL PRIMARY KEY,
+//     name VARCHAR(255) NOT NULL,
+//     command TEXT[] NOT NULL,
+//     args TEXT[] NOT NULL,
+//     image VARCHAR(255) NOT NULL
+// );
+
+// CREATE TABLE IF NOT EXISTS Dependencies (
+//     task_id INTEGER NOT NULL,
+//     depends_on_task_id INTEGER NOT NULL,
+//     FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
+//     FOREIGN KEY (depends_on_task_id) REFERENCES Tasks(task_id)
+// );
+
+// CREATE TABLE IF NOT EXISTS DAG_Tasks (
+//     dag_id INTEGER NOT NULL,
+//     task_id INTEGER NOT NULL,
+//     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
+//     FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
+// );
+
+// CREATE TABLE IF NOT EXISTS DAG_Runs (
+// 	run_id SERIAL PRIMARY KEY,
+//     dag_id INTEGER NOT NULL,
+// 	status VARCHAR(255) NOT NULL,
+//     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
+// );
+
+// CREATE TABLE IF NOT EXISTS Task_Runs (
+// 	task_run_id SERIAL PRIMARY KEY,
+// 	run_id INTEGER NOT NULL,
+//     task_id INTEGER NOT NULL,
+// 	status VARCHAR(255) NOT NULL,
+//     FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
+// 	FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
+// );
+
+func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error) {
+	rows, err := p.conn.Query(ctx, `
+		SELECT dag_id, name, version, schedule, active, nexttime
+		FROM DAGs
+		ORDER BY dag_id DESC
+		LIMIT $1 OFFSET $2
+		`, limit, offset)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	metas := []*DAGMetaData{}
+	for rows.Next() {
+		var meta DAGMetaData
+		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Version, &meta.Schedule, &meta.Active, &meta.NextTime); err != nil {
+			return nil, err
+		}
+
+		metas = append(metas, &meta)
+	}
+
+	return metas, nil
+}
+
 func (p *postgresManager) Close() {
 	p.conn.Close()
 }
