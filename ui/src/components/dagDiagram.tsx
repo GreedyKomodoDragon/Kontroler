@@ -1,26 +1,21 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
 
-export default function DagDiagram() {
+type task = {
+  status: string;
+};
+
+type dagDiagramProps = {
+  connections: Record<string, string[]>;
+  taskInfo: Record<string, task>;
+};
+
+export default function DagDiagram(props: dagDiagramProps) {
+  const { connections, taskInfo } = props;
   let canvas: HTMLCanvasElement | undefined;
 
   const [pipelineContainer, setPipelineContainer] = createSignal<
     HTMLDivElement | undefined
   >(undefined);
-
-  const dag: Record<string, string[]> = {
-    task1: ["task2", "task3"],
-    task2: ["task4", "task5"],
-    task3: ["task6"],
-    task4: ["task7"],
-    task5: ["task7", "task8"],
-    task6: ["task9"],
-    task7: ["task10"],
-    task8: ["task10"],
-    task9: ["task11"],
-    task10: ["task11", "task12"],
-    task11: [],
-    task12: [],
-  };
 
   const [taskPositions, setTaskPositions] = createSignal<
     Record<string, { x: number; y: number }>
@@ -28,7 +23,7 @@ export default function DagDiagram() {
 
   const calculateTaskPositions = () => {
     let container = pipelineContainer();
-      if (container === undefined) return;
+    if (container === undefined) return;
 
     const containerWidth = container.offsetWidth / 8;
 
@@ -41,10 +36,12 @@ export default function DagDiagram() {
         positions[taskId] = { x: level * containerWidth + 20, y: y * 100 + 20 };
         levels[level] = (levels[level] || 0) + 1;
       }
-      dag[taskId].forEach((child) => calculatePosition(child, level + 1));
+      connections[taskId].forEach((child) =>
+        calculatePosition(child, level + 1)
+      );
     };
 
-    calculatePosition("task1", 0);
+    calculatePosition(Object.keys(connections)[0], 0);
     setTaskPositions(positions);
   };
 
@@ -54,7 +51,7 @@ export default function DagDiagram() {
     ctx.lineWidth = 2;
 
     const positions = taskPositions();
-    for (const [from, toList] of Object.entries(dag)) {
+    for (const [from, toList] of Object.entries(connections)) {
       toList.forEach((to) => {
         ctx.beginPath();
         ctx.moveTo(positions[from].x + 50, positions[from].y + 25); // Adjusted to center of the task
@@ -92,12 +89,12 @@ export default function DagDiagram() {
     <div
       class="pipeline-container relative flex gap-5 items-start"
       ref={(el) => setPipelineContainer(el)}
-      style={{ height: "30vh", width: "80vw" }}
+      style={{ height: "36vh", width: "80vw" }}
     >
       {Object.entries(taskPositions()).map(([taskId, pos]) => (
         <div
           class={`pipeline-task ${
-            dag[taskId].length === 0 ? "bg-red-500" : "bg-green-500"
+            taskInfo[taskId].status === "failed" ? "bg-red-500" : "bg-green-500"
           } text-white w-24 h-12 flex justify-center items-center rounded absolute z-10`}
           id={taskId}
           style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
@@ -107,7 +104,7 @@ export default function DagDiagram() {
       ))}
       <canvas
         id="pipeline-canvas"
-        class='absolute top-0 left-0 z-1'
+        class="absolute top-0 left-0 z-1"
         ref={(el) => (canvas = el!)}
       ></canvas>
     </div>

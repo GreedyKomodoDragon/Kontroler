@@ -17,8 +17,6 @@ const Dags: Component = () => {
       <h2 class="text-2xl font-semibold mb-4">Your DAGs</h2>
       <div class="mt-4"></div>
       <div>
-        <DagDiagram />
-
         {dags().map((dag) => (
           <DagComponent dag={dag} />
         ))}
