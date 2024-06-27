@@ -8,7 +8,6 @@ const Dags: Component = () => {
   const [dags, setDags] = createSignal<Dag[]>([]);
 
   getDags().then((data) => {
-    console.log(data);
     setDags(data);
   });
 

@@ -11,21 +11,23 @@ const DagComponent = ({ dag }: Props) => {
 
   return (
     <div
-      class="bg-gray-800 shadow-md rounded-md p-4 mb-4 text-white cursor-pointer"
+      class="bg-gray-800 shadow-md rounded-md p-4 mb-4 text-white"
       onClick={() => setOpen(!open())}
     >
-      <div class="flex justify-between items-center">
-        <h3 class="text-2xl font-semibold">{dag.name}</h3>
-      </div>
-      <div class="mt-2">
-        <p>
-          <strong>Schedule:</strong> {dag.schedule}
-        </p>
-      </div>
-      <div class="mt-2">
-        <p>
-          <strong>ID:</strong> {dag.dagId}
-        </p>
+      <div class="cursor-pointer">
+        <div class="flex justify-between items-center">
+          <h3 class="text-2xl font-semibold">{dag.name}</h3>
+        </div>
+        <div class="mt-2">
+          <p>
+            <strong>Schedule:</strong> {dag.schedule}
+          </p>
+        </div>
+        <div class="mt-2">
+          <p>
+            <strong>ID:</strong> {dag.dagId}
+          </p>
+        </div>
       </div>
       {open() && (
         <>
@@ -36,13 +38,14 @@ const DagComponent = ({ dag }: Props) => {
               task3: ["task6"],
               task4: ["task7"],
               task5: ["task7", "task8"],
-              task6: ["task9"],
+              task6: ["task9", "task10"],
               task7: ["task10"],
               task8: ["task10"],
               task9: ["task11"],
               task10: ["task11", "task12"],
               task11: [],
               task12: [],
+              task13: ["task2", "task3"],
             }}
             taskInfo={{
               task1: {
@@ -79,6 +82,9 @@ const DagComponent = ({ dag }: Props) => {
                 status: "finished",
               },
               task12: {
+                status: "finished",
+              },
+              task13: {
                 status: "finished",
               },
             }}

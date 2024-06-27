@@ -1,64 +1,152 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
 
-type task = {
+type Task = {
   status: string;
 };
 
-type dagDiagramProps = {
+type DagDiagramProps = {
   connections: Record<string, string[]>;
-  taskInfo: Record<string, task>;
+  taskInfo: Record<string, Task>;
 };
 
-export default function DagDiagram(props: dagDiagramProps) {
+export default function DagDiagram(props: DagDiagramProps) {
   const { connections, taskInfo } = props;
   let canvas: HTMLCanvasElement | undefined;
 
   const [pipelineContainer, setPipelineContainer] = createSignal<
     HTMLDivElement | undefined
   >(undefined);
-
   const [taskPositions, setTaskPositions] = createSignal<
     Record<string, { x: number; y: number }>
   >({});
 
   const calculateTaskPositions = () => {
-    let container = pipelineContainer();
-    if (container === undefined) return;
+    const container = pipelineContainer();
+    if (!container) return;
 
-    const containerWidth = container.offsetWidth / 8;
+    const containerWidth = container.offsetWidth / 6; // Increase horizontal spacing
+    const containerHeight = container.offsetHeight / 3; // Increase vertical spacing
 
     const positions: Record<string, { x: number; y: number }> = {};
-    const levels: Record<number, number> = {};
+    const levelWidth: Record<number, number> = {};
+    const taskLevels: Record<string, number> = {};
 
-    const calculatePosition = (taskId: string, level: number) => {
-      if (!positions[taskId]) {
-        const y = levels[level] || 0;
-        positions[taskId] = { x: level * containerWidth + 20, y: y * 100 + 20 };
-        levels[level] = (levels[level] || 0) + 1;
+    const calculateLevels = (taskId: string, level: number) => {
+      if (taskLevels[taskId] !== undefined) {
+        taskLevels[taskId] = Math.max(taskLevels[taskId], level);
+      } else {
+        taskLevels[taskId] = level;
       }
-      connections[taskId].forEach((child) =>
-        calculatePosition(child, level + 1)
-      );
+      connections[taskId].forEach((child) => calculateLevels(child, level + 1));
     };
 
-    calculatePosition(Object.keys(connections)[0], 0);
+    Object.keys(connections).forEach((taskId) => {
+      if (taskLevels[taskId] === undefined) {
+        calculateLevels(taskId, 0);
+      }
+    });
+
+    Object.entries(taskLevels).forEach(([taskId, level]) => {
+      if (!levelWidth[level]) {
+        levelWidth[level] = 0;
+      }
+      const y = levelWidth[level];
+      positions[taskId] = {
+        x: level * containerWidth + 40,
+        y: y * containerHeight + 40,
+      }; // Increased margin
+      levelWidth[level] += 1;
+    });
+
     setTaskPositions(positions);
   };
 
   const drawLines = (ctx: CanvasRenderingContext2D) => {
-    ctx.clearRect(0, 0, canvas!.width, canvas!.height); // Clear the canvas before drawing
-    ctx.strokeStyle = "white";
-    ctx.lineWidth = 2;
-
+    ctx.clearRect(0, 0, canvas!.width, canvas!.height);
     const positions = taskPositions();
+
+    const hoverEventHandler = (event: MouseEvent) => {
+      ctx.clearRect(0, 0, canvas!.width, canvas!.height);
+
+      const rect = canvas!.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      for (const [from, toList] of Object.entries(connections)) {
+        toList.forEach((to) => {
+          if (positions[from] && positions[to]) {
+            const fromX = positions[from].x + 50;
+            const fromY = positions[from].y + 25;
+            const toX = positions[to].x + 50;
+            const toY = positions[to].y + 25;
+            const controlX1 = fromX + (toX - fromX) / 2;
+            const controlY1 = fromY;
+            const controlX2 = fromX + (toX - fromX) / 2;
+            const controlY2 = toY;
+
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.bezierCurveTo(
+              controlX1,
+              controlY1,
+              controlX2,
+              controlY2,
+              toX,
+              toY
+            );
+
+            // Check if the mouse is near this path
+            const pathHovered = ctx.isPointInStroke(x, y);
+
+            if (pathHovered) {
+              ctx.strokeStyle = "cyan";
+              ctx.lineWidth = 6;
+            } else {
+              ctx.strokeStyle = "white";
+              ctx.lineWidth = 4;
+            }
+
+            ctx.stroke();
+          }
+        });
+      }
+    };
+
+    // Draw all paths initially
     for (const [from, toList] of Object.entries(connections)) {
       toList.forEach((to) => {
-        ctx.beginPath();
-        ctx.moveTo(positions[from].x + 50, positions[from].y + 25); // Adjusted to center of the task
-        ctx.lineTo(positions[to].x + 50, positions[to].y + 25); // Adjusted to center of the task
-        ctx.stroke();
+        if (positions[from] && positions[to]) {
+          ctx.beginPath();
+          const fromX = positions[from].x + 50;
+          const fromY = positions[from].y + 25;
+          const toX = positions[to].x + 50;
+          const toY = positions[to].y + 25;
+          const controlX1 = fromX + (toX - fromX) / 2;
+          const controlY1 = fromY;
+          const controlX2 = fromX + (toX - fromX) / 2;
+          const controlY2 = toY;
+          ctx.moveTo(fromX, fromY);
+          ctx.bezierCurveTo(
+            controlX1,
+            controlY1,
+            controlX2,
+            controlY2,
+            toX,
+            toY
+          );
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 4;
+          ctx.stroke();
+        }
       });
     }
+
+    // Add hover event listener
+    canvas!.addEventListener("mousemove", hoverEventHandler);
+
+    onCleanup(() => {
+      canvas!.removeEventListener("mousemove", hoverEventHandler);
+    });
   };
 
   onMount(() => {
@@ -68,8 +156,8 @@ export default function DagDiagram(props: dagDiagramProps) {
     if (!ctx) return;
 
     const resizeCanvas = () => {
-      let container = pipelineContainer();
-      if (container === undefined || !canvas) return;
+      const container = pipelineContainer();
+      if (!container || !canvas) return;
 
       canvas.width = container.offsetWidth;
       canvas.height = container.offsetHeight;
@@ -94,7 +182,9 @@ export default function DagDiagram(props: dagDiagramProps) {
       {Object.entries(taskPositions()).map(([taskId, pos]) => (
         <div
           class={`pipeline-task ${
-            taskInfo[taskId].status === "failed" ? "bg-red-500" : "bg-green-500"
+            taskInfo[taskId].status === "finished"
+              ? "bg-green-500"
+              : "bg-red-500"
           } text-white w-24 h-12 flex justify-center items-center rounded absolute z-10`}
           id={taskId}
           style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
