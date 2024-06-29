@@ -73,16 +73,16 @@ const DagComponent = ({ dag }: Props) => {
                 status: "finished",
               },
               task9: {
-                status: "finished",
+                status: "running",
               },
               task10: {
                 status: "finished",
               },
               task11: {
-                status: "finished",
+                status: "failed",
               },
               task12: {
-                status: "finished",
+                status: "pending",
               },
               task13: {
                 status: "finished",

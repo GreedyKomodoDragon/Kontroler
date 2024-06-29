@@ -173,6 +173,19 @@ export default function DagDiagram(props: DagDiagramProps) {
     });
   });
 
+  const getTaskColour = (taskId: string) => {
+    switch (taskInfo[taskId].status) {
+      case "finished":
+        return "bg-green-500";
+      case "running":
+        return "bg-blue-500";
+      case "pending":
+        return "bg-neutral-500";
+      default:
+        return "bg-red-500";
+    }
+  }
+
   return (
     <div
       class="pipeline-container relative flex gap-5 items-start"
@@ -181,11 +194,7 @@ export default function DagDiagram(props: DagDiagramProps) {
     >
       {Object.entries(taskPositions()).map(([taskId, pos]) => (
         <div
-          class={`pipeline-task ${
-            taskInfo[taskId].status === "finished"
-              ? "bg-green-500"
-              : "bg-red-500"
-          } text-white w-24 h-12 flex justify-center items-center rounded absolute z-10`}
+          class={`pipeline-task ${getTaskColour(taskId)} text-white w-24 h-12 flex justify-center items-center rounded absolute z-10`}
           id={taskId}
           style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
         >
