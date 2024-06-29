@@ -43,6 +43,21 @@ func addDags(router fiber.Router, dbManager db.DbManager) {
 		})
 	})
 
+	dagRouter.Get("/run/:id", func(c *fiber.Ctx) error {
+		id, err := strconv.Atoi(c.Params("id"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		dagRun, err := dbManager.GetDagRun(c.Context(), id)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag run")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(dagRun)
+	})
+
 }
 
 func addCronJob(router fiber.Router, dbManager db.DbManager) {

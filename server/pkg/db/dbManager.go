@@ -62,11 +62,21 @@ type DAGMetaData struct {
 	NextTime time.Time `json:"nexttime"`
 }
 
+type TaskInfo struct {
+	Status string `json:"taskStatus"`
+}
+
+type DagRun struct {
+	Connections map[int][]int    `json:"connections"`
+	TaskInfo    map[int]TaskInfo `json:"taskInfo"`
+}
+
 type DbManager interface {
 	GetAllCronJobs(ctx context.Context) ([]*CronJob, error)
 	GetAllRuns(ctx context.Context, limit int, offset int) ([]*Run, error)
 	GetRunsPods(ctx context.Context, runId types.UID) ([]*PodWithExitCode, error)
 	GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error)
+	GetDagRun(ctx context.Context, dagRunId int) (*DagRun, error)
 
 	Close()
 }

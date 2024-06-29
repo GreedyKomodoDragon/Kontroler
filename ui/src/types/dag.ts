@@ -6,3 +6,12 @@ export type Dag = {
   active: boolean;
   nexttime: string;
 };
+
+export type DagRun = {
+  connections: Record<string, string[]>;
+  taskInfo: Record<string, Task>;
+};
+
+export type Task = {
+  status: string;
+};

@@ -46,13 +46,17 @@ export default function DagDiagram(props: DagDiagramProps) {
       }
     });
 
+    // Determine the maximum level to calculate flip positions
+    const maxLevel = Math.max(...Object.values(taskLevels));
+
     Object.entries(taskLevels).forEach(([taskId, level]) => {
       if (!levelWidth[level]) {
         levelWidth[level] = 0;
       }
       const y = levelWidth[level];
+      // Flip the x position by subtracting from maxLevel
       positions[taskId] = {
-        x: level * containerWidth + 40,
+        x: (maxLevel - level) * containerWidth + 40,
         y: y * containerHeight + 40,
       }; // Increased margin
       levelWidth[level] += 1;
@@ -184,13 +188,13 @@ export default function DagDiagram(props: DagDiagramProps) {
       default:
         return "bg-red-500";
     }
-  }
+  };
 
   return (
     <div
       class="pipeline-container relative flex gap-5 items-start"
       ref={(el) => setPipelineContainer(el)}
-      style={{ height: "36vh", width: "80vw" }}
+      style={{ height: "36vh", width: "75vw" }}
     >
       {Object.entries(taskPositions()).map(([taskId, pos]) => (
         <div
