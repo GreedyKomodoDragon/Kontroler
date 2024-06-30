@@ -39,7 +39,7 @@ func main() {
 
 	pgEndpoint, exists := os.LookupEnv("DB_ENDPOINT")
 	if !exists {
-		panic("missing DB_PASSWORD")
+		panic("missing DB_ENDPOINT")
 	}
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
