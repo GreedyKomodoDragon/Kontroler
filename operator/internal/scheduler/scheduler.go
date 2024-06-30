@@ -72,7 +72,7 @@ func (s *schedulerManager) Run() {
 			id, err := s.jobAllocator.AllocateJob(context.Background(), runID, string(job.Id)+name, job.ImageName, job.Command, job.Args, job.Namespace)
 			if err != nil {
 				// TODO: Mark this as the job failing!
-				log.Log.Error(err, "failed to allocate a new pod")
+				log.Log.Error(err, "failed to allocate a new pod", "runId", runID, "jobNamespace", job.Namespace, "jobId", job.Id)
 				continue
 			}
 

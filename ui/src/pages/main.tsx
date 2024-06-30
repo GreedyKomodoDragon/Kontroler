@@ -90,7 +90,7 @@ const Main: Component = () => {
     legend: {
       show: false,
     },
-  });
+  });  
 
   return (
     <div>

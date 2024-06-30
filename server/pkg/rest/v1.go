@@ -16,6 +16,48 @@ func addV1(app *fiber.App, kubeClient kube.KubeClient, dbManager db.DbManager) {
 
 	addCronJob(router, dbManager)
 	addCrds(router, kubeClient)
+	addDags(router, dbManager)
+}
+
+func addDags(router fiber.Router, dbManager db.DbManager) {
+	dagRouter := router.Group("/dag")
+
+	dagRouter.Get("/meta/:page", func(c *fiber.Ctx) error {
+		page, err := strconv.Atoi(c.Params("page"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		if page < 1 {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		dags, err := dbManager.GetAllDagMetaData(c.Context(), 10, (page-1)*10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dags")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"dags": dags,
+		})
+	})
+
+	dagRouter.Get("/run/:id", func(c *fiber.Ctx) error {
+		id, err := strconv.Atoi(c.Params("id"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		dagRun, err := dbManager.GetDagRun(c.Context(), id)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag run")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(dagRun)
+	})
+
 }
 
 func addCronJob(router fiber.Router, dbManager db.DbManager) {

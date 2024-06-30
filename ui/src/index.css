@@ -4,5 +4,31 @@
 
 html,
 body {
-    background-color: black;
+  background-color: black;
+}
+
+.pipeline-task {
+  width: 100px;
+  height: 50px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pipeline-task.failed {
+  @apply bg-red-500;
+}
+
+.pipeline-task.in-progress {
+  @apply bg-yellow-400 text-black;
+}
+
+.pipeline-task.succeeded {
+  @apply bg-green-500;
+}
+
+.pipeline-task.pending {
+  @apply bg-gray-500;
 }
