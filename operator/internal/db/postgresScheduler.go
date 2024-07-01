@@ -30,7 +30,6 @@ func NewPostgresSchedulerManager(ctx context.Context, pool *pgxpool.Pool, parser
 
 func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 	// TODO: work out size of each column
-	fmt.Println("here:", p.pool)
 	_, err := p.pool.Exec(ctx, `
 		BEGIN;
 
@@ -64,8 +63,6 @@ func (p *postgresManager) InitaliseDatabase(ctx context.Context) error {
 
 		COMMIT;
     `)
-
-	fmt.Println("here 2")
 
 	return err
 }
