@@ -74,7 +74,7 @@ func (t *taskWatcher) StartWatching() {
 
 			taskRunId, err := strconv.Atoi(taskRunIdStr)
 			if err != nil {
-				log.Log.Info("failed to get dag run", "dagRun", taskRunIdStr)
+				log.Log.Error(err, "failed to convert task run string", "taskRunIdStr", taskRunIdStr)
 				continue
 			}
 
@@ -90,27 +90,33 @@ func (t *taskWatcher) StartWatching() {
 
 				runId, err := strconv.Atoi(dagRunIdStr)
 				if err != nil {
-					log.Log.Info("failed to get dag run", "dagRun", dagRunIdStr)
+					log.Log.Error(err, "failed to get dag run", "dagRun", dagRunIdStr)
 					continue
 				}
 
 				// Mark this as success in db
-				task, err := t.dbManager.MarkOutcomeAndGetNextTasks(ctx, taskRunId, "success")
+				tasks, err := t.dbManager.MarkOutcomeAndGetNextTasks(ctx, taskRunId, "success")
 				if err != nil {
-					log.Log.Info("failed to mark outcome and get next task", "jobUid", job.UID, "event.type", event.Type)
+					log.Log.Error(err, "failed to mark outcome and get next task", "jobUid", job.UID, "event.type", event.Type)
 					continue
 				}
 
-				for _, task := range task {
+				log.Log.Info("number of tasks", "tasks", len(tasks))
+
+				for _, task := range tasks {
 					taskRunId, err := t.dbManager.MarkTaskAsStarted(ctx, runId, task.Id)
 					if err != nil {
 						log.Log.Error(err, "failed to mask task as stated", "dagRun_id", runId, "task_id", task.Id)
 						continue
 					}
 
-					if _, err := t.taskAllocator.AllocateTask(ctx, task, runId, taskRunId); err != nil {
-						log.Log.Info("failed to allocate task", "task.Id", task.Id, "task.Name", task.Name)
+					job, err := t.taskAllocator.AllocateTask(ctx, task, runId, taskRunId)
+					if err != nil {
+						log.Log.Error(err, "failed to allocate task", "task.Id", task.Id, "task.Name", task.Name)
+						continue
 					}
+
+					log.Log.Info("allocated task", "jobId", job, "task.Id", task.Id, "task.Name", task.Name)
 				}
 
 				continue

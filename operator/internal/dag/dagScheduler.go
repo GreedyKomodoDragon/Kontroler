@@ -35,6 +35,7 @@ func (d *dagscheduler) Run() {
 		ctx := context.Background()
 		dagIds, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
 		if err != nil {
+			log.Log.Error(err, "failed to find dags to start")
 			tmr.Reset(time.Minute)
 			continue
 		}
@@ -50,6 +51,7 @@ func (d *dagscheduler) Run() {
 
 			runId, err := d.dbManager.CreateDAGRun(ctx, dagId)
 			if err != nil {
+				log.Log.Error(err, "failed to create dag run entry", "dag_id", dagId)
 				continue
 			}
 

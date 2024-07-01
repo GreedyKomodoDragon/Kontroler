@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type postgresDAGManager struct {
@@ -255,6 +256,7 @@ func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, tas
 	}
 
 	if outcome != "success" {
+		log.Log.Info("marking transaction as complete", "outcome", outcome, "taskRunId", taskRunId)
 		if err := tx.Commit(ctx); err != nil {
 			return nil, err
 		}
@@ -280,9 +282,9 @@ func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, tas
 		RunnableTask as (
 			SELECT d.task_id
 			FROM Dependencies d
-			LEFT JOIN Task_Runs tr ON d.depends_on_task_id = tr.task_id AND tr.status = 'success'
+			LEFT JOIN Task_Runs tr ON tr.task_id = d.depends_on_task_id
 			LEFT JOIN DependCount dc ON d.task_id = dc.task_id
-			WHERE tr.status = 'success'
+			WHERE tr.status = 'success' AND task_run_id = $1
 			GROUP BY d.task_id, dc.DependCount
 			HAVING COUNT(*) = dc.DependCount
 		)

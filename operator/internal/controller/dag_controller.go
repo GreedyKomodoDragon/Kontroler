@@ -47,6 +47,8 @@ type DAGReconciler struct {
 func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
+	log.Log.Info("reconcile event", "controller", "dag", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
+
 	// Fetch the Schedule object that triggered the reconciliation
 	var dag kubeconductorv1alpha1.DAG
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
