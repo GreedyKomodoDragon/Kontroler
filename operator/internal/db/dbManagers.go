@@ -61,10 +61,10 @@ type DBDAGManager interface {
 	GetStartingTasks(ctx context.Context, dagId int) ([]Task, error)
 	// Add an update to show the task has been started
 	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
-	// Mark the outcome of the task
-	MarkOutcome(ctx context.Context, taskId int, outcome string) error
-	// Within the same transaction, mark the outcome of the task, and get next task(s) in the DAG
-	MarkOutcomeAndGetNextTasks(ctx context.Context, taskRunId int, outcome string) ([]Task, error)
+	// Mark the outcome of the taskRun
+	MarkOutcomeAsFailed(ctx context.Context, taskRunId int) error
+	// Within the same transaction, and get next task(s) in the DAG
+	MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error)
 	// Update the DAGRun to show the overall outcome
 	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
 }

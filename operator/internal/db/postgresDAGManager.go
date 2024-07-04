@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
-	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type postgresDAGManager struct {
@@ -38,6 +37,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
 	version INTEGER NOT NULL,
     schedule VARCHAR(255) NOT NULL,
 	active BOOL NOT NULL,
+	taskCount INTEGER NOT NULL,
 	nexttime TIMESTAMP NOT NULL
 );
 
@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS DAG_Runs (
 	run_id SERIAL PRIMARY KEY,
     dag_id INTEGER NOT NULL,
 	status VARCHAR(255) NOT NULL,
+	successfulCount INTEGER NOT NULL,
+	failedCount INTEGER NOT NULL,
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
 );
 
@@ -150,9 +152,9 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	var dagID int
 	if err = tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, schedule, active, nexttime) 
-	VALUES ($1, $2, $3, TRUE, $4) 
-	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, nextTime).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, schedule, active, nexttime, taskCount) 
+	VALUES ($1, $2, $3, TRUE, $4, $5) 
+	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
 		return err
 	}
 
@@ -199,7 +201,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dagId int) (int, error) {
 	// Map the task to the DAG
 	var dagRunID int
-	if err := p.pool.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status) VALUES ($1, 'running') RETURNING run_id", dagId).Scan(&dagRunID); err != nil {
+	if err := p.pool.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status, successfulCount, failedCount) VALUES ($1, 'running', 0, 0) RETURNING run_id", dagId).Scan(&dagRunID); err != nil {
 		return 0, err
 	}
 
@@ -234,14 +236,25 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 }
 
 func (p *postgresDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {
-	if _, err := p.pool.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, taskRunId int, outcome string) ([]Task, error) {
+func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -250,16 +263,35 @@ func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, tas
 	defer tx.Rollback(ctx)
 
 	var taskId int
-	err = tx.QueryRow(ctx, "UPDATE Task_Runs SET status = $1 WHERE task_run_id = $2 RETURNING task_id", outcome, taskRunId).Scan(&taskId)
+	var runId int
+	err = tx.QueryRow(ctx, "UPDATE Task_Runs SET status = 'success' WHERE task_run_id = $1 RETURNING task_id, run_id", taskRunId).Scan(&taskId, &runId)
 	if err != nil && err != pgx.ErrNoRows {
 		return nil, err
 	}
 
-	if outcome != "success" {
-		log.Log.Info("marking transaction as complete", "outcome", outcome, "taskRunId", taskRunId)
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
-		}
+	if _, err := tx.Exec(ctx, `
+			UPDATE DAG_Runs 
+			SET successfulCount = successfulCount + 1
+			WHERE run_id = $1;`, runId); err != nil {
+		return nil, err
+	}
+
+	var status string
+	err = tx.QueryRow(ctx, `
+		UPDATE DAG_Runs
+		SET status = 'success'
+		FROM DAGs
+		WHERE DAG_Runs.dag_id = DAGs.dag_id
+		AND DAGs.taskCount = DAG_Runs.successfulCount
+		AND DAG_Runs.run_id = $1
+		RETURNING DAG_Runs.status;
+	`, runId).Scan(&status)
+
+	if err != nil && err != pgx.ErrNoRows {
+		return nil, err
+	}
+
+	if status == "success" {
 		return []Task{}, nil
 	}
 
@@ -315,9 +347,30 @@ func (p *postgresDAGManager) MarkOutcomeAndGetNextTasks(ctx context.Context, tas
 	return tasks, nil
 }
 
-func (p *postgresDAGManager) MarkOutcome(ctx context.Context, taskRunId int, outcome string) error {
-	_, err := p.pool.Exec(ctx, "UPDATE Task_Runs SET status = $1 WHERE task_run_id = $2;", outcome, taskRunId)
-	return err
+func (p *postgresDAGManager) MarkOutcomeAsFailed(ctx context.Context, taskRunId int) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
+
+	var runId int
+	err = tx.QueryRow(ctx, "UPDATE Task_Runs SET status = 'failed' WHERE task_run_id = $1 RETURNING run_id", taskRunId).Scan(&runId)
+	if err != nil && err != pgx.ErrNoRows {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+        UPDATE DAG_Runs 
+        SET 
+            failedCount = failedCount + 1,
+            status = 'failed'
+        WHERE run_id = $1;`, runId); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {

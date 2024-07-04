@@ -95,7 +95,7 @@ func (t *taskWatcher) StartWatching() {
 				}
 
 				// Mark this as success in db
-				tasks, err := t.dbManager.MarkOutcomeAndGetNextTasks(ctx, taskRunId, "success")
+				tasks, err := t.dbManager.MarkSuccessAndGetNextTasks(ctx, taskRunId)
 				if err != nil {
 					log.Log.Error(err, "failed to mark outcome and get next task", "jobUid", job.UID, "event.type", event.Type)
 					continue
@@ -125,8 +125,8 @@ func (t *taskWatcher) StartWatching() {
 			if job.Status.Failed > 0 {
 				log.Log.Info("task failed", "jobUid", job.UID, "taskRunId", taskRunId)
 
-				if err := t.dbManager.MarkOutcome(ctx, taskRunId, "failed"); err != nil {
-					log.Log.Info("failed to mark outcome as failed", "jobUid", job.UID, "event.type", event.Type)
+				if err := t.dbManager.MarkOutcomeAsFailed(ctx, taskRunId); err != nil {
+					log.Log.Error(err, "failed to mark outcome as failed", "jobUid", job.UID, "event.type", event.Type)
 				}
 			}
 		case watch.Deleted:
