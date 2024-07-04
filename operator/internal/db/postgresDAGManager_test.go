@@ -352,7 +352,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
 	require.NoError(t, err)
 
-	tasks, err = dm.MarkOutcomeAndGetNextTasks(context.Background(), tasRunID, "success")
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -414,7 +414,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
 	require.NoError(t, err)
 
-	tasks, err = dm.MarkOutcomeAndGetNextTasks(context.Background(), tasRunID, "success")
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
 	require.NoError(t, err)
 	require.Empty(t, tasks)
 }
