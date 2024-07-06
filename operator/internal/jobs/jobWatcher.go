@@ -44,6 +44,8 @@ func (j *jobWatcher) StartWatching() {
 			continue
 		}
 
+		ctx := context.Background()
+
 		switch event.Type {
 		case watch.Added, watch.Modified:
 			log.Log.Info("job event", "jobUid", job.UID, "event.type", event.Type)
@@ -58,7 +60,7 @@ func (j *jobWatcher) StartWatching() {
 				}
 
 				// Extract failure details
-				pods, err := j.clientSet.CoreV1().Pods(j.namespace).List(context.TODO(), metav1.ListOptions{
+				pods, err := j.clientSet.CoreV1().Pods(j.namespace).List(ctx, metav1.ListOptions{
 					LabelSelector: fmt.Sprintf("job-name=%s", job.Name),
 				})
 				if err != nil {
@@ -73,13 +75,13 @@ func (j *jobWatcher) StartWatching() {
 
 				// Get Exitable codes to restart with and backoff limit
 				for _, pod := range pods.Items {
-					if err := j.dbManager.AddPodToRun(context.TODO(), pod.Name, jobUid, 0); err != nil {
+					if err := j.dbManager.AddPodToRun(ctx, pod.Name, jobUid, 0); err != nil {
 						log.Log.Error(err, "unable to add exit code", "podUID", pod.UID, "podName", pod.Name)
 						continue
 					}
 				}
 
-				if err := j.dbManager.MarkRunOutcome(context.TODO(), jobUid, "successful"); err != nil {
+				if err := j.dbManager.MarkRunOutcome(ctx, jobUid, "successful"); err != nil {
 					log.Log.Error(err, "failed to add mark run outcome", "job", job.Name)
 				}
 
@@ -90,7 +92,7 @@ func (j *jobWatcher) StartWatching() {
 				log.Log.Info("jobs failed to finish", "jobUid", job.UID)
 
 				// Extract failure details
-				pods, err := j.clientSet.CoreV1().Pods(j.namespace).List(context.TODO(), metav1.ListOptions{
+				pods, err := j.clientSet.CoreV1().Pods(j.namespace).List(ctx, metav1.ListOptions{
 					LabelSelector: fmt.Sprintf("job-name=%s", job.Name),
 				})
 				if err != nil {
@@ -123,13 +125,13 @@ func (j *jobWatcher) StartWatching() {
 					}
 
 					jobUid := types.UID(jobId)
-					if err := j.dbManager.AddPodToRun(context.TODO(), pod.Name, jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode); err != nil {
+					if err := j.dbManager.AddPodToRun(ctx, pod.Name, jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode); err != nil {
 						// TODO: Mark in DB as missing status information on pod
 						log.Log.Error(err, "unable to add exit code", "podUID", pod.UID, "podName", pod.Name)
 						continue
 					}
 
-					ok, err := j.dbManager.ShouldRerun(context.Background(), jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+					ok, err := j.dbManager.ShouldRerun(ctx, jobUid, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 					if err != nil {
 						// TODO: Mark in DB as failed
 						log.Log.Error(err, "failed to determine if pod should be re-ran", "job", job.Name)
@@ -139,19 +141,19 @@ func (j *jobWatcher) StartWatching() {
 					if !ok {
 						log.Log.Info("job has reached it max backoffLimit or exit code not recoverable", "jobUid", jobUid, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 
-						if err := j.dbManager.MarkRunOutcome(context.TODO(), jobUid, "failed"); err != nil {
+						if err := j.dbManager.MarkRunOutcome(ctx, jobUid, "failed"); err != nil {
 							log.Log.Error(err, "found pod missing kubeconductor/schedule-uid", "job", job.Name)
 						}
 						continue
 					}
 
-					if err := j.dbManager.IncrementRunCount(context.Background(), jobUid); err != nil {
+					if err := j.dbManager.IncrementRunCount(ctx, jobUid); err != nil {
 						log.Log.Error(err, "failed to increment failure run count", "job", job.Name)
 						continue
 					}
 
 					container := pod.Spec.Containers[0]
-					if _, err := j.jobAllocator.AllocateJob(context.Background(), jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace); err != nil {
+					if _, err := j.jobAllocator.AllocateJob(ctx, jobUid, container.Name, container.Image, container.Command, container.Args, pod.Namespace); err != nil {
 						// TODO: Mark this as the job failing!
 						log.Log.Error(err, "failed to allocate new pod")
 						continue
