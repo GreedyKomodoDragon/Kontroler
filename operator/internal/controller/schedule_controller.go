@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,7 +58,6 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Schedule object was found, store it in the database
-	fmt.Println("req.NamespacedName.Namespace", req.NamespacedName.Namespace)
 	if err := r.storeScheduleInDatabase(&schedule, req.NamespacedName.Namespace); err != nil {
 		return ctrl.Result{}, err
 	}

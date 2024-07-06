@@ -7,6 +7,32 @@ rules:
 - apiGroups:
   - kubeconductor.greedykomodo
   resources:
+  - dags
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
+  - dags/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
+  - dags/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
   - schedules
   verbs:
   - create
