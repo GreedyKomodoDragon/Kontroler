@@ -43,6 +43,25 @@ func addDags(router fiber.Router, dbManager db.DbManager) {
 		})
 	})
 
+	dagRouter.Get("/runs/:page", func(c *fiber.Ctx) error {
+		page, err := strconv.Atoi(c.Params("page"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		if page < 1 {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		dags, err := dbManager.GetDagRuns(c.Context(), 10, (page-1)*10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag runs")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(dags)
+	})
+
 	dagRouter.Get("/run/:id", func(c *fiber.Ctx) error {
 		id, err := strconv.Atoi(c.Params("id"))
 		if err != nil {
