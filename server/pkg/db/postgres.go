@@ -255,6 +255,32 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	}, nil
 }
 
+func (p *postgresManager) GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT run_id, dag_id, status, successfulcount, failedcount
+		FROM dag_runs
+		ORDER BY run_id DESC
+		LIMIT $1 OFFSET $2
+		`, limit, offset)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	metas := []*DagRunMeta{}
+	for rows.Next() {
+		var meta DagRunMeta
+		if err := rows.Scan(&meta.Id, &meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount); err != nil {
+			return nil, err
+		}
+
+		metas = append(metas, &meta)
+	}
+
+	return metas, nil
+}
+
 func (p *postgresManager) Close() {
 	p.pool.Close()
 }
