@@ -7,6 +7,14 @@ export type Dag = {
   nexttime: string;
 };
 
+export type DagRunMeta = {
+  id: number;
+  dagId: number;
+  status: string;
+  successfulCount: number;
+  failedCount: number;
+};
+
 export type DagRun = {
   connections: Record<string, string[]>;
   taskInfo: Record<string, Task>;

@@ -63,7 +63,7 @@ type DAGMetaData struct {
 }
 
 type TaskInfo struct {
-	Status string `json:"taskStatus"`
+	Status string `json:"status"`
 }
 
 type DagRunMeta struct {
