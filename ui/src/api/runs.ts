@@ -30,7 +30,5 @@ export async function getPods(runId: string): Promise<Pod[]> {
     {},
   );
 
-  console.log("hello:", result.data.pods);
-
   return result.data.pods;
 }

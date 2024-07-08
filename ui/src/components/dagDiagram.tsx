@@ -179,7 +179,7 @@ export default function DagDiagram(props: DagDiagramProps) {
 
   const getTaskColour = (taskId: string) => {
     switch (taskInfo[taskId].status) {
-      case "finished":
+      case "success":
         return "bg-green-500";
       case "running":
         return "bg-blue-500";

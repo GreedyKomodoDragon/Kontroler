@@ -2,7 +2,6 @@ import { Component, createSignal } from "solid-js";
 import { Dag } from "../types/dag";
 import { getDags } from "../api/dags";
 import DagComponent from "../components/dagComponent";
-import DagDiagram from "../components/dagDiagram";
 
 const Dags: Component = () => {
   const [dags, setDags] = createSignal<Dag[]>([]);

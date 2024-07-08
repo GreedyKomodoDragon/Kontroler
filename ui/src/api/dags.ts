@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Dag } from "../types/dag";
+import { Dag, DagRun, DagRunMeta } from "../types/dag";
 
 export async function getDags(): Promise<Dag[]> {
   const result = await axios.get("http://localhost:8080/api/v1/dag/meta/1", {});
@@ -7,8 +7,15 @@ export async function getDags(): Promise<Dag[]> {
   return result.data.dags;
 }
 
-export async function getDagRun(): Promise<Dag[]> {
-  const result = await axios.get("http://localhost:8080/api/v1/dag/meta/1", {});
+export async function getDagRuns(page: number): Promise<DagRunMeta[]> {
+  const result = await axios.get(`http://localhost:8080/api/v1/dag/runs/${page}`, {});
 
-  return result.data.dags;
+  return result.data;
+}
+
+
+export async function getDagRun(runId: number): Promise<DagRun> {
+  const result = await axios.get(`http://localhost:8080/api/v1/dag/run/${runId}`, {});
+
+  return result.data;
 }
