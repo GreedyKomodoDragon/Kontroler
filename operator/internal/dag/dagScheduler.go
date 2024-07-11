@@ -43,6 +43,8 @@ func (d *dagscheduler) Run() {
 		log.Log.Info("number of dags found", "count", len(dagIds))
 
 		for _, dagId := range dagIds {
+			// Create DagRun Object
+
 			tasks, err := d.dbManager.GetStartingTasks(ctx, dagId)
 			if err != nil {
 				log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagId)

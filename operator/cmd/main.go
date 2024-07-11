@@ -142,7 +142,7 @@ func main() {
 
 	dbName := "kubeconductor"
 	dbUser := "postgres"
-	dbPassword := "Lfr0F9lvJ0"
+	dbPassword := ""
 	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
@@ -212,6 +212,15 @@ func main() {
 		DbManager: dbDAGManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DAG")
+		os.Exit(1)
+	}
+	if err = (&controller.DagRunReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		DbManager:     dbDAGManager,
+		TaskAllocator: taskAllocator,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DagRun")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

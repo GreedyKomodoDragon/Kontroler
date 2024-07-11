@@ -29,4 +29,13 @@ resources:
   kind: DAG
   path: github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: greedykomodo
+  group: kubeconductor
+  kind: DagRun
+  path: github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1
+  version: v1alpha1
 version: "3"
