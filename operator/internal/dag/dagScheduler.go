@@ -5,6 +5,11 @@ import (
 	"time"
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/google/uuid"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -16,13 +21,19 @@ type DagScheduler interface {
 
 type dagscheduler struct {
 	dbManager     db.DBDAGManager
-	taskAllocator TaskAllocator
+	dynamicClient dynamic.Interface
 }
 
-func NewDagScheduler(dbManager db.DBDAGManager, taskAllocator TaskAllocator) DagScheduler {
+var gvr schema.GroupVersionResource = schema.GroupVersionResource{
+	Group:    "kubeconductor.greedykomodo",
+	Version:  "v1alpha1",
+	Resource: "dagruns",
+}
+
+func NewDagScheduler(dbManager db.DBDAGManager, dynamicClient dynamic.Interface) DagScheduler {
 	return &dagscheduler{
 		dbManager:     dbManager,
-		taskAllocator: taskAllocator,
+		dynamicClient: dynamicClient,
 	}
 }
 
@@ -41,35 +52,43 @@ func (d *dagscheduler) Run() {
 		}
 
 		log.Log.Info("number of dags found", "count", len(dagIds))
-
 		for _, dagId := range dagIds {
-			// Create DagRun Object
 
-			tasks, err := d.dbManager.GetStartingTasks(ctx, dagId)
-			if err != nil {
-				log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagId)
+			// Create DagRun Object Per Dag ID
+			// We create a DagRun Object as it allows dagRuns to be event driven as while as scheduled
+			log.Log.Info("attempting to create dagrun", "dagId", dagId)
+
+			// Generate a unique name for each DagRun using UUID
+			name := "dagrun-" + uuid.New().String()
+
+			dagRun := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "kubeconductor.greedykomodo/v1alpha1",
+					"kind":       "DagRun",
+					"metadata": map[string]interface{}{
+						"name": name, // Set the unique name here
+						"labels": map[string]string{
+							"app.kubernetes.io/name":       "dagrun",
+							"app.kubernetes.io/instance":   "dagrun-sample",
+							"app.kubernetes.io/part-of":    "operator",
+							"app.kubernetes.io/managed-by": "kustomize",
+							"app.kubernetes.io/created-by": "operator",
+						},
+					},
+					"spec": map[string]interface{}{
+						"dagId": dagId,
+					},
+				},
+			}
+
+			// Create the DagRun
+			// TODO: Update the namespace
+			if _, err := d.dynamicClient.Resource(gvr).Namespace("default").Create(ctx, dagRun, v1.CreateOptions{}); err != nil {
+				log.Log.Error(err, "failed to create DagRun", "dagId", dagId)
 				continue
 			}
 
-			runId, err := d.dbManager.CreateDAGRun(ctx, dagId)
-			if err != nil {
-				log.Log.Error(err, "failed to create dag run entry", "dag_id", dagId)
-				continue
-			}
-
-			// Provide task to allocator
-			for _, task := range tasks {
-				taskRunId, err := d.dbManager.MarkTaskAsStarted(ctx, runId, task.Id)
-				if err != nil {
-					log.Log.Error(err, "failed to mask task as stated", "dag_id", dagId, "task_id", task.Id)
-					continue
-				}
-
-				if _, err := d.taskAllocator.AllocateTask(ctx, task, runId, taskRunId); err != nil {
-					log.Log.Error(err, "failed to allocate task to job", "dag_id", dagId, "task_id", task.Id)
-				}
-
-			}
+			log.Log.Info("DagRun created successfully", "dagId", dagId, "name", name)
 
 		}
 

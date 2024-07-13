@@ -10,6 +10,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -130,6 +131,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the dynamic client
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		setupLog.Error(err, "failed to create api dynamicClient")
+		os.Exit(1)
+	}
+
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -193,7 +201,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	taskScheduler := dag.NewDagScheduler(dbDAGManager, taskAllocator)
+	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
 
 	go taskScheduler.Run()
 	go taskWatcher.StartWatching()
