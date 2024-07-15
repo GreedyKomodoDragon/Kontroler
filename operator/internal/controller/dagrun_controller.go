@@ -82,7 +82,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			continue
 		}
 
-		if _, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId); err != nil {
+		if _, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId, req.NamespacedName.Namespace); err != nil {
 			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
 		}
 

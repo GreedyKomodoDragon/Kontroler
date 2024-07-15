@@ -44,7 +44,7 @@ func (d *dagscheduler) Run() {
 		log.Log.Info("timer up, begun looking for dags to run")
 
 		ctx := context.Background()
-		dagIds, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
+		dagIds, namespaces, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
 		if err != nil {
 			log.Log.Error(err, "failed to find dags to start")
 			tmr.Reset(time.Minute)
@@ -52,7 +52,8 @@ func (d *dagscheduler) Run() {
 		}
 
 		log.Log.Info("number of dags found", "count", len(dagIds))
-		for _, dagId := range dagIds {
+		opts := v1.CreateOptions{}
+		for i, dagId := range dagIds {
 
 			// Create DagRun Object Per Dag ID
 			// We create a DagRun Object as it allows dagRuns to be event driven as while as scheduled
@@ -66,13 +67,9 @@ func (d *dagscheduler) Run() {
 					"apiVersion": "kubeconductor.greedykomodo/v1alpha1",
 					"kind":       "DagRun",
 					"metadata": map[string]interface{}{
-						"name": name, // Set the unique name here
+						"name": name,
 						"labels": map[string]string{
-							"app.kubernetes.io/name":       "dagrun",
-							"app.kubernetes.io/instance":   "dagrun-sample",
-							"app.kubernetes.io/part-of":    "operator",
-							"app.kubernetes.io/managed-by": "kustomize",
-							"app.kubernetes.io/created-by": "operator",
+							"app.kubernetes.io/created-by": "konductor-operator",
 						},
 					},
 					"spec": map[string]interface{}{
@@ -83,12 +80,12 @@ func (d *dagscheduler) Run() {
 
 			// Create the DagRun
 			// TODO: Update the namespace
-			if _, err := d.dynamicClient.Resource(gvr).Namespace("default").Create(ctx, dagRun, v1.CreateOptions{}); err != nil {
+			if _, err := d.dynamicClient.Resource(gvr).Namespace(namespaces[i]).Create(ctx, dagRun, opts); err != nil {
 				log.Log.Error(err, "failed to create DagRun", "dagId", dagId)
 				continue
 			}
 
-			log.Log.Info("DagRun created successfully", "dagId", dagId, "name", name)
+			log.Log.Info("DagRun created successfully", "dagId", dagId, "name", name, "namespace", namespaces[i])
 
 		}
 

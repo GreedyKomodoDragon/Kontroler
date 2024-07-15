@@ -17,7 +17,7 @@ import (
 )
 
 type TaskAllocator interface {
-	AllocateTask(context.Context, db.Task, int, int) (types.UID, error)
+	AllocateTask(context.Context, db.Task, int, int, string) (types.UID, error)
 }
 
 type taskAllocator struct {
@@ -30,7 +30,7 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
 	}
 }
 
-func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int) (types.UID, error) {
+func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
 	backoff := int32(0)
 	job := &batchv1.Job{
 		// TODO: Refactor this to enable it to be re-used in DAG task
@@ -68,7 +68,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 
 		// Create the Job
 		// TODO: Make namespace more dynamic
-		createdJob, err := t.clientSet.BatchV1().Jobs("operator-system").Create(ctx, job, metav1.CreateOptions{})
+		createdJob, err := t.clientSet.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
 				// just try again with a new name

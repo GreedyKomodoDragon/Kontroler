@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
     name VARCHAR(255) NOT NULL,
 	version INTEGER NOT NULL,
     schedule VARCHAR(255) NOT NULL,
+	namespace VARCHAR(255) NOT NULL,
 	active BOOL NOT NULL,
 	taskCount INTEGER NOT NULL,
 	nexttime TIMESTAMP NOT NULL
@@ -89,7 +90,7 @@ CREATE TABLE IF NOT EXISTS Task_Runs (
 	return nil
 }
 
-func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG) error {
+func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
 	// Check if the DAG already exists
 	// Begin transaction
 	tx, err := p.pool.Begin(context.Background())
@@ -112,7 +113,7 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG) e
 	}
 
 	// DAG does not exist, insert it
-	if err := p.insertDAG(ctx, tx, dag, version); err != nil {
+	if err := p.insertDAG(ctx, tx, dag, version, namespace); err != nil {
 		return err
 	}
 
@@ -139,7 +140,7 @@ func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name st
 }
 
 // insertDAG inserts a new DAG object into the database.
-func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1alpha1.DAG, version int) error {
+func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1alpha1.DAG, version int, namespace string) error {
 
 	// Parse the cron expression
 	sched, err := p.parser.Parse(dag.Spec.Schedule)
@@ -152,9 +153,9 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	var dagID int
 	if err = tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, schedule, active, nexttime, taskCount) 
-	VALUES ($1, $2, $3, TRUE, $4, $5) 
-	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, schedule, namespace, active, nexttime, taskCount) 
+	VALUES ($1, $2, $3, $4, TRUE, $5, $6) 
+	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
 		return err
 	}
 
@@ -387,47 +388,51 @@ func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, t
 	return taskRunId, nil
 }
 
-func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int, error) {
+func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int, []string, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	defer tx.Rollback(ctx)
 
 	// Maybe able to cut this down
 	rows, err := tx.Query(ctx, `
-        SELECT dag_id, schedule
+        SELECT dag_id, schedule, namespace
         FROM DAGs
         WHERE nexttime <= NOW()
     `)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 
-	var ids []int
+	ids := []int{}
+	namespaces := []string{}
+
 	schedules := map[int]string{}
 	for rows.Next() {
 		var id int
 		var schedule string
-		if err := rows.Scan(&id, &schedule); err != nil {
-			return nil, err
+		var namespace string
+		if err := rows.Scan(&id, &schedule, &namespace); err != nil {
+			return nil, nil, err
 		}
 
 		schedules[id] = schedule
 		ids = append(ids, id)
+		namespaces = append(namespaces, namespace)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for id, schedule := range schedules {
 		// Parse the cron expression
 		sched, err := p.parser.Parse(schedule)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// Get the next occurrence of the scheduled time
@@ -437,14 +442,14 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 		UPDATE DAGs 
 		SET nextTime = $1 
 		WHERE dag_id = $2;`, nextTime, id); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return ids, nil
+	return ids, namespaces, nil
 }

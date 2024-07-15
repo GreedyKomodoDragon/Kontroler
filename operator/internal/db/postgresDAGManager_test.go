@@ -103,7 +103,7 @@ func TestUpsertDAG(t *testing.T) {
 	}
 
 	// Test inserting a new DAG
-	err = manager.InsertDAG(context.Background(), dag)
+	err = manager.InsertDAG(context.Background(), dag, "default")
 	assert.NoError(t, err, "Failed to insert new DAG")
 
 	// Verify the DAG was inserted
@@ -114,7 +114,7 @@ func TestUpsertDAG(t *testing.T) {
 
 	// Test updating the existing DAG
 	dag.Spec.Schedule = "*/10 * * * *"
-	err = manager.InsertDAG(context.Background(), dag)
+	err = manager.InsertDAG(context.Background(), dag, "default")
 	assert.NoError(t, err, "Failed to update existing DAG")
 
 	// Verify the DAG was updated
@@ -131,7 +131,7 @@ func TestUpsertDAG(t *testing.T) {
 		Image:    "alpine:latest",
 		RunAfter: []string{"task2"},
 	})
-	err = manager.InsertDAG(context.Background(), dag)
+	err = manager.InsertDAG(context.Background(), dag, "default")
 	assert.NoError(t, err, "Failed to update DAG with additional task")
 
 	// Verify the new task was inserted
@@ -175,7 +175,7 @@ func TestPostgresDAGManager_InsertDAG(t *testing.T) {
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	assert.NoError(t, err)
 }
 
@@ -206,7 +206,7 @@ func TestPostgresDAGManager_CreateDAGRun(t *testing.T) {
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
 	runID, err := dm.CreateDAGRun(context.Background(), 1)
@@ -249,7 +249,7 @@ func TestPostgresDAGManager_GetStartingTasks(t *testing.T) {
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), 1)
@@ -293,7 +293,7 @@ func TestPostgresDAGManager_MarkDAGRunOutcome(t *testing.T) {
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
 	runID, err := dm.CreateDAGRun(context.Background(), 1)
@@ -337,7 +337,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
 	runID, err := dm.CreateDAGRun(context.Background(), 1)
@@ -399,7 +399,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
 	runID, err := dm.CreateDAGRun(context.Background(), 1)
@@ -446,7 +446,7 @@ func TestPostgresDAGManager_MarkTaskAsStarted(t *testing.T) {
 		},
 	}
 
-	err = dm.InsertDAG(context.Background(), dag)
+	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
 	runID, err := dm.CreateDAGRun(context.Background(), 1)

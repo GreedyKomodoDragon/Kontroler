@@ -110,7 +110,7 @@ func (t *taskWatcher) StartWatching() {
 						continue
 					}
 
-					job, err := t.taskAllocator.AllocateTask(ctx, task, runId, taskRunId)
+					job, err := t.taskAllocator.AllocateTask(ctx, task, runId, taskRunId, job.Namespace)
 					if err != nil {
 						log.Log.Error(err, "failed to allocate task", "task.Id", task.Id, "task.Name", task.Name)
 						continue
