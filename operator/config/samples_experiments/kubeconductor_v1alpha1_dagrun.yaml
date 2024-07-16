@@ -1,0 +1,17 @@
+apiVersion: kubeconductor.greedykomodo/v1alpha1
+kind: DagRun
+metadata:
+  labels:
+    app.kubernetes.io/name: dagrun
+    app.kubernetes.io/instance: dagrun-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dagrun-sample
+spec:
+  dagId: 1
+  parameters:
+    - name: value
+      value: value_value
+    - name2: value2
+      secret: secret_name

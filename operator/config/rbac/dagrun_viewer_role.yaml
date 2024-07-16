@@ -1,0 +1,27 @@
+# permissions for end users to view dagruns.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: dagrun-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: operator
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: dagrun-viewer-role
+rules:
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
+  - dagruns
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeconductor.greedykomodo
+  resources:
+  - dagruns/status
+  verbs:
+  - get

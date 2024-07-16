@@ -63,15 +63,15 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	// Schedule object was found, store it in the database
-	if err := r.storeInDatabase(ctx, &dag); err != nil {
+	if err := r.storeInDatabase(ctx, &dag, req.NamespacedName.Namespace); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kubeconductorv1alpha1.DAG) error {
-	return r.DbManager.InsertDAG(ctx, dag)
+func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kubeconductorv1alpha1.DAG, namespace string) error {
+	return r.DbManager.InsertDAG(ctx, dag, namespace)
 }
 
 // SetupWithManager sets up the controller with the Manager.
