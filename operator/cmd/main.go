@@ -10,6 +10,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -130,6 +131,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the dynamic client
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		setupLog.Error(err, "failed to create api dynamicClient")
+		os.Exit(1)
+	}
+
 	// Create a Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -142,7 +150,7 @@ func main() {
 
 	dbName := "kubeconductor"
 	dbUser := "postgres"
-	dbPassword := "Lfr0F9lvJ0"
+	dbPassword := ""
 	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
@@ -193,7 +201,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	taskScheduler := dag.NewDagScheduler(dbDAGManager, taskAllocator)
+	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
 
 	go taskScheduler.Run()
 	go taskWatcher.StartWatching()
@@ -212,6 +220,15 @@ func main() {
 		DbManager: dbDAGManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DAG")
+		os.Exit(1)
+	}
+	if err = (&controller.DagRunReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		DbManager:     dbDAGManager,
+		TaskAllocator: taskAllocator,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DagRun")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

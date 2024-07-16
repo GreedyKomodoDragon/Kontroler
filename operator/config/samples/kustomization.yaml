@@ -2,4 +2,5 @@
 resources:
 - kubeconductor_v1alpha1_schedule.yaml
 - kubeconductor_v1alpha1_dag.yaml
+- kubeconductor_v1alpha1_dagrun.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

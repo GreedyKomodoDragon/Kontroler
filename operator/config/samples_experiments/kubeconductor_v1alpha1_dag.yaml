@@ -1,0 +1,62 @@
+apiVersion: kubeconductor.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag
+    app.kubernetes.io/instance: dag-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dag-sample
+spec:
+  # Can this be never? if it is missing we could add a null value in the table for the timestamp
+  # Would allow for it to be an event-driven only dag
+  schedule: "*/1 * * * *"
+  # Could access them via envs?
+  parameters:
+    - name: value_name
+      fromSecret: secret_name
+    - name: value_name2
+  task:
+    - name: "random"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [8]
+      parameters:
+        - name: value_name
+    - name: "random-b"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [8]
+    - name: "random-c"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [8]
+      parameters:
+        - name: value_name2
