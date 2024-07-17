@@ -36,8 +36,22 @@ spec:
             properties:
               dagId:
                 type: integer
+              parameters:
+                items:
+                  properties:
+                    fromSecre:
+                      type: string
+                    name:
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
             required:
             - dagId
+            - parameters
             type: object
           status:
             description: DagRunStatus defines the observed state of DagRun
