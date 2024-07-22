@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS DAGs (
 	nexttime TIMESTAMP NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS DAG_Parameters (
+	parameter_id SERIAL PRIMARY KEY,
+    dag_id INTEGER NOT NULL,
+    name VARCHAR(255) NOT NULL,
+	isSecret BOOL NOT NULL,
+	defaultValue VARCHAR(255) NOT NULL,
+	FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
+);
+
 CREATE TABLE IF NOT EXISTS Tasks (
 	task_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -164,6 +173,29 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 		if err = p.insertTask(ctx, tx, dagID, &task); err != nil {
 			return err
 		}
+	}
+
+	// Insert parameters and map them to the DAG
+	for _, parameter := range dag.Spec.Parameters {
+		if err = p.insertParameter(ctx, tx, dagID, &parameter); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dagID int, parameter *v1alpha1.DagParameterSpec) error {
+	value := parameter.DefaultFromSecret
+	isSecret := parameter.DefaultValue == ""
+	if !isSecret {
+		value = parameter.DefaultValue
+	}
+
+	// Map the task to the DAG
+	_, err := tx.Exec(ctx, "INSERT INTO DAG_Parameters (dag_id, name, isSecret, defaultValue) VALUES ($1, $2, $3, $4)", dagID, parameter.Name, isSecret, value)
+	if err != nil {
+		return err
 	}
 
 	return nil

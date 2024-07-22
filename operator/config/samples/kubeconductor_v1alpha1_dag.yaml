@@ -10,6 +10,11 @@ metadata:
   name: dag-sample
 spec:
   schedule: "*/1 * * * *"
+  parameters:
+    - name: first
+      defaultFromSecret: secret_name
+    - name: second
+      defaultValue: value
   task:
     - name: "random"
       command: ["sh", "-c"]

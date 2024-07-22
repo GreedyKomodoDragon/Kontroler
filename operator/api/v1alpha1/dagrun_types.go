@@ -28,12 +28,13 @@ type ParameterSpec struct {
 	// +optional
 	Value string `json:"value,omitempty"`
 	// +optional
-	FromSecret string `json:"fromSecre,omitemptyt"`
+	FromSecret string `json:"fromSecret,omitempty"`
 }
 
 // DagRunSpec defines the desired state of DagRun
 type DagRunSpec struct {
-	DagId      int             `json:"dagId"`
+	DagId int `json:"dagId"`
+	// +optional
 	Parameters []ParameterSpec `json:"parameters"`
 }
 
