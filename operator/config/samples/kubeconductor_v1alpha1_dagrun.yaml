@@ -10,8 +10,8 @@ metadata:
   name: dagrun-sample
 spec:
   dagId: 1
-  # parameters:
-  #   - name: value2
-  #     fromSecret: secret_name
-  #   - name: second
-  #     value: value_value
+  parameters:
+    - name: first
+      defaultFromSecret: secret_name_new
+    - name: second
+      defaultValue: value_new

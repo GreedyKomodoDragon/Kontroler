@@ -19,14 +19,21 @@ type CronJob struct {
 }
 
 type Task struct {
-	Id      int
-	Name    string
-	Image   string
-	Command []string
-	Args    []string
+	Id         int
+	Name       string
+	Image      string
+	Command    []string
+	Args       []string
+	Parameters []Parameter
 	// TODO: Implement retries
 	// BackoffLimit     uint64
 	// ConditionalRetry ConditionalRetry
+}
+
+type Parameter struct {
+	Name     string
+	IsSecret bool
+	Value    string
 }
 
 type ConditionalRetry struct {
@@ -56,7 +63,7 @@ type DBDAGManager interface {
 	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
 	InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error
 	// Create the update to show that a new DAG has been started
-	CreateDAGRun(ctx context.Context, dagId int) (int, error)
+	CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec) (int, error)
 	// Get all the tasks in the DAG that do not have any dependencies
 	GetStartingTasks(ctx context.Context, dagId int) ([]Task, error)
 	// Add an update to show the task has been started

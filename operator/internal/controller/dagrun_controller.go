@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
@@ -62,16 +63,24 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	runId, err := r.DbManager.CreateDAGRun(ctx, &dagRun.Spec)
+	if err != nil {
+		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
 	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagId)
 	if err != nil {
 		log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagRun.Spec.DagId)
 		return ctrl.Result{}, err
 	}
 
-	runId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Spec.DagId)
-	if err != nil {
-		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
-		return ctrl.Result{}, err
+	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagId, "tasksLen", len(tasks))
+
+	// convert to map to make it more optimal to look up the params
+	paramMap := map[string]v1alpha1.ParameterSpec{}
+	for _, param := range dagRun.Spec.Parameters {
+		paramMap[param.Name] = param
 	}
 
 	// Provide task to allocator
@@ -82,9 +91,24 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			continue
 		}
 
-		if _, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId, req.NamespacedName.Namespace); err != nil {
-			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
+		for i := 0; i < len(task.Parameters); i++ {
+			if parm, ok := paramMap[task.Parameters[i].Name]; ok {
+				if task.Parameters[i].IsSecret {
+					task.Parameters[i].Value = parm.FromSecret
+				} else {
+					task.Parameters[i].Value = parm.Value
+				}
+
+			}
 		}
+
+		taskID, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId, req.NamespacedName.Namespace)
+		if err != nil {
+			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
+			continue
+		}
+
+		log.Log.Info("allocated task", "dag_id", dagRun.Spec.DagId, "task_id", task.Id, "kube_task_Id", taskID)
 
 	}
 

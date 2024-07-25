@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS Tasks (
     name VARCHAR(255) NOT NULL,
     command TEXT[] NOT NULL,
     args TEXT[] NOT NULL,
-    image VARCHAR(255) NOT NULL
+    image VARCHAR(255) NOT NULL,
+	parameters TEXT[]
 );
 
 CREATE TABLE IF NOT EXISTS Dependencies (
@@ -204,14 +205,13 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec) error {
 	// Insert the task
 	var taskId int
-	err := tx.QueryRow(ctx, "INSERT INTO Tasks (name, command, args, image) VALUES ($1, $2, $3, $4) RETURNING task_id", task.Name, task.Command, task.Args, task.Image).Scan(&taskId)
+	err := tx.QueryRow(ctx, "INSERT INTO Tasks (name, command, args, image, parameters) VALUES ($1, $2, $3, $4, $5) RETURNING task_id", task.Name, task.Command, task.Args, task.Image, task.Parameters).Scan(&taskId)
 	if err != nil {
 		return err
 	}
 
 	// Map the task to the DAG
-	_, err = tx.Exec(ctx, "INSERT INTO DAG_Tasks (dag_id, task_id) VALUES ($1, $2)", dagID, taskId)
-	if err != nil {
+	if _, err = tx.Exec(ctx, "INSERT INTO DAG_Tasks (dag_id, task_id) VALUES ($1, $2)", dagID, taskId); err != nil {
 		return err
 	}
 
@@ -231,10 +231,10 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	return nil
 }
 
-func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dagId int) (int, error) {
+func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec) (int, error) {
 	// Map the task to the DAG
 	var dagRunID int
-	if err := p.pool.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status, successfulCount, failedCount) VALUES ($1, 'running', 0, 0) RETURNING run_id", dagId).Scan(&dagRunID); err != nil {
+	if err := p.pool.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status, successfulCount, failedCount) VALUES ($1, 'running', 0, 0) RETURNING run_id", dag.DagId).Scan(&dagRunID); err != nil {
 		return 0, err
 	}
 
@@ -243,11 +243,12 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dagId int) (int, 
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, t.name, t.image, t.command, t.args
+	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters
 	FROM Tasks t
 	LEFT JOIN Dependencies d ON t.task_id = d.task_id
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
-	WHERE d.depends_on_task_id IS NULL AND dt.dag_id = $1;`, dagId)
+	WHERE d.depends_on_task_id IS NULL AND dt.dag_id = $1;
+	`, dagId)
 
 	if err != nil {
 		return nil, err
@@ -258,11 +259,40 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 	tasks := []Task{}
 	for rows.Next() {
 		var task Task
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args); err != nil {
+		var parameters []string
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters); err != nil {
 			return nil, err
 		}
 
+		// Get defaults
+		// CREATE TABLE IF NOT EXISTS DAG_Parameters (
+		// 	parameter_id SERIAL PRIMARY KEY,
+		// 	dag_id INTEGER NOT NULL,
+		// 	name VARCHAR(255) NOT NULL,
+		// 	isSecret BOOL NOT NULL,
+		// 	defaultValue VARCHAR(255) NOT NULL,
+		// 	FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
+		// );
+
+		task.Parameters = []Parameter{}
+		for _, parameter := range parameters {
+			param := Parameter{
+				Name: parameter,
+			}
+
+			if err := p.pool.QueryRow(ctx, `
+			SELECT isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE dag_id = $1 and name = $2;
+			`, dagId, parameter).Scan(&param.IsSecret, &param.Value); err != nil {
+				return nil, err
+			}
+
+			task.Parameters = append(task.Parameters, param)
+		}
+
 		tasks = append(tasks, task)
+
 	}
 
 	return tasks, nil
@@ -332,6 +362,17 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		return []Task{}, nil
 	}
 
+	var dagId int
+	err = tx.QueryRow(ctx, `
+		SELECT dag_id
+		FROM dag_runs
+		WHERE run_id = $1
+	`, runId).Scan(&dagId)
+
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := tx.Query(ctx, `
 		WITH CompletedTask AS (
 			SELECT run_id, task_id 
@@ -357,7 +398,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 			GROUP BY d.task_id, dc.DependCount
 			HAVING COUNT(*) = dc.DependCount
 		)
-		SELECT t.task_id, t.name, t.image, t.command, t.args
+		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters
 		FROM Tasks t
 		WHERE t.task_id in (SELECT task_id FROM RunnableTask)
     `, taskRunId)
@@ -369,12 +410,46 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	defer rows.Close()
 
 	tasks := []Task{}
+	parameters := [][]string{}
 	for rows.Next() {
 		var task Task
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args); err != nil {
+		var params []string
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params); err != nil {
 			return nil, err
 		}
+
+		// can be a null return
+		if params == nil {
+			params = []string{}
+		}
+
+		parameters = append(parameters, params)
 		tasks = append(tasks, task)
+	}
+
+	for i := 0; i < len(tasks); i++ {
+		tasks[i].Parameters = []Parameter{}
+		for _, parameter := range parameters[i] {
+			param := Parameter{
+				Name: parameter,
+			}
+
+			err := tx.QueryRow(ctx, `
+			SELECT isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE dag_id = $1 and name = $2;
+			`, dagId, parameter).Scan(&param.IsSecret, &param.Value)
+
+			if err == pgx.ErrNoRows {
+				continue
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			tasks[i].Parameters = append(tasks[i].Parameters, param)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

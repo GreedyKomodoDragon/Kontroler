@@ -25,6 +25,8 @@ spec:
       image: "alpine:latest"
       backoff:
         limit: 3
+      parameters:
+        - first
       conditional:
         enabled: true
         retryCodes: [8]
@@ -41,6 +43,9 @@ spec:
       conditional:
         enabled: true
         retryCodes: [8]
+      parameters:
+        - first
+        - second
     - name: "random-c"
       command: ["sh", "-c"]
       args:
