@@ -12,7 +12,7 @@ spec:
   schedule: "*/1 * * * *"
   parameters:
     - name: first
-      defaultFromSecret: secret_name
+      defaultFromSecret: secret-name
     - name: second
       defaultValue: value
   task:
@@ -20,13 +20,13 @@ spec:
       command: ["sh", "-c"]
       args:
         [
-          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
         ]
       image: "alpine:latest"
       backoff:
         limit: 3
       parameters:
-        - first
+        - second
       conditional:
         enabled: true
         retryCodes: [8]

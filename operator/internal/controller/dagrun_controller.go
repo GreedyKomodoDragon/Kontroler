@@ -63,7 +63,36 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	runId, err := r.DbManager.CreateDAGRun(ctx, &dagRun.Spec)
+	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagId)
+	if err != nil {
+		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
+	paramMap := map[string]v1alpha1.ParameterSpec{}
+	for _, param := range dagRun.Spec.Parameters {
+		// Don't add it if it is not a valid parameter
+		paramDefault, ok := parameters[param.Name]
+		if !ok {
+			continue
+		}
+
+		if param.FromSecret != "" && paramDefault.IsSecret {
+			paramDefault.Value = param.FromSecret
+			paramMap[param.Name] = param
+			continue
+		}
+
+		if param.FromSecret == "" && !paramDefault.IsSecret {
+			paramDefault.Value = param.Value
+			paramMap[param.Name] = param
+			continue
+		}
+
+		// If you get here the parameter is invalid due to secret/value mismatch
+	}
+
+	runId, err := r.DbManager.CreateDAGRun(ctx, &dagRun.Spec, paramMap)
 	if err != nil {
 		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
 		return ctrl.Result{}, err
@@ -75,13 +104,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagId, "tasksLen", len(tasks))
-
-	// convert to map to make it more optimal to look up the params
-	paramMap := map[string]v1alpha1.ParameterSpec{}
-	for _, param := range dagRun.Spec.Parameters {
-		paramMap[param.Name] = param
-	}
+	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagId, "tasks_len", len(tasks))
 
 	// Provide task to allocator
 	for _, task := range tasks {
@@ -91,14 +114,14 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			continue
 		}
 
+		// Update defaults with values from DagRun
 		for i := 0; i < len(task.Parameters); i++ {
-			if parm, ok := paramMap[task.Parameters[i].Name]; ok {
+			if param, ok := paramMap[task.Parameters[i].Name]; ok {
 				if task.Parameters[i].IsSecret {
-					task.Parameters[i].Value = parm.FromSecret
+					task.Parameters[i].Value = param.FromSecret
 				} else {
-					task.Parameters[i].Value = parm.Value
+					task.Parameters[i].Value = param.Value
 				}
-
 			}
 		}
 

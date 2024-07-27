@@ -83,6 +83,15 @@ CREATE TABLE IF NOT EXISTS DAG_Runs (
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
 );
 
+CREATE TABLE IF NOT EXISTS DAG_Run_Parameters (
+	param_id SERIAL PRIMARY KEY,
+    run_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	value  VARCHAR(255) NOT NULL,
+	isSecret BOOL NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
+);
+
 CREATE TABLE IF NOT EXISTS Task_Runs (
 	task_run_id SERIAL PRIMARY KEY,
 	run_id INTEGER NOT NULL,
@@ -231,10 +240,32 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	return nil
 }
 
-func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec) (int, error) {
+func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	defer tx.Rollback(ctx)
+
 	// Map the task to the DAG
 	var dagRunID int
-	if err := p.pool.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status, successfulCount, failedCount) VALUES ($1, 'running', 0, 0) RETURNING run_id", dag.DagId).Scan(&dagRunID); err != nil {
+	if err := tx.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status, successfulCount, failedCount) VALUES ($1, 'running', 0, 0) RETURNING run_id", dag.DagId).Scan(&dagRunID); err != nil {
+		return 0, err
+	}
+
+	for _, param := range parameters {
+		value := param.Value
+		if param.FromSecret != "" {
+			value = param.FromSecret
+		}
+
+		if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
 
@@ -263,16 +294,6 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters); err != nil {
 			return nil, err
 		}
-
-		// Get defaults
-		// CREATE TABLE IF NOT EXISTS DAG_Parameters (
-		// 	parameter_id SERIAL PRIMARY KEY,
-		// 	dag_id INTEGER NOT NULL,
-		// 	name VARCHAR(255) NOT NULL,
-		// 	isSecret BOOL NOT NULL,
-		// 	defaultValue VARCHAR(255) NOT NULL,
-		// 	FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
-		// );
 
 		task.Parameters = []Parameter{}
 		for _, parameter := range parameters {
@@ -559,4 +580,30 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 	}
 
 	return ids, namespaces, nil
+}
+
+func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagId int) (map[string]*Parameter, error) {
+	rows, err := p.pool.Query(ctx, `
+	SELECT name, isSecret, defaultValue
+	FROM DAG_Parameters
+	WHERE dag_id = $1;
+	`, dagId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	parameters := map[string]*Parameter{}
+	for rows.Next() {
+		var parameter Parameter
+		if err := rows.Scan(&parameter.Name, &parameter.IsSecret, &parameter.Value); err != nil {
+			return nil, err
+		}
+
+		parameters[parameter.Name] = &parameter
+	}
+
+	return parameters, nil
 }

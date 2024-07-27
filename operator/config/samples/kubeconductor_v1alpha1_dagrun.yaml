@@ -7,11 +7,11 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
-  name: dagrun-sample
+  name: dagrun-sample5
 spec:
   dagId: 1
   parameters:
     - name: first
-      defaultFromSecret: secret_name_new
+      fromSecret: secret-name-new
     - name: second
-      defaultValue: value_new
+      value: value_new

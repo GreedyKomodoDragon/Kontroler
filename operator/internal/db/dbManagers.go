@@ -63,7 +63,7 @@ type DBDAGManager interface {
 	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
 	InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error
 	// Create the update to show that a new DAG has been started
-	CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec) (int, error)
+	CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error)
 	// Get all the tasks in the DAG that do not have any dependencies
 	GetStartingTasks(ctx context.Context, dagId int) ([]Task, error)
 	// Add an update to show the task has been started
@@ -74,4 +74,5 @@ type DBDAGManager interface {
 	MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error)
 	// Update the DAGRun to show the overall outcome
 	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
+	GetDagParameters(ctx context.Context, dagId int) (map[string]*Parameter, error)
 }
