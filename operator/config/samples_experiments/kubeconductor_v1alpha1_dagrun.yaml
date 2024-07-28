@@ -13,5 +13,5 @@ spec:
   parameters:
     - name: value
       value: value_value
-    - name2: value2
-      secret: secret_name
+    - name: value2
+      fromSecret: secret_name

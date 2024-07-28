@@ -23,6 +23,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type DagParameterSpec struct {
+	Name string `json:"name"`
+	// +optional
+	DefaultValue string `json:"defaultValue,omitempty"`
+	// +optional
+	DefaultFromSecret string `json:"defaultFromSecret,omitempty"`
+}
+
 // TaskSpec defines the structure of a task in the DAG
 type TaskSpec struct {
 	Name        string      `json:"name"`
@@ -32,6 +40,8 @@ type TaskSpec struct {
 	RunAfter    []string    `json:"runAfter,omitempty"`
 	Backoff     Backoff     `json:"backoff"`
 	Conditional Conditional `json:"conditional"`
+	// +optional
+	Parameters []string `json:"parameters"`
 }
 
 // Backoff defines the backoff strategy for a task
@@ -49,6 +59,8 @@ type Conditional struct {
 type DAGSpec struct {
 	Schedule string     `json:"schedule"`
 	Task     []TaskSpec `json:"task"`
+	// +optional
+	Parameters []DagParameterSpec `json:"parameters"`
 }
 
 // DAGStatus defines the observed state of DAG
@@ -88,6 +100,11 @@ func (dag *DAG) ValidateDAG() error {
 		return err
 	}
 
+	// TODO: Optimise this so that we are no looping over the tasks again and again...
+
+	if err := dag.checkParameters(); err != nil {
+		return err
+	}
 	if err := dag.checkNoCycles(); err != nil {
 		return err
 	}
@@ -100,6 +117,7 @@ func (dag *DAG) ValidateDAG() error {
 	if err := dag.checkStartingTask(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -194,6 +212,7 @@ func (dag *DAG) checkAllTasksConnected() error {
 		}
 	}
 
+	// TODO: make this a util function and not a high-order function
 	visited := make(map[string]bool)
 	var dfs func(string)
 	dfs = func(name string) {
@@ -206,6 +225,7 @@ func (dag *DAG) checkAllTasksConnected() error {
 	}
 
 	var startNode string
+	// Get first node
 	for name := range taskMap {
 		startNode = name
 		break
@@ -229,4 +249,35 @@ func (dag *DAG) checkStartingTask() error {
 		}
 	}
 	return errors.New("no starting task found (a task with no runAfter dependencies)")
+}
+
+// checkParameters ensures there is at least one task that has no runAfter dependencies.
+func (dag *DAG) checkParameters() error {
+	paramsMap := map[string]bool{}
+	for _, value := range dag.Spec.Parameters {
+		if value.Name == "" {
+			return fmt.Errorf("parameter has an empty name")
+		}
+
+		if value.DefaultValue == "" && value.DefaultFromSecret == "" {
+			return fmt.Errorf("parameter does not provide defaultValur or defaultFromSecret")
+		}
+
+		if value.DefaultValue != "" && value.DefaultFromSecret != "" {
+			return fmt.Errorf("parameter does not provide defaultValur or defaultFromSecret")
+		}
+
+		paramsMap[value.Name] = true
+
+	}
+
+	for _, task := range dag.Spec.Task {
+		for _, value := range task.Parameters {
+			if _, ok := paramsMap[value]; !ok {
+				return fmt.Errorf("parameter selected in task does not exist")
+			}
+		}
+	}
+
+	return nil
 }

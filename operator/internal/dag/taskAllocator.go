@@ -32,6 +32,30 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
 
 func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
 	backoff := int32(0)
+
+	envs := []v1.EnvVar{}
+	for _, param := range task.Parameters {
+		if param.IsSecret {
+			envs = append(envs, v1.EnvVar{
+				Name: param.Name,
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: param.Value,
+						},
+						// Current Version will also look into Key "secret"
+						Key: "secret",
+					},
+				},
+			})
+		} else {
+			envs = append(envs, v1.EnvVar{
+				Name:  param.Name,
+				Value: param.Value,
+			})
+		}
+	}
+
 	job := &batchv1.Job{
 		// TODO: Refactor this to enable it to be re-used in DAG task
 		ObjectMeta: metav1.ObjectMeta{
@@ -54,6 +78,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 							Image:   task.Image,
 							Command: task.Command,
 							Args:    task.Args,
+							Env:     envs,
 						},
 					},
 					RestartPolicy: "Never",

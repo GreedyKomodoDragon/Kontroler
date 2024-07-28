@@ -10,16 +10,23 @@ metadata:
   name: dag-sample
 spec:
   schedule: "*/1 * * * *"
+  parameters:
+    - name: first
+      defaultFromSecret: secret-name
+    - name: second
+      defaultValue: value
   task:
     - name: "random"
       command: ["sh", "-c"]
       args:
         [
-          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
         ]
       image: "alpine:latest"
       backoff:
         limit: 3
+      parameters:
+        - second
       conditional:
         enabled: true
         retryCodes: [8]
@@ -36,6 +43,9 @@ spec:
       conditional:
         enabled: true
         retryCodes: [8]
+      parameters:
+        - first
+        - second
     - name: "random-c"
       command: ["sh", "-c"]
       args:

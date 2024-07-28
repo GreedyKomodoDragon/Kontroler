@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
@@ -62,17 +63,60 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	// check if dag exists
+	ok, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
+	if !ok {
+		log.Log.Info("dag does not exist", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, nil
+	}
+
+	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagId)
+	if err != nil {
+		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
+	paramMap := map[string]v1alpha1.ParameterSpec{}
+	for _, param := range dagRun.Spec.Parameters {
+		// Don't add it if it is not a valid parameter
+		paramDefault, ok := parameters[param.Name]
+		if !ok {
+			continue
+		}
+
+		if param.FromSecret != "" && paramDefault.IsSecret {
+			paramDefault.Value = param.FromSecret
+			paramMap[param.Name] = param
+			continue
+		}
+
+		if param.FromSecret == "" && !paramDefault.IsSecret {
+			paramDefault.Value = param.Value
+			paramMap[param.Name] = param
+			continue
+		}
+
+		// If you get here the parameter is invalid due to secret/value mismatch
+	}
+
+	runId, err := r.DbManager.CreateDAGRun(ctx, &dagRun.Spec, paramMap)
+	if err != nil {
+		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
 	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagId)
 	if err != nil {
 		log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagRun.Spec.DagId)
 		return ctrl.Result{}, err
 	}
 
-	runId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Spec.DagId)
-	if err != nil {
-		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
-		return ctrl.Result{}, err
-	}
+	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagId, "tasks_len", len(tasks))
 
 	// Provide task to allocator
 	for _, task := range tasks {
@@ -82,9 +126,24 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			continue
 		}
 
-		if _, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId, req.NamespacedName.Namespace); err != nil {
-			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
+		// Update defaults with values from DagRun
+		for i := 0; i < len(task.Parameters); i++ {
+			if param, ok := paramMap[task.Parameters[i].Name]; ok {
+				if task.Parameters[i].IsSecret {
+					task.Parameters[i].Value = param.FromSecret
+				} else {
+					task.Parameters[i].Value = param.Value
+				}
+			}
 		}
+
+		taskID, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId, req.NamespacedName.Namespace)
+		if err != nil {
+			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
+			continue
+		}
+
+		log.Log.Info("allocated task", "dag_id", dagRun.Spec.DagId, "task_id", task.Id, "kube_task_Id", taskID)
 
 	}
 
