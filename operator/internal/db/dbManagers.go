@@ -76,4 +76,6 @@ type DBDAGManager interface {
 	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
 	GetDagParameters(ctx context.Context, dagId int) (map[string]*Parameter, error)
 	DagExists(ctx context.Context, dagId int) (bool, error)
+	ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error)
+	MarkTaskAsFailed(ctx context.Context, taskRunId int) error
 }

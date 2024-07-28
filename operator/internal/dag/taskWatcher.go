@@ -145,9 +145,82 @@ func (t *taskWatcher) handleJobAddOrUpdate(obj interface{}) {
 	if job.Status.Failed > 0 {
 		log.Log.Info("task failed", "jobUid", job.UID, "taskRunId", taskRunId)
 
-		if err := t.dbManager.MarkOutcomeAsFailed(ctx, taskRunId); err != nil {
-			log.Log.Error(err, "failed to mark outcome as failed", "jobUid", job.UID, "event", "add/update")
+		// Extract failure details
+		pods, err := t.clientSet.CoreV1().Pods(job.Namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("job-name=%s", job.Name),
+		})
+
+		if err != nil {
+			log.Log.Error(err, "failed to list pods for job", "job", job.Name)
+			return
 		}
+
+		log.Log.Info("number of pods in job", "jobUid", job.UID, "count", len(pods.Items))
+
+		// Get Exitable codes to restart with and backoff limit
+		for _, pod := range pods.Items {
+
+			dagRunStr, ok := job.Annotations["kubeconductor/dagRun-id"]
+			if !ok {
+				log.Log.Error(err, "found pod missing kubeconductor/dagRun-id", "job", job.Name)
+				continue
+			}
+
+			if len(pod.Status.ContainerStatuses) == 0 {
+				log.Log.Error(err, "does not seem to be any containers?", "job", job.Name)
+				continue
+			}
+
+			if pod.Status.ContainerStatuses[0].State.Terminated == nil {
+				log.Log.Error(err, "missing status informationt", "job", job.Name)
+				continue
+			}
+
+			if err := t.dbManager.MarkOutcomeAsFailed(ctx, taskRunId); err != nil {
+				log.Log.Error(err, "failed to mark outcome as failed", "jobUid", job.UID, "event", "add/update")
+			}
+
+			ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+			if err != nil {
+				log.Log.Error(err, "failed to determine if pod should be re-ran", "job", job.Name)
+				continue
+			}
+
+			if !ok {
+				log.Log.Info("job has reached it max backoffLimit or exit code not recoverable", "jobUid", job.UID, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+
+				if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
+					log.Log.Error(err, "failed to mark task as failed", "jobUid", job.UID, "event", "add/update")
+				}
+
+				continue
+			}
+
+			dagRunId, err := strconv.Atoi(dagRunStr)
+			if err != nil {
+				log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
+				continue
+			}
+
+			container := pod.Spec.Containers[0]
+			// Re-use envs instead of going to database again
+			taskId, err := t.taskAllocator.AllocateTaskWithEnv(ctx,
+				db.Task{
+					Name:    container.Name,
+					Args:    container.Args,
+					Command: container.Command,
+					Image:   container.Image,
+				}, dagRunId, taskRunId, pod.Namespace, container.Env)
+
+			if err != nil {
+				log.Log.Error(err, "failed to allocate new pod")
+				continue
+			}
+
+			log.Log.Info("new task allocated allocated", "taskId", taskId)
+
+		}
+
 	}
 }
 
