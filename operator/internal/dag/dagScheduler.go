@@ -73,7 +73,8 @@ func (d *dagscheduler) Run() {
 						},
 					},
 					"spec": map[string]interface{}{
-						"dagId": dagId,
+						"dagId":      dagId,
+						"parameters": []map[string]interface{}{},
 					},
 				},
 			}

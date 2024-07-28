@@ -36,6 +36,19 @@ spec:
             properties:
               dagId:
                 type: integer
+              parameters:
+                items:
+                  properties:
+                    fromSecret:
+                      type: string
+                    name:
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
             required:
             - dagId
             type: object

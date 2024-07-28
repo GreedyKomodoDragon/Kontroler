@@ -17,6 +17,7 @@ spec:
     - name: value_name
       fromSecret: secret_name
     - name: value_name2
+      value: value
   task:
     - name: "random"
       command: ["sh", "-c"]
