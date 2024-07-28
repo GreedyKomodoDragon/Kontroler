@@ -63,6 +63,18 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	// check if dag exists
+	ok, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
+	if !ok {
+		log.Log.Info("dag does not exist", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, nil
+	}
+
 	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagId)
 	if err != nil {
 		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagId)

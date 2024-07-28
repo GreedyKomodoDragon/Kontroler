@@ -75,4 +75,5 @@ type DBDAGManager interface {
 	// Update the DAGRun to show the overall outcome
 	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
 	GetDagParameters(ctx context.Context, dagId int) (map[string]*Parameter, error)
+	DagExists(ctx context.Context, dagId int) (bool, error)
 }

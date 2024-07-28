@@ -607,3 +607,18 @@ func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagId int) (m
 
 	return parameters, nil
 }
+
+func (p *postgresDAGManager) DagExists(ctx context.Context, dagId int) (bool, error) {
+	var name string
+	err := p.pool.QueryRow(ctx, `
+	SELECT name
+	FROM DAG_Parameters
+	WHERE dag_id = $1;
+	`, dagId).Scan(&name)
+
+	if err != nil && err != pgx.ErrNoRows {
+		return false, err
+	}
+
+	return name != "", nil
+}
