@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type postgresDAGManager struct {
@@ -104,6 +106,18 @@ CREATE TABLE IF NOT EXISTS Task_Runs (
     FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
 	FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
 );
+
+CREATE TABLE IF NOT EXISTS Task_Pods (
+    Pod_UID VARCHAR(255) NOT NULL,
+    task_run_id INTEGER NOT NULL,
+    exitCode INTEGER,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (Pod_UID),
+    FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id)
+);
+
 `
 
 	if _, err := p.pool.Exec(ctx, initSQL); err != nil {
@@ -488,7 +502,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	return tasks, nil
 }
 
-func (p *postgresDAGManager) MarkOutcomeAsFailed(ctx context.Context, taskRunId int) error {
+func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -685,24 +699,40 @@ func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int
 	return tx.Commit(ctx)
 }
 
-// CREATE TABLE IF NOT EXISTS Task_Runs (
-// 	task_run_id SERIAL PRIMARY KEY,
-// 	run_id INTEGER NOT NULL,
-//     task_id INTEGER NOT NULL,
-// 	status VARCHAR(255) NOT NULL,
-// 	attempts INTEGER NOT NULL,
-//     FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
-// 	FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
-// );
+func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
 
-// CREATE TABLE IF NOT EXISTS Tasks (
-// 	task_id SERIAL PRIMARY KEY,
-//     name VARCHAR(255) NOT NULL,
-//     command TEXT[] NOT NULL,
-//     args TEXT[] NOT NULL,
-//     image VARCHAR(255) NOT NULL,
-// 	parameters TEXT[],
-// 	backoffLimit BIGINT NOT NULL,
-// 	isConditional BOOL NOT NULL,
-// 	retryCodes INTEGER[]
-// );
+	defer tx.Rollback(ctx)
+
+	// Get the current status and timestamp from the database
+	var currentStatus v1.PodPhase
+	var currentTimestamp time.Time
+	err = tx.QueryRow(ctx, `
+        SELECT status, updated_at FROM Task_Pods WHERE Pod_UID = $1 AND task_run_id = $2
+    `, podUid, taskRunID).Scan(&currentStatus, &currentTimestamp)
+
+	if err != nil && err != pgx.ErrNoRows {
+		return err
+	}
+
+	// Compare timestamps and skip the update if the current status is newer
+	if currentTimestamp.After(tStamp) {
+		return nil // The database already has a newer status, so skip this update
+	}
+
+	// Insert the new status with the current timestamp
+	if _, err = tx.Exec(ctx, `
+        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, updated_at, exitCode)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (Pod_UID) 
+        DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
+        WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
+    `, podUid, taskRunID, name, status, tStamp, exitCode); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}

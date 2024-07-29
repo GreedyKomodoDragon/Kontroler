@@ -2,8 +2,10 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -69,7 +71,7 @@ type DBDAGManager interface {
 	// Add an update to show the task has been started
 	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
 	// Mark the outcome of the taskRun
-	MarkOutcomeAsFailed(ctx context.Context, taskRunId int) error
+	IncrementAttempts(ctx context.Context, taskRunId int) error
 	// Within the same transaction, and get next task(s) in the DAG
 	MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error)
 	// Update the DAGRun to show the overall outcome
@@ -78,4 +80,5 @@ type DBDAGManager interface {
 	DagExists(ctx context.Context, dagId int) (bool, error)
 	ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error)
 	MarkTaskAsFailed(ctx context.Context, taskRunId int) error
+	MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32) error
 }

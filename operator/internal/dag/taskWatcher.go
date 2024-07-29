@@ -176,10 +176,6 @@ func (t *taskWatcher) handleJobAddOrUpdate(obj interface{}) {
 				continue
 			}
 
-			if err := t.dbManager.MarkOutcomeAsFailed(ctx, taskRunId); err != nil {
-				log.Log.Error(err, "failed to mark outcome as failed", "jobUid", job.UID, "event", "add/update")
-			}
-
 			ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 			if err != nil {
 				log.Log.Error(err, "failed to determine if pod should be re-ran", "job", job.Name)
@@ -217,10 +213,15 @@ func (t *taskWatcher) handleJobAddOrUpdate(obj interface{}) {
 				continue
 			}
 
+			if err := t.dbManager.IncrementAttempts(ctx, taskRunId); err != nil {
+				log.Log.Error(err, "failed to increment attempts", "taskRunId", taskRunId)
+			}
+
 			log.Log.Info("new task allocated allocated", "taskId", taskId)
 
 		}
 
+		return
 	}
 }
 
