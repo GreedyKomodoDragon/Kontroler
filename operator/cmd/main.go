@@ -149,10 +149,29 @@ func main() {
 	// cronParser
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dbName := "kubeconductor"
-	dbUser := "postgres"
-	dbPassword := ""
-	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		setupLog.Error(err, "DB_NAME is not set")
+		os.Exit(1)
+	}
+
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		setupLog.Error(err, "DB_USER is not set")
+		os.Exit(1)
+	}
+
+	pgEndpoint := os.Getenv("DB_ENDPOINT")
+	if dbUser == "" {
+		setupLog.Error(err, "DB_ENDPOINT is not set")
+		os.Exit(1)
+	}
+
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbUser == "" {
+		setupLog.Error(err, "DB_PASSWORD is not set")
+		os.Exit(1)
+	}
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
 	if err != nil {
