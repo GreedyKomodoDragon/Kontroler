@@ -1,0 +1,1 @@
+kubectl get jobs --all-namespaces -o json | jq -r '.items[] | select(.status.conditions[]? | select(.type == "Complete" or .type == "Failed")) | .metadata.name' | xargs -I {} kubectl delete job {}

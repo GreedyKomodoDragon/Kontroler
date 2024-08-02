@@ -29,7 +29,7 @@ spec:
         - second
       conditional:
         enabled: true
-        retryCodes: [8]
+        retryCodes: [8, 1]
     - name: "random-b"
       command: ["sh", "-c"]
       args:

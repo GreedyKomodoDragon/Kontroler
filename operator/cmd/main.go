@@ -33,6 +33,7 @@ import (
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/pod"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
 	//+kubebuilder:scaffold:imports
 )
@@ -148,10 +149,29 @@ func main() {
 	// cronParser
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dbName := "kubeconductor"
-	dbUser := "postgres"
-	dbPassword := ""
-	pgEndpoint := "my-release-postgresql.default.svc.cluster.local:5432"
+	dbName := os.Getenv("DB_NAME")
+	if dbName == "" {
+		setupLog.Error(err, "DB_NAME is not set")
+		os.Exit(1)
+	}
+
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		setupLog.Error(err, "DB_USER is not set")
+		os.Exit(1)
+	}
+
+	pgEndpoint := os.Getenv("DB_ENDPOINT")
+	if dbUser == "" {
+		setupLog.Error(err, "DB_ENDPOINT is not set")
+		os.Exit(1)
+	}
+
+	dbPassword := os.Getenv("DB_PASSWORD")
+	if dbUser == "" {
+		setupLog.Error(err, "DB_PASSWORD is not set")
+		os.Exit(1)
+	}
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
 	if err != nil {
@@ -201,10 +221,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	podWatcher, err := pod.NewPodWatcher(clientset, dbDAGManager)
+	if err != nil {
+		setupLog.Error(err, "failed to create pod watcher")
+		os.Exit(1)
+	}
+
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
 
 	go taskScheduler.Run()
 	go taskWatcher.StartWatching()
+	go podWatcher.StartWatching()
 
 	if err = (&controller.ScheduleReconciler{
 		Client:    mgr.GetClient(),

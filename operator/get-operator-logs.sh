@@ -1,0 +1,1 @@
+kubectl logs $(kubectl get pods --all-namespaces | grep operator-controller | awk '{print $2}') -f -n operator-system
