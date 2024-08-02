@@ -32,62 +32,7 @@ const DagComponent = ({ dag }: Props) => {
       {open() && (
         <>
           <DagDiagram
-            connections={{
-              task2: ["task1", "task13"],
-              task3: ["task1", "task13"],
-              task4: ["task2"],
-              task9: ["task6"],
-              task10: ["task6", "task7", "task8"],
-              task11: ["task9", "task10"],
-              task12: ["task10"],
-              task1: [],
-              task5: ["task2"],
-              task6: ["task3"],
-              task7: ["task4", "task5"],
-              task8: ["task5"],
-              task13: [],
-            }}
-            taskInfo={{
-              task1: {
-                status: "finished",
-              },
-              task2: {
-                status: "finished",
-              },
-              task3: {
-                status: "finished",
-              },
-              task4: {
-                status: "finished",
-              },
-              task5: {
-                status: "finished",
-              },
-              task6: {
-                status: "finished",
-              },
-              task7: {
-                status: "finished",
-              },
-              task8: {
-                status: "finished",
-              },
-              task9: {
-                status: "running",
-              },
-              task10: {
-                status: "finished",
-              },
-              task11: {
-                status: "failed",
-              },
-              task12: {
-                status: "pending",
-              },
-              task13: {
-                status: "finished",
-              },
-            }}
+            connections={dag.connections}
           />
         </>
       )}

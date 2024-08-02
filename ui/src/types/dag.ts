@@ -5,6 +5,7 @@ export type Dag = {
   version: number;
   active: boolean;
   nexttime: string;
+  connections: Record<string, string[]>;
 };
 
 export type DagRunMeta = {

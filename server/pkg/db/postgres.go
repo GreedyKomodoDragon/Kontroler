@@ -152,6 +152,11 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 			return nil, err
 		}
 
+		// Get the connections
+		meta.Connections, err = p.getDagConnections(ctx, meta.DagId)
+		if err != nil {
+			return nil, err
+		}
 		metas = append(metas, &meta)
 	}
 
@@ -181,44 +186,13 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	}
 
 	// Get the connections
-	rows, err := tx.Query(ctx, `
-	SELECT 
-		t.task_id, 
-		CASE 
-			WHEN array_agg(td.depends_on_task_id) = ARRAY[NULL]::INTEGER[] THEN ARRAY[]::INTEGER[]
-			ELSE COALESCE(array_agg(td.depends_on_task_id), ARRAY[]::INTEGER[])
-    	END AS dependencies
-	FROM 
-		Tasks t
-	LEFT JOIN 
-		Dependencies td ON t.task_id = td.task_id
-	WHERE t.task_id in (
-		SELECT task_id
-		FROM DAG_Tasks
-		WHERE dag_id = $1
-	)
-	GROUP BY 
-		t.task_id;`, dagId)
-
+	connections, err := p.getDagConnections(ctx, dagId)
 	if err != nil {
 		return nil, err
 	}
 
-	defer rows.Close()
-
-	connections := map[int][]int{}
-	for rows.Next() {
-		var taskId int
-		var taskDeps []int
-		if err := rows.Scan(&taskId, &taskDeps); err != nil {
-			return nil, err
-		}
-
-		connections[taskId] = taskDeps
-	}
-
 	// Get the current status of each task
-	rows, err = tx.Query(ctx, `
+	rows, err := tx.Query(ctx, `
 	SELECT task_id, status
 	FROM Task_Runs
 	WHERE run_id = $1;`, dagRunId)
@@ -283,4 +257,45 @@ func (p *postgresManager) GetDagRuns(ctx context.Context, limit int, offset int)
 
 func (p *postgresManager) Close() {
 	p.pool.Close()
+}
+
+func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map[int][]int, error) {
+	// Get the connections
+	rows, err := p.pool.Query(ctx, `
+	SELECT 
+		t.task_id, 
+		CASE 
+			WHEN array_agg(td.depends_on_task_id) = ARRAY[NULL]::INTEGER[] THEN ARRAY[]::INTEGER[]
+			ELSE COALESCE(array_agg(td.depends_on_task_id), ARRAY[]::INTEGER[])
+    	END AS dependencies
+	FROM 
+		Tasks t
+	LEFT JOIN 
+		Dependencies td ON t.task_id = td.task_id
+	WHERE t.task_id in (
+		SELECT task_id
+		FROM DAG_Tasks
+		WHERE dag_id = $1
+	)
+	GROUP BY 
+		t.task_id;`, dagId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	connections := map[int][]int{}
+	for rows.Next() {
+		var taskId int
+		var taskDeps []int
+		if err := rows.Scan(&taskId, &taskDeps); err != nil {
+			return nil, err
+		}
+
+		connections[taskId] = taskDeps
+	}
+
+	return connections, nil
 }
