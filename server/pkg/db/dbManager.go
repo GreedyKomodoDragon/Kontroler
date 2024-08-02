@@ -54,12 +54,13 @@ type DAG struct {
 }
 
 type DAGMetaData struct {
-	DagId    string    `json:"dagId"`
-	Name     string    `json:"name"`
-	Schedule string    `json:"schedule"`
-	Version  int       `json:"version"`
-	Active   bool      `json:"active"`
-	NextTime time.Time `json:"nexttime"`
+	DagId       int           `json:"dagId"`
+	Name        string        `json:"name"`
+	Schedule    string        `json:"schedule"`
+	Version     int           `json:"version"`
+	Active      bool          `json:"active"`
+	NextTime    time.Time     `json:"nexttime"`
+	Connections map[int][]int `json:"connections"`
 }
 
 type TaskInfo struct {

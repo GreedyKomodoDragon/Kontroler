@@ -6,7 +6,7 @@ type Task = {
 
 type DagDiagramProps = {
   connections: Record<string, string[]>;
-  taskInfo: Record<string, Task>;
+  taskInfo?: Record<string, Task>;
 };
 
 export default function DagDiagram(props: DagDiagramProps) {
@@ -178,6 +178,10 @@ export default function DagDiagram(props: DagDiagramProps) {
   });
 
   const getTaskColour = (taskId: string) => {
+    if (taskInfo == undefined || taskInfo == null) {
+      return "bg-neutral-500"; 
+    }
+
     switch (taskInfo[taskId].status) {
       case "success":
         return "bg-green-500";
