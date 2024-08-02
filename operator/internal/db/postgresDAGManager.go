@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type postgresDAGManager struct {
@@ -57,7 +59,10 @@ CREATE TABLE IF NOT EXISTS Tasks (
     command TEXT[] NOT NULL,
     args TEXT[] NOT NULL,
     image VARCHAR(255) NOT NULL,
-	parameters TEXT[]
+	parameters TEXT[],
+	backoffLimit BIGINT NOT NULL,
+	isConditional BOOL NOT NULL,
+	retryCodes INTEGER[]
 );
 
 CREATE TABLE IF NOT EXISTS Dependencies (
@@ -97,9 +102,22 @@ CREATE TABLE IF NOT EXISTS Task_Runs (
 	run_id INTEGER NOT NULL,
     task_id INTEGER NOT NULL,
 	status VARCHAR(255) NOT NULL,
+	attempts INTEGER NOT NULL,
     FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
 	FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
 );
+
+CREATE TABLE IF NOT EXISTS Task_Pods (
+    Pod_UID VARCHAR(255) NOT NULL,
+    task_run_id INTEGER NOT NULL,
+    exitCode INTEGER,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (Pod_UID),
+    FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id)
+);
+
 `
 
 	if _, err := p.pool.Exec(ctx, initSQL); err != nil {
@@ -214,7 +232,11 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec) error {
 	// Insert the task
 	var taskId int
-	err := tx.QueryRow(ctx, "INSERT INTO Tasks (name, command, args, image, parameters) VALUES ($1, $2, $3, $4, $5) RETURNING task_id", task.Name, task.Command, task.Args, task.Image, task.Parameters).Scan(&taskId)
+	err := tx.QueryRow(ctx, `
+	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes) 
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+	RETURNING task_id`,
+		task.Name, task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit, task.Conditional.Enabled, task.Conditional.RetryCodes).Scan(&taskId)
 	if err != nil {
 		return err
 	}
@@ -480,7 +502,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	return tasks, nil
 }
 
-func (p *postgresDAGManager) MarkOutcomeAsFailed(ctx context.Context, taskRunId int) error {
+func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -488,28 +510,26 @@ func (p *postgresDAGManager) MarkOutcomeAsFailed(ctx context.Context, taskRunId 
 
 	defer tx.Rollback(ctx)
 
-	var runId int
-	err = tx.QueryRow(ctx, "UPDATE Task_Runs SET status = 'failed' WHERE task_run_id = $1 RETURNING run_id", taskRunId).Scan(&runId)
-	if err != nil && err != pgx.ErrNoRows {
+	if _, err := tx.Exec(ctx, `
+	UPDATE Task_Runs 
+	SET attempts = attempts + 1
+	WHERE task_run_id = $1 
+	`, taskRunId); err != nil {
 		return err
 	}
 
-	if _, err := tx.Exec(ctx, `
-        UPDATE DAG_Runs 
-        SET 
-            failedCount = failedCount + 1,
-            status = 'failed'
-        WHERE run_id = $1;`, runId); err != nil {
-		return err
-	}
+	// TODO: Mark pod as failed
 
 	return tx.Commit(ctx)
 }
 
 func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {
 	var taskRunId int
-	err := p.pool.QueryRow(ctx, "INSERT INTO Task_Runs (run_id, task_id, status) VALUES ($1, $2, 'running') RETURNING task_run_id", runId, taskId).Scan(&taskRunId)
-	if err != nil {
+	if err := p.pool.QueryRow(ctx, `
+	INSERT INTO Task_Runs (run_id, task_id, status, attempts) 
+	VALUES ($1, $2, 'running', 1) 
+	RETURNING task_run_id`,
+		runId, taskId).Scan(&taskRunId); err != nil {
 		return 0, err
 	}
 
@@ -621,4 +641,98 @@ func (p *postgresDAGManager) DagExists(ctx context.Context, dagId int) (bool, er
 	}
 
 	return name != "", nil
+}
+
+func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error) {
+	// Query to check if rerun is needed based on join and conditions
+	query := `
+	SELECT t.backoffLimit, r.attempts
+	FROM tasks t
+	INNER JOIN Task_Runs r ON t.task_id = r.task_id
+	WHERE r.task_run_id = $1 AND r.attempts <= t.backoffLimit AND (t.isConditional = FALSE or $2 = ANY(t.retryCodes));
+    `
+
+	rows, err := p.pool.Query(ctx, query, taskRunid, exitCode)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		// No rows returned, so rerun is not needed
+		return false, nil
+	}
+
+	// At least one row returned, so rerun may be needed
+	return true, nil
+}
+
+func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE Task_Runs 
+		SET status = 'failed' 
+		WHERE task_run_id = $1 ;
+	`, taskRunId); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+	    UPDATE DAG_Runs
+	    SET
+	        failedCount = failedCount + 1,
+	        status = 'failed'
+	    WHERE run_id in (
+			SELECT run_id
+			FROM Task_Runs
+			WHERE task_run_id = $1
+		);`, taskRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
+
+	// Get the current status and timestamp from the database
+	var currentStatus v1.PodPhase
+	var currentTimestamp time.Time
+	err = tx.QueryRow(ctx, `
+        SELECT status, updated_at FROM Task_Pods WHERE Pod_UID = $1 AND task_run_id = $2
+    `, podUid, taskRunID).Scan(&currentStatus, &currentTimestamp)
+
+	if err != nil && err != pgx.ErrNoRows {
+		return err
+	}
+
+	// Compare timestamps and skip the update if the current status is newer
+	if currentTimestamp.After(tStamp) {
+		return nil // The database already has a newer status, so skip this update
+	}
+
+	// Insert the new status with the current timestamp
+	if _, err = tx.Exec(ctx, `
+        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, updated_at, exitCode)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (Pod_UID) 
+        DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
+        WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
+    `, podUid, taskRunID, name, status, tStamp, exitCode); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

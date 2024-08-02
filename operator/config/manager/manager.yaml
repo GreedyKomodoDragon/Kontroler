@@ -73,6 +73,15 @@ spec:
         image: controller:latest
         imagePullPolicy: Always
         name: manager
+        env:
+        - name: DB_NAME
+          value: kubeconductor
+        - name: DB_USER
+          value: postgres
+        - name: DB_ENDPOINT
+          value: my-release-postgresql.default.svc.cluster.local:5432
+        - name: DB_PASSWORD
+          value: 
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
