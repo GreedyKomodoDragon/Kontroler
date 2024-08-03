@@ -81,7 +81,7 @@ spec:
         - name: DB_ENDPOINT
           value: my-release-postgresql.default.svc.cluster.local:5432
         - name: DB_PASSWORD
-          value: lWRhiAKmqv
+          value: 
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
