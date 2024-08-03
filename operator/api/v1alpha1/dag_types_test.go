@@ -37,6 +37,23 @@ func TestValidateDAG(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "single task DAG",
+			dag: v1alpha1.DAG{
+				Spec: v1alpha1.DAGSpec{
+					Schedule: "*/5 * * * *",
+					Task: []v1alpha1.TaskSpec{
+						{
+							Name:    "task1",
+							Command: []string{"sh", "-c"},
+							Args:    []string{"echo 'Hello, World!'"},
+							Image:   "alpine:latest",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing fields",
 			dag: v1alpha1.DAG{
 				Spec: v1alpha1.DAGSpec{

@@ -42,7 +42,7 @@ spec:
         limit: 3
       conditional:
         enabled: true
-        retryCodes: [8]
+        retryCodes: [1]
       parameters:
         - first
         - second
@@ -58,4 +58,4 @@ spec:
         limit: 3
       conditional:
         enabled: true
-        retryCodes: [8]
+        retryCodes: [1]

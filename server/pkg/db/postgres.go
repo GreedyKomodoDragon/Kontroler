@@ -299,3 +299,96 @@ func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map
 
 	return connections, nil
 }
+
+func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRunAll, error) {
+	meta := &DagRunAll{
+		Id: dagRunId,
+	}
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT dag_id, status, successfulCount, failedCount
+	FROM DAG_Runs
+	WHERE run_id = $1;
+	`, dagRunId).Scan(&meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount); err != nil {
+		return nil, err
+	}
+
+	// Get the connections
+	connections, err := p.getDagConnections(ctx, meta.DagId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the current status of each task
+	rows, err := p.pool.Query(ctx, `
+	SELECT task_id, status
+	FROM Task_Runs
+	WHERE run_id = $1;`, dagRunId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	taskInfo := map[int]TaskInfo{}
+	for rows.Next() {
+		var taskId int
+		taskStatus := TaskInfo{}
+		if err := rows.Scan(&taskId, &taskStatus.Status); err != nil {
+			return nil, err
+		}
+
+		taskInfo[taskId] = taskStatus
+	}
+
+	for key := range connections {
+		if _, ok := taskInfo[key]; !ok {
+			taskInfo[key] = TaskInfo{
+				Status: "pending",
+			}
+		}
+	}
+
+	meta.Connections = connections
+	meta.TaskInfo = taskInfo
+
+	return meta, nil
+}
+
+func (p *postgresManager) GetTaskDetails(ctx context.Context, dagRunId, taskId int) (*TaskDetails, error) {
+	task := &TaskDetails{}
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT task_run_id, status, attempts
+	FROM Task_Runs
+	WHERE run_id = $1 AND task_id = $2;
+	`, dagRunId, taskId).Scan(&task.Id, &task.Status, &task.Attempts); err != nil {
+		return nil, err
+	}
+
+	// Get the current status of each task
+	rows, err := p.pool.Query(ctx, `
+	SELECT Pod_UID, exitCode, name, status
+	FROM Task_Pods
+	WHERE task_run_id = $1;`, task.Id)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	task.Pods = []*TaskPod{}
+
+	for rows.Next() {
+		pod := &TaskPod{}
+		if err := rows.Scan(&pod.PodUID, &pod.ExitCode, &pod.Name, &pod.Status); err != nil {
+			return nil, err
+		}
+		task.Pods = append(task.Pods, pod)
+	}
+
+	return task, nil
+
+}

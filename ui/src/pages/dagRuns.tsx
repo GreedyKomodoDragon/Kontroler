@@ -10,7 +10,7 @@ const DagRuns: Component = () => {
 
   return (
     <div class="p-4">
-      <h2 class="text-2xl font-semibold mb-4">Your DAGs</h2>
+      <h2 class="text-2xl font-semibold mb-4">DAG Runs</h2>
       <div class="mt-4"></div>
       <div>
         {runs().map((run) => (

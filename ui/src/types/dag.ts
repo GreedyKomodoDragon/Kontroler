@@ -16,11 +16,35 @@ export type DagRunMeta = {
   failedCount: number;
 };
 
-export type DagRun = {
+export type DagRunGraph = {
   connections: Record<string, string[]>;
   taskInfo: Record<string, Task>;
 };
 
 export type Task = {
   status: string;
+};
+
+export type DagRunAll = {
+  id: number;
+  dagId: number;
+  status: string;
+  successfulCount: number;
+  failedCount: number;
+  connections: Record<string, string[]>;
+  taskInfo: Record<string, Task>;
+};
+
+export type TaskPod = {
+  podUID: string;
+  status: string;
+  name: string;
+  exitCode: number;
+};
+
+export type TaskDetails = {
+  id: number;
+  status: string;
+  attempts: number;
+  pods: TaskPod[];
 };

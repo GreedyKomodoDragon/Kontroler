@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { Setter, createSignal, onCleanup, onMount } from "solid-js";
 
 type Task = {
   status: string;
@@ -7,6 +7,7 @@ type Task = {
 type DagDiagramProps = {
   connections: Record<string, string[]>;
   taskInfo?: Record<string, Task>;
+  setSelectedTask?: Setter<number>;
 };
 
 export default function DagDiagram(props: DagDiagramProps) {
@@ -179,7 +180,7 @@ export default function DagDiagram(props: DagDiagramProps) {
 
   const getTaskColour = (taskId: string) => {
     if (taskInfo == undefined || taskInfo == null) {
-      return "bg-neutral-500"; 
+      return "bg-neutral-500";
     }
 
     switch (taskInfo[taskId].status) {
@@ -202,9 +203,16 @@ export default function DagDiagram(props: DagDiagramProps) {
     >
       {Object.entries(taskPositions()).map(([taskId, pos]) => (
         <div
-          class={`pipeline-task ${getTaskColour(taskId)} text-white w-24 h-12 flex justify-center items-center rounded absolute z-10`}
+          class={`cursor-pointer pipeline-task ${getTaskColour(
+            taskId
+          )} text-white w-24 h-12 flex justify-center items-center rounded absolute z-10`}
           id={taskId}
           style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
+          onClick={() => {
+            if (props.setSelectedTask) {
+              props.setSelectedTask(parseInt(taskId));
+            }
+          }}
         >
           {taskId.replace("task", "Task ")}
         </div>
