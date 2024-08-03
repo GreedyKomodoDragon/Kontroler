@@ -77,6 +77,41 @@ func addDags(router fiber.Router, dbManager db.DbManager) {
 		return c.Status(fiber.StatusOK).JSON(dagRun)
 	})
 
+	dagRouter.Get("/run/all/:id", func(c *fiber.Ctx) error {
+		id, err := strconv.Atoi(c.Params("id"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		dagRun, err := dbManager.GetDagRunAll(c.Context(), id)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag run all")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(dagRun)
+	})
+
+	dagRouter.Get("/run/task/:runId/:taskId", func(c *fiber.Ctx) error {
+		runId, err := strconv.Atoi(c.Params("runId"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		taskId, err := strconv.Atoi(c.Params("taskId"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		taskDetails, err := dbManager.GetTaskDetails(c.Context(), runId, taskId)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting GetTaskDetails")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(taskDetails)
+	})
+
 }
 
 func addCronJob(router fiber.Router, dbManager db.DbManager) {

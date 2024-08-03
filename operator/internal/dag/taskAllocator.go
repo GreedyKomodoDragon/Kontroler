@@ -138,6 +138,16 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 		Spec: batchv1.JobSpec{
 			BackoffLimit: &backoff,
 			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"managed-by":         "kubeconductor",
+						"kubeconductor/type": "taskPod",
+					},
+					Annotations: map[string]string{
+						"kubeconductor/task-rid":  strconv.Itoa(taskRunId),
+						"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
+					},
+				},
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{
 						{
