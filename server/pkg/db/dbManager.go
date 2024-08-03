@@ -80,6 +80,30 @@ type DagRun struct {
 	TaskInfo    map[int]TaskInfo `json:"taskInfo"`
 }
 
+type DagRunAll struct {
+	Id              int              `json:"id"`
+	DagId           int              `json:"dagId"`
+	Status          string           `json:"status"`
+	SuccessfulCount int              `json:"successfulCount"`
+	FailedCount     int              `json:"failedCount"`
+	Connections     map[int][]int    `json:"connections"`
+	TaskInfo        map[int]TaskInfo `json:"taskInfo"`
+}
+
+type TaskDetails struct {
+	Id       int        `json:"id"`
+	Status   string     `json:"status"`
+	Attempts int        `json:"attempts"`
+	Pods     []*TaskPod `json:"pods"`
+}
+
+type TaskPod struct {
+	PodUID   string `json:"podUID"`
+	ExitCode *int   `json:"exitCode"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+}
+
 type DbManager interface {
 	GetAllCronJobs(ctx context.Context) ([]*CronJob, error)
 	GetAllRuns(ctx context.Context, limit int, offset int) ([]*Run, error)
@@ -87,6 +111,8 @@ type DbManager interface {
 	GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error)
 	GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error)
 	GetDagRun(ctx context.Context, dagRunId int) (*DagRun, error)
+	GetDagRunAll(ctx context.Context, dagRunId int) (*DagRunAll, error)
+	GetTaskDetails(ctx context.Context, dagRunId, taskId int) (*TaskDetails, error)
 
 	Close()
 }
