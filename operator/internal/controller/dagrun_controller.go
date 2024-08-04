@@ -104,7 +104,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// If you get here the parameter is invalid due to secret/value mismatch
 	}
 
-	runId, err := r.DbManager.CreateDAGRun(ctx, &dagRun.Spec, paramMap)
+	runId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Name, &dagRun.Spec, paramMap)
 	if err != nil {
 		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
 		return ctrl.Result{}, err
