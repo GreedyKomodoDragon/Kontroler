@@ -1,7 +1,10 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/gob"
 	"fmt"
 	"time"
 
@@ -37,6 +40,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
     dag_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
 	version INTEGER NOT NULL,
+	hash VARCHAR(64) NOT NULL,
     schedule VARCHAR(255) NOT NULL,
 	namespace VARCHAR(255) NOT NULL,
 	active BOOL NOT NULL,
@@ -127,6 +131,16 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
 	return nil
 }
 
+func hashDagSpec(s *v1alpha1.DAGSpec) []byte {
+	var b bytes.Buffer
+	gob.NewEncoder(&b).Encode(s)
+
+	hash := sha256.New()
+	hash.Write(b.Bytes())
+
+	return hash.Sum(nil)
+}
+
 func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
 	// Check if the DAG already exists
 	// Begin transaction
@@ -140,9 +154,20 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 
 	var existingDAGID int
 	var version int
-	err = tx.QueryRow(ctx, "SELECT dag_id, version FROM DAGs WHERE name = $1", dag.Name).Scan(&existingDAGID, &version)
+	var hash string
+
+	err = tx.QueryRow(ctx, `
+	SELECT dag_id, version, hash
+	FROM DAGs
+	WHERE name = $1
+	ORDER BY version DESC;`, dag.Name).Scan(&existingDAGID, &version, &hash)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
+	}
+
+	hashValue := fmt.Sprintf("%x", hashDagSpec(&dag.Spec))
+	if hash == hashValue {
+		return fmt.Errorf("applying the same dag")
 	}
 
 	if existingDAGID != 0 {
@@ -150,7 +175,7 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 	}
 
 	// DAG does not exist, insert it
-	if err := p.insertDAG(ctx, tx, dag, version, namespace); err != nil {
+	if err := p.insertDAG(ctx, tx, dag, version, namespace, hashValue); err != nil {
 		return err
 	}
 
@@ -177,7 +202,7 @@ func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name st
 }
 
 // insertDAG inserts a new DAG object into the database.
-func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1alpha1.DAG, version int, namespace string) error {
+func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1alpha1.DAG, version int, namespace string, hash string) error {
 
 	// Parse the cron expression
 	sched, err := p.parser.Parse(dag.Spec.Schedule)
@@ -190,9 +215,9 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	var dagID int
 	if err = tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, schedule, namespace, active, nexttime, taskCount) 
-	VALUES ($1, $2, $3, $4, TRUE, $5, $6) 
-	RETURNING dag_id`, dag.Name, version, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount) 
+	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7)
+	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
 		return err
 	}
 
