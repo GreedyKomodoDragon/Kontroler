@@ -213,7 +213,7 @@ func TestPostgresDAGManager_CreateDAGRun(t *testing.T) {
 		DagId: 1,
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 }
@@ -304,7 +304,7 @@ func TestPostgresDAGManager_MarkDAGRunOutcome(t *testing.T) {
 		DagId: 1,
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	err = dm.MarkDAGRunOutcome(context.Background(), runID, "success")
@@ -352,7 +352,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 		DagId: 1,
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), 1)
@@ -418,7 +418,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 		DagId: 1,
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), 1)
@@ -469,7 +469,7 @@ func TestPostgresDAGManager_MarkTaskAsStarted(t *testing.T) {
 		DagId: 1,
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	taskID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
