@@ -85,11 +85,13 @@ CREATE TABLE IF NOT EXISTS DAG_Tasks (
 
 CREATE TABLE IF NOT EXISTS DAG_Runs (
 	run_id SERIAL PRIMARY KEY,
+	name VARCHAR(255) NOT NULL,
     dag_id INTEGER NOT NULL,
 	status VARCHAR(255) NOT NULL,
 	successfulCount INTEGER NOT NULL,
 	failedCount INTEGER NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
+	UNIQUE(name)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Run_Parameters (
@@ -287,7 +289,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	return nil
 }
 
-func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
+func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -297,7 +299,10 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, dag *v1alpha1.Dag
 
 	// Map the task to the DAG
 	var dagRunID int
-	if err := tx.QueryRow(ctx, "INSERT INTO DAG_Runs (dag_id, status, successfulCount, failedCount) VALUES ($1, 'running', 0, 0) RETURNING run_id", dag.DagId).Scan(&dagRunID); err != nil {
+	if err := tx.QueryRow(ctx, `
+	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount) 
+	VALUES ($1, $2, 'running', 0, 0) 
+	RETURNING run_id`, dag.DagId, name).Scan(&dagRunID); err != nil {
 		return 0, err
 	}
 
