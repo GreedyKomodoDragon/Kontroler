@@ -57,6 +57,35 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		}
 	}
 
+	podSpec := v1.PodSpec{
+		Containers: []v1.Container{
+			{
+				Name:    task.Name,
+				Image:   task.Image,
+				Command: task.Command,
+				Args:    task.Args,
+				Env:     envs,
+			},
+		},
+		RestartPolicy: "Never",
+	}
+
+	// Volumes []corev1.Volume `json:"volumes,omitempty"`
+	// // +optional
+	// VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+
+	if task.PodTemplate != nil {
+		podSpec.Volumes = task.PodTemplate.Volumes
+		podSpec.ImagePullSecrets = task.PodTemplate.ImagePullSecrets
+		podSpec.SecurityContext = task.PodTemplate.SecurityContext
+		podSpec.NodeSelector = task.PodTemplate.NodeSelector
+		podSpec.Tolerations = task.PodTemplate.Tolerations
+		podSpec.Affinity = task.PodTemplate.Affinity
+		podSpec.ServiceAccountName = task.PodTemplate.ServiceAccountName
+		podSpec.AutomountServiceAccountToken = task.PodTemplate.AutomountServiceAccountToken
+		podSpec.Containers[0].VolumeMounts = task.PodTemplate.VolumeMounts
+	}
+
 	job := &batchv1.Job{
 		// TODO: Refactor this to enable it to be re-used in DAG task
 		ObjectMeta: metav1.ObjectMeta{
@@ -82,18 +111,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 						"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
 					},
 				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name:    task.Name,
-							Image:   task.Image,
-							Command: task.Command,
-							Args:    task.Args,
-							Env:     envs,
-						},
-					},
-					RestartPolicy: "Never",
-				},
+				Spec: podSpec,
 			},
 		},
 	}

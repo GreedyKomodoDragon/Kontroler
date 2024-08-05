@@ -17,9 +17,12 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,6 +32,36 @@ type DagParameterSpec struct {
 	DefaultValue string `json:"defaultValue,omitempty"`
 	// +optional
 	DefaultFromSecret string `json:"defaultFromSecret,omitempty"`
+}
+
+// PodTemplateSpec defines the template for the pod of a task
+type PodTemplateSpec struct {
+	// +optional
+	Volumes []corev1.Volume `json:"volumes,omitempty"`
+	// +optional
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+	// +optional
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+	// +optional
+	SecurityContext *v1.PodSecurityContext `json:"securityContext,omitempty"`
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+	// +optional
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+}
+
+func (p PodTemplateSpec) Serialize() (string, error) {
+	jsonData, err := json.Marshal(p)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
 }
 
 // TaskSpec defines the structure of a task in the DAG
@@ -41,7 +74,9 @@ type TaskSpec struct {
 	Backoff     Backoff     `json:"backoff"`
 	Conditional Conditional `json:"conditional"`
 	// +optional
-	Parameters []string `json:"parameters"`
+	Parameters []string `json:"parameters,omitempty"`
+	// +optional
+	PodTemplate *PodTemplateSpec `json:"podTemplate,omitempty"`
 }
 
 // Backoff defines the backoff strategy for a task
@@ -60,7 +95,7 @@ type DAGSpec struct {
 	Schedule string     `json:"schedule"`
 	Task     []TaskSpec `json:"task"`
 	// +optional
-	Parameters []DagParameterSpec `json:"parameters"`
+	Parameters []DagParameterSpec `json:"parameters,omitempty"`
 }
 
 // DAGStatus defines the observed state of DAG
@@ -99,8 +134,6 @@ func (dag *DAG) ValidateDAG() error {
 	if err := dag.checkFieldsFilled(); err != nil {
 		return err
 	}
-
-	// TODO: Optimise this so that we are no looping over the tasks again and again...
 
 	if err := dag.checkParameters(); err != nil {
 		return err
@@ -212,7 +245,6 @@ func (dag *DAG) checkAllTasksConnected() error {
 		}
 	}
 
-	// TODO: make this a util function and not a high-order function
 	visited := make(map[string]bool)
 	var dfs func(string)
 	dfs = func(name string) {
@@ -260,15 +292,14 @@ func (dag *DAG) checkParameters() error {
 		}
 
 		if value.DefaultValue == "" && value.DefaultFromSecret == "" {
-			return fmt.Errorf("parameter does not provide defaultValur or defaultFromSecret")
+			return fmt.Errorf("parameter does not provide defaultValue or defaultFromSecret")
 		}
 
 		if value.DefaultValue != "" && value.DefaultFromSecret != "" {
-			return fmt.Errorf("parameter does not provide defaultValur or defaultFromSecret")
+			return fmt.Errorf("parameter does not provide defaultValue or defaultFromSecret")
 		}
 
 		paramsMap[value.Name] = true
-
 	}
 
 	for _, task := range dag.Spec.Task {
