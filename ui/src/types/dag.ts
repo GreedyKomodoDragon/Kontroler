@@ -42,9 +42,29 @@ export type TaskPod = {
   exitCode: number;
 };
 
-export type TaskDetails = {
+export type TaskRunDetails = {
   id: number;
   status: string;
   attempts: number;
   pods: TaskPod[];
+};
+
+export type Parameter = {
+  id: number;
+  name: string;
+  isSecret: boolean;
+  defaultValue: string;
+};
+
+export type TaskDetails = {
+  id: number;
+  name: string;
+  command: string[];
+  args: string[];
+  image: string;
+  parameters: Parameter[];
+  backOffLimit: number;
+  isConditional: boolean;
+  podTemplate: string;
+  retryCodes: number[];
 };

@@ -10,6 +10,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
     "solid-devtools": "^0.29.2",
@@ -22,6 +23,7 @@
     "@solidjs/router": "^0.13.3",
     "apexcharts": "^3.49.1",
     "axios": "^1.7.2",
+    "js-yaml": "^4.1.0",
     "solid-apexcharts": "^0.3.4",
     "solid-js": "^1.8.11"
   }
