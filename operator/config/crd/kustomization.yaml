@@ -2,7 +2,6 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/kubeconductor.greedykomodo_schedules.yaml
 - bases/kubeconductor.greedykomodo_dags.yaml
 - bases/kubeconductor.greedykomodo_dagruns.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
@@ -10,14 +9,12 @@ resources:
 patches:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
 # patches here are for enabling the conversion webhook for each CRD
-# - path: patches/webhook_in_schedules.yaml
 #- path: patches/webhook_in_dags.yaml
 - path: patches/webhook_in_dagruns.yaml
 #+kubebuilder:scaffold:crdkustomizewebhookpatch
 
 # [CERTMANAGER] To enable cert-manager, uncomment all the sections with [CERTMANAGER] prefix.
 # patches here are for enabling the CA injection for each CRD
-#- path: patches/cainjection_in_schedules.yaml
 #- path: patches/cainjection_in_dags.yaml
 #- path: patches/cainjection_in_dagruns.yaml
 #+kubebuilder:scaffold:crdkustomizecainjectionpatch

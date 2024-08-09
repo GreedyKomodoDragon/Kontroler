@@ -4,15 +4,11 @@ import (
 	"context"
 	"fmt"
 	"kubeconductor-server/pkg/db"
-	"kubeconductor-server/pkg/kube"
 	"kubeconductor-server/pkg/rest"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"k8s.io/client-go/dynamic"
-	krest "k8s.io/client-go/rest"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -52,18 +48,7 @@ func main() {
 		panic(err)
 	}
 
-	config, err := krest.InClusterConfig()
-
-	// Create a dynamic client
-	dynamicClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create dynamic client: %v\n", err)
-		os.Exit(1)
-	}
-
-	kubeClient := kube.NewKubeClient(dynamicClient)
-
-	app := rest.NewFiberHttpServer(kubeClient, dbManager)
+	app := rest.NewFiberHttpServer(dbManager)
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)
