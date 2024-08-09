@@ -3,9 +3,6 @@ import Header from "./components/header";
 import Sidebar from "./components/sidebar";
 import { Router, Route } from "@solidjs/router";
 import Main from "./pages/main";
-import CRDs from "./pages/crds";
-import CronJobs from "./pages/cronjobs";
-import Runs from "./pages/runs";
 import Dags from "./pages/dags";
 import DagRuns from "./pages/dagRuns";
 import DagRun from "./pages/dagRun";
@@ -22,9 +19,6 @@ const App: Component = () => {
         >
           <Router>
             <Route path="/" component={Main} />
-            <Route path="/crds" component={CRDs} />
-            <Route path="/cronjobs" component={CronJobs} />
-            <Route path="/runs" component={Runs} />
             <Route path="/dags" component={Dags} />
             <Route path="/dags/runs" component={DagRuns} />
             <Route path="/dags/run/:id" component={DagRun} />

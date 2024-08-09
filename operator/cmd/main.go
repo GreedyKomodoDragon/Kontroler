@@ -32,9 +32,7 @@ import (
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/jobs"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/pod"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/scheduler"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -187,17 +185,6 @@ func main() {
 
 	defer pool.Close()
 
-	dbManager, err := db.NewPostgresSchedulerManager(context.Background(), pool, &specParser)
-	if err != nil {
-		setupLog.Error(err, "failed to create postgres scheduler manager")
-		os.Exit(1)
-	}
-
-	if err := dbManager.InitaliseDatabase(context.Background()); err != nil {
-		setupLog.Error(err, "failed to create scheduler tables")
-		os.Exit(1)
-	}
-
 	dbDAGManager, err := db.NewPostgresDAGManager(context.Background(), pool, &specParser)
 	if err != nil {
 		setupLog.Error(err, "failed to create postgres DAG manager")
@@ -208,11 +195,6 @@ func main() {
 		setupLog.Error(err, "failed to create DAG tables")
 		os.Exit(1)
 	}
-
-	jobAllocator := jobs.NewJobAllocator(clientset)
-	jobWatcher := jobs.NewJobWatcherFactory(clientset, jobAllocator, dbManager)
-	scheduler := scheduler.NewScheduleManager(jobAllocator, jobWatcher, dbManager)
-	go scheduler.Run()
 
 	taskAllocator := dag.NewTaskAllocator(clientset)
 	taskWatcher, err := dag.NewTaskWatcher(clientset, taskAllocator, dbDAGManager)
@@ -233,14 +215,6 @@ func main() {
 	go taskWatcher.StartWatching()
 	go podWatcher.StartWatching()
 
-	if err = (&controller.ScheduleReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		DbManager: dbManager,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Schedule")
-		os.Exit(1)
-	}
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
