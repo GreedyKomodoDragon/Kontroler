@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS Tasks (
 	parameters TEXT[],
 	backoffLimit BIGINT NOT NULL,
 	isConditional BOOL NOT NULL,
+	podTemplate JSONB,
 	retryCodes INTEGER[]
 );
 
@@ -257,31 +259,48 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 }
 
 func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec) error {
+	var jsonValue *string
+	if task.PodTemplate != nil {
+		json, err := task.PodTemplate.Serialize()
+		if err != nil {
+			return err
+		}
+
+		jsonValue = &json
+	}
+
 	// Insert the task
 	var taskId int
-	err := tx.QueryRow(ctx, `
-	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes) 
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+	if err := tx.QueryRow(ctx, `
+	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate) 
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
 	RETURNING task_id`,
-		task.Name, task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit, task.Conditional.Enabled, task.Conditional.RetryCodes).Scan(&taskId)
-	if err != nil {
+		task.Name, task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
+		task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue).Scan(&taskId); err != nil {
 		return err
 	}
 
 	// Map the task to the DAG
-	if _, err = tx.Exec(ctx, "INSERT INTO DAG_Tasks (dag_id, task_id) VALUES ($1, $2)", dagID, taskId); err != nil {
+	if _, err := tx.Exec(ctx, `
+	INSERT INTO DAG_Tasks (dag_id, task_id)
+	 VALUES ($1, $2)`, dagID, taskId); err != nil {
 		return err
 	}
 
 	// Insert task dependencies
 	for _, dependency := range task.RunAfter {
 		var depId int
-		err = tx.QueryRow(ctx, "SELECT task_id FROM tasks WHERE task_id in (SELECT task_id FROM DAG_Tasks WHERE dag_id = $1) and name = $2", dagID, dependency).Scan(&depId)
+		err := tx.QueryRow(ctx, `
+		SELECT task_id FROM tasks
+		WHERE task_id in (SELECT task_id FROM DAG_Tasks WHERE dag_id = $1)
+			AND name = $2`, dagID, dependency).Scan(&depId)
 		if err != nil && err != pgx.ErrNoRows {
 			return err
 		}
-		_, err = tx.Exec(ctx, "INSERT INTO Dependencies (task_id, depends_on_task_id) VALUES ($1, $2)", taskId, depId)
-		if err != nil {
+
+		if _, err = tx.Exec(ctx, `
+		INSERT INTO Dependencies (task_id, depends_on_task_id) 
+		VALUES ($1, $2)`, taskId, depId); err != nil {
 			return err
 		}
 	}
@@ -326,7 +345,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters
+	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate
 	FROM Tasks t
 	LEFT JOIN Dependencies d ON t.task_id = d.task_id
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
@@ -343,7 +362,8 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 	for rows.Next() {
 		var task Task
 		var parameters []string
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters); err != nil {
+		var podTemplateJSON string
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON); err != nil {
 			return nil, err
 		}
 
@@ -363,6 +383,15 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 
 			task.Parameters = append(task.Parameters, param)
 		}
+
+		var podTemplate *v1alpha1.PodTemplateSpec
+		if podTemplateJSON != "" {
+			if err := json.Unmarshal([]byte(podTemplateJSON), &podTemplate); err != nil {
+				return nil, err
+			}
+		}
+
+		task.PodTemplate = podTemplate
 
 		tasks = append(tasks, task)
 

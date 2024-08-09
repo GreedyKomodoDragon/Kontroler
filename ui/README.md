@@ -1,10 +1,10 @@
-# KubeConductor UI
+# Kontroler UI
 
-KubeConductor UI is a project aimed at providing a user interface the KubeConductor Operator that is used to create and manage cronjobs.
+Kontroler UI is a project aimed at providing a user interface the Kontroler Operator that is used to create and manage cronjobs.
 
 ## State
 
-Like the rest of the KubeConductor Project, it is very much in a working-progress state and should not be used in production.
+Like the rest of the Kontroler Project, it is very much in a working-progress state and should not be used in production.
 
 ## Features Planned
 

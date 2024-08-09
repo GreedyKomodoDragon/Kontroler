@@ -1,18 +1,18 @@
-# KubeConductor
+# Kontroler
 
-KubeConductor is a kubernetes native scheduler where it aims to provide a way to run containers based on CRDs.
+Kontroler is a kubernetes native scheduler where it aims to provide a way to run containers based on CRDs.
 
 ## State
 
-KubeConductor is is not ready for any kind of production workload and has not go any of core functionalities implemented yet.
+Kontroler is is not ready for any kind of production workload and has not go any of core functionalities implemented yet.
 
 ### Operator Progress
 
 The operator is very much in its early days and a lot of learning has to be done before the operator can be in a state to be shared
 
-## Aims of KubeConductor
+## Aims of Kontroler
 
-KubeConductor aims to provide a way to manage scheduling containers in a simple manner via YAML files.
+Kontroler aims to provide a way to manage scheduling containers in a simple manner via YAML files.
 
 ### Operator's Core Aims
 
@@ -20,8 +20,8 @@ Features we are aiming to cover are:
 
 * Single Container Scheduling - Similar to the Native Kubernetes
 * DAGs - Allow stages to be linked together 
-* BlackBox Containers - It does not matter what the image is, KubeConductor will run it!
-* Conditional Retries - Based on the exit code of the container KubeConductor will return the image a set amount of times
+* BlackBox Containers - It does not matter what the image is, Kontroler will run it!
+* Conditional Retries - Based on the exit code of the container Kontroler will return the image a set amount of times
 
 ### Server + UI
 
@@ -35,5 +35,5 @@ It is the aim that you can optionally deploy the UI, we will provide a REST API 
 
 ## Roadmap
 
-There is no roadmap for KubeConductor, and most features have not been outlined or thought about.
+There is no roadmap for Kontroler, and most features have not been outlined or thought about.
 

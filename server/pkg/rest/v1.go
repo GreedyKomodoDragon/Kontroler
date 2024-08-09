@@ -103,7 +103,22 @@ func addDags(router fiber.Router, dbManager db.DbManager) {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		taskDetails, err := dbManager.GetTaskDetails(c.Context(), runId, taskId)
+		taskDetails, err := dbManager.GetTaskRunDetails(c.Context(), runId, taskId)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting GetTaskDetails")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(taskDetails)
+	})
+
+	dagRouter.Get("/task/:taskId", func(c *fiber.Ctx) error {
+		taskId, err := strconv.Atoi(c.Params("taskId"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		taskDetails, err := dbManager.GetTaskDetails(c.Context(), taskId)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting GetTaskDetails")
 			return c.SendStatus(fiber.StatusInternalServerError)

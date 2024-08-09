@@ -1,6 +1,6 @@
 import { Component, createEffect, createSignal } from "solid-js";
-import { DagRunAll, TaskDetails } from "../types/dag";
-import { getDagRunAll, getTaskDetails } from "../api/dags";
+import { DagRunAll, TaskRunDetails } from "../types/dag";
+import { getDagRunAll, getTaskRunDetails } from "../api/dags";
 import DagDiagram from "../components/dagDiagram";
 import { useParams } from "@solidjs/router";
 import LoadingIcon from "../components/loadingIcon";
@@ -10,14 +10,14 @@ const DagRun: Component = () => {
 
   const [dataRunMeta, setDataRunMeta] = createSignal<DagRunAll>();
   const [selectedTask, setSelectedTask] = createSignal<number>(-1);
-  const [taskDetails, setTaskDetails] = createSignal<TaskDetails | undefined>();
+  const [taskDetails, setTaskDetails] = createSignal<TaskRunDetails | undefined>();
 
   getDagRunAll(parseInt(params.id)).then((data) => setDataRunMeta(data));
 
   createEffect(() => {
     if (selectedTask() === -1) return;
 
-    getTaskDetails(dataRunMeta()?.id || -1, selectedTask()).then((data) =>
+    getTaskRunDetails(dataRunMeta()?.id ?? -1, selectedTask()).then((data) =>
       setTaskDetails(data)
     );
   });

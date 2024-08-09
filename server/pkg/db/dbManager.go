@@ -90,7 +90,7 @@ type DagRunAll struct {
 	TaskInfo        map[int]TaskInfo `json:"taskInfo"`
 }
 
-type TaskDetails struct {
+type TaskRunDetails struct {
 	Id       int        `json:"id"`
 	Status   string     `json:"status"`
 	Attempts int        `json:"attempts"`
@@ -104,6 +104,28 @@ type TaskPod struct {
 	Status   string `json:"status"`
 }
 
+// Parameter represents a task parameter.
+type Parameter struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	IsSecret     bool   `json:"isSecret"`
+	DefaultValue string `json:"defaultValue"`
+}
+
+// TaskDetails represents the details of a task.
+type TaskDetails struct {
+	ID            int         `json:"id"`
+	Name          string      `json:"name"`
+	Command       []string    `json:"command"`
+	Args          []string    `json:"args"`
+	Image         string      `json:"image"`
+	Parameters    []Parameter `json:"parameters"`
+	BackOffLimit  int         `json:"backOffLimit"`
+	IsConditional bool        `json:"isConditional"`
+	PodTemplate   string      `json:"podTemplate"`
+	RetryCodes    []int       `json:"retryCodes"`
+}
+
 type DbManager interface {
 	GetAllCronJobs(ctx context.Context) ([]*CronJob, error)
 	GetAllRuns(ctx context.Context, limit int, offset int) ([]*Run, error)
@@ -112,7 +134,8 @@ type DbManager interface {
 	GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error)
 	GetDagRun(ctx context.Context, dagRunId int) (*DagRun, error)
 	GetDagRunAll(ctx context.Context, dagRunId int) (*DagRunAll, error)
-	GetTaskDetails(ctx context.Context, dagRunId, taskId int) (*TaskDetails, error)
+	GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error)
+	GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*TaskRunDetails, error)
 
 	Close()
 }

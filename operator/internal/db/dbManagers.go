@@ -21,15 +21,13 @@ type CronJob struct {
 }
 
 type Task struct {
-	Id         int
-	Name       string
-	Image      string
-	Command    []string
-	Args       []string
-	Parameters []Parameter
-	// TODO: Implement retries
-	// BackoffLimit     uint64
-	// ConditionalRetry ConditionalRetry
+	Id          int
+	Name        string
+	Image       string
+	Command     []string
+	Args        []string
+	Parameters  []Parameter
+	PodTemplate *v1alpha1.PodTemplateSpec
 }
 
 type Parameter struct {

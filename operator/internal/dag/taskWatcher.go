@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -221,6 +222,17 @@ func (t *taskWatcher) handleFailedJob(ctx context.Context, job *batchv1.Job, tas
 				Args:    container.Args,
 				Command: container.Command,
 				Image:   container.Image,
+				PodTemplate: &v1alpha1.PodTemplateSpec{
+					Volumes:                      pod.Spec.Volumes,
+					VolumeMounts:                 container.VolumeMounts,
+					ImagePullSecrets:             pod.Spec.ImagePullSecrets,
+					SecurityContext:              pod.Spec.SecurityContext,
+					NodeSelector:                 pod.Spec.NodeSelector,
+					Tolerations:                  pod.Spec.Tolerations,
+					Affinity:                     pod.Spec.Affinity,
+					ServiceAccountName:           pod.Spec.ServiceAccountName,
+					AutomountServiceAccountToken: pod.Spec.AutomountServiceAccountToken,
+				},
 			}, dagRunId, taskRunId, pod.Namespace, container.Env)
 
 		if err != nil {
