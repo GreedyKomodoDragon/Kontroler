@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -356,8 +357,8 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 	return meta, nil
 }
 
-func (p *postgresManager) GetTaskDetails(ctx context.Context, dagRunId, taskId int) (*TaskDetails, error) {
-	task := &TaskDetails{}
+func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*TaskRunDetails, error) {
+	task := &TaskRunDetails{}
 
 	if err := p.pool.QueryRow(ctx, `
 	SELECT task_run_id, status, attempts
@@ -391,4 +392,60 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, dagRunId, taskId i
 
 	return task, nil
 
+}
+
+func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
+	var taskDetails TaskDetails
+	var podTemplateJSON json.RawMessage
+
+	// Query for the task details from the Tasks table
+	queryTask := `
+			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes
+			FROM Tasks
+			WHERE task_id = $1
+		`
+
+	if err := p.pool.QueryRow(ctx, queryTask, taskId).Scan(
+		&taskDetails.ID,
+		&taskDetails.Name,
+		&taskDetails.Command,
+		&taskDetails.Args,
+		&taskDetails.Image,
+		&taskDetails.BackOffLimit,
+		&taskDetails.IsConditional,
+		&podTemplateJSON,
+		&taskDetails.RetryCodes,
+	); err != nil {
+		return nil, fmt.Errorf("failed to query task details: %w", err)
+	}
+
+	// Convert JSONB field to string
+	taskDetails.PodTemplate = string(podTemplateJSON)
+
+	// Query for the parameters related to the task from the DAG_Parameters table
+	queryParameters := `
+			SELECT parameter_id, name, isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE dag_id = $1
+		`
+
+	rows, err := p.pool.Query(ctx, queryParameters, taskDetails.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query parameters: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var param Parameter
+		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
+			return nil, fmt.Errorf("failed to scan parameter row: %w", err)
+		}
+		taskDetails.Parameters = append(taskDetails.Parameters, param)
+	}
+
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating parameter rows: %w", rows.Err())
+	}
+
+	return &taskDetails, nil
 }

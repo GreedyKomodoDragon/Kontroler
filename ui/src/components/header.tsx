@@ -22,7 +22,7 @@ const Header: Component = () => {
           <path d="M14 19.8v-8.1"></path>
           <path d="M18 17.5V9.4"></path>
         </svg>
-        <span class="font-semibold text-lg">KubeConductor</span>
+        <span class="font-semibold text-lg">Kontroler</span>
       </a>
       <div class="flex items-center ml-auto gap-4">
         <button
