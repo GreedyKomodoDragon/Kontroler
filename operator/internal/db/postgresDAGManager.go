@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
 	namespace VARCHAR(255) NOT NULL,
 	active BOOL NOT NULL,
 	taskCount INTEGER NOT NULL,
-	nexttime TIMESTAMP NOT NULL
+	nexttime TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Parameters (
@@ -209,16 +209,22 @@ func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name st
 func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1alpha1.DAG, version int, namespace string, hash string) error {
 
 	// Parse the cron expression
-	sched, err := p.parser.Parse(dag.Spec.Schedule)
-	if err != nil {
-		return err
+	var nextTime *time.Time
+
+	// Could be an event driven only score
+	if dag.Spec.Schedule != "" {
+		sched, err := p.parser.Parse(dag.Spec.Schedule)
+		if err != nil {
+			return err
+		}
+
+		// Get the next occurrence of the scheduled time
+		t := sched.Next(time.Now())
+		nextTime = &t
 	}
 
-	// Get the next occurrence of the scheduled time
-	nextTime := sched.Next(time.Now())
-
 	var dagID int
-	if err = tx.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount) 
 	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7)
 	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
@@ -227,14 +233,14 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	// Insert tasks and map them to the DAG
 	for _, task := range dag.Spec.Task {
-		if err = p.insertTask(ctx, tx, dagID, &task); err != nil {
+		if err := p.insertTask(ctx, tx, dagID, &task); err != nil {
 			return err
 		}
 	}
 
 	// Insert parameters and map them to the DAG
 	for _, parameter := range dag.Spec.Parameters {
-		if err = p.insertParameter(ctx, tx, dagID, &parameter); err != nil {
+		if err := p.insertParameter(ctx, tx, dagID, &parameter); err != nil {
 			return err
 		}
 	}
@@ -607,7 +613,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, schedule, namespace
         FROM DAGs
-        WHERE nexttime <= NOW()
+        WHERE nexttime <= NOW() AND schedule != '';
     `)
 	if err != nil {
 		return nil, nil, err

@@ -27,10 +27,10 @@ type DAG struct {
 type DAGMetaData struct {
 	DagId       int           `json:"dagId"`
 	Name        string        `json:"name"`
-	Schedule    string        `json:"schedule"`
+	Schedule    *string       `json:"schedule"`
 	Version     int           `json:"version"`
 	Active      bool          `json:"active"`
-	NextTime    time.Time     `json:"nexttime"`
+	NextTime    *time.Time    `json:"nexttime"`
 	Connections map[int][]int `json:"connections"`
 }
 
