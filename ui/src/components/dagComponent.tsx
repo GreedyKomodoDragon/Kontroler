@@ -2,7 +2,7 @@ import { createEffect, createSignal } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
 import DagDiagram from "./dagDiagram";
 import { getTaskDetails } from "../api/dags";
-import yaml from 'js-yaml';
+import yaml from "js-yaml";
 
 interface Props {
   dag: Dag;
@@ -30,11 +30,13 @@ const DagComponent = ({ dag }: Props) => {
           Toggle Diagram
         </button>
       </div>
-      <div class="mt-2">
-        <p>
-          <strong>Schedule:</strong> {dag.schedule}
-        </p>
-      </div>
+      {dag.schedule && (
+        <div class="mt-2">
+          <p>
+            <strong>Schedule:</strong> {dag.schedule}
+          </p>
+        </div>
+      )}
       <div class="mt-2">
         <p>
           <strong>ID:</strong> {dag.dagId}
@@ -67,12 +69,13 @@ const DagComponent = ({ dag }: Props) => {
             <strong>Parameters:</strong>
           </p>
           <ul class="ml-4 list-disc">
-            {taskDetails()?.parameters && taskDetails()?.parameters.map((param, index) => (
-              <li>
-                {param.name} - Default{param.isSecret && " Secret"}:{" "}
-                {param.defaultValue ? param.defaultValue : "N/A"}
-              </li>
-            ))}
+            {taskDetails()?.parameters &&
+              taskDetails()?.parameters.map((param, index) => (
+                <li>
+                  {param.name} - Default{param.isSecret && " Secret"}:{" "}
+                  {param.defaultValue ? param.defaultValue : "N/A"}
+                </li>
+              ))}
           </ul>
           <p class="my-2">
             <strong>BackOff Limit:</strong> {taskDetails()?.backOffLimit}
@@ -90,9 +93,11 @@ const DagComponent = ({ dag }: Props) => {
           <pre class="bg-gray-600 p-2 rounded">
             {(() => {
               try {
-                return yaml.dump(JSON.parse(taskDetails()?.podTemplate || '{}'));
+                return yaml.dump(
+                  JSON.parse(taskDetails()?.podTemplate || "{}")
+                );
               } catch (e) {
-                return 'Invalid JSON';
+                return "Invalid JSON";
               }
             })()}
           </pre>

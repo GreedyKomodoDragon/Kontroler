@@ -92,6 +92,7 @@ type Conditional struct {
 
 // DAGSpec defines the desired state of DAG
 type DAGSpec struct {
+	// +optional
 	Schedule string     `json:"schedule"`
 	Task     []TaskSpec `json:"task"`
 	// +optional
@@ -158,9 +159,6 @@ func (dag *DAG) ValidateDAG() error {
 func (dag *DAG) checkFieldsFilled() error {
 	taskNames := make(map[string]bool)
 
-	if dag.Spec.Schedule == "" {
-		return errors.New("schedule must be specified")
-	}
 	for _, task := range dag.Spec.Task {
 		if task.Name == "" {
 			return errors.New("task name must be specified")

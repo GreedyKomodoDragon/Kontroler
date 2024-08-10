@@ -3063,7 +3063,6 @@ spec:
                   type: object
                 type: array
             required:
-            - schedule
             - task
             type: object
           status:

@@ -64,6 +64,10 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	// Schedule object was found, store it in the database
 	if err := r.storeInDatabase(ctx, &dag, req.NamespacedName.Namespace); err != nil {
+		if err.Error() == "applying the same dag" {
+			return ctrl.Result{}, nil
+		}
+
 		return ctrl.Result{}, err
 	}
 
