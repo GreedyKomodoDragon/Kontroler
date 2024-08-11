@@ -31,6 +31,32 @@ const Sidebar: Component = () => {
       </a>
       <a
         class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
+        href="/create"
+        rel="ugc"
+      >
+        <div class="flex items-center gap-3">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <g
+              fill="none"
+              fill-rule="evenodd"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M10 4.5H5.5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V11" />
+              <path d="M17.5 3.467a1.46 1.46 0 0 1-.017 2.05L10.5 12.5l-3 1 1-3 6.987-7.046a1.41 1.41 0 0 1 1.885-.104zm-2 2.033.953 1" />
+            </g>
+          </svg>
+          <span class="text-sm font-medium">Create</span>
+        </div>
+      </a>
+      <a
+        class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
         href="/dags"
         rel="ugc"
       >

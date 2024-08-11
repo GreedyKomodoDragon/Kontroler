@@ -6,6 +6,7 @@ import Main from "./pages/main";
 import Dags from "./pages/dags";
 import DagRuns from "./pages/dagRuns";
 import DagRun from "./pages/dagRun";
+import Create from "./pages/create";
 
 const App: Component = () => {
   return (
@@ -19,6 +20,7 @@ const App: Component = () => {
         >
           <Router>
             <Route path="/" component={Main} />
+            <Route path="/create" component={Create} />
             <Route path="/dags" component={Dags} />
             <Route path="/dags/runs" component={DagRuns} />
             <Route path="/dags/run/:id" component={DagRun} />
