@@ -1,9 +1,10 @@
 import { createSignal, For } from "solid-js";
+import { createStore } from "solid-js/store";
 
 type DagParameterSpec = {
   name: string;
-  defaultValue?: string;
-  defaultFromSecret?: string;
+  isSecret: boolean;
+  value: string;
 };
 
 type PodTemplateSpec = {
@@ -20,7 +21,7 @@ type PodTemplateSpec = {
 
 type TaskSpec = {
   name: string;
-  command: string[];
+  command: string; // will need to convert this into an array
   args: string[];
   image: string;
   runAfter?: string[];
@@ -46,24 +47,20 @@ type DAGSpec = {
 };
 
 export default function DAGForm() {
+  const [parameters, setParameters] = createStore<DagParameterSpec[]>([]);
+  const [tasks, setTasks] = createStore<TaskSpec[]>([]);
+
   const [name, setName] = createSignal("");
   const [schedule, setSchedule] = createSignal("");
-  const [tasks, setTasks] = createSignal<TaskSpec[]>([]);
-  const [parameters, setParameters] = createSignal<DagParameterSpec[]>([]);
   const [selectedTaskToAdd, setSelectedTaskToAdd] = createSignal("");
   const [selectedParameterToAdd, setSelectedParameterToAdd] = createSignal("");
 
-  // Track the type of parameter input
-  const [paramInputType, setParamInputType] = createSignal<"value" | "secret">(
-    "value"
-  );
-
   const addTask = () => {
     setTasks([
-      ...tasks(),
+      ...tasks,
       {
         name: "",
-        command: [""],
+        command: "",
         args: [""],
         image: "",
         runAfter: [],
@@ -77,7 +74,7 @@ export default function DAGForm() {
 
   const addRunAfter = (taskIndex: number) => {
     if (selectedTaskToAdd()) {
-      const updatedTasks = [...tasks()];
+      const updatedTasks = [...tasks];
       updatedTasks[taskIndex].runAfter = [
         ...(updatedTasks[taskIndex].runAfter || []),
         selectedTaskToAdd(),
@@ -88,45 +85,35 @@ export default function DAGForm() {
   };
 
   const addParameter = () => {
-    setParameters([
-      ...parameters(),
-      { name: "", defaultValue: "", defaultFromSecret: "" },
-    ]);
+    setParameters([...parameters, { name: "", value: "", isSecret: false }]);
   };
 
   const addParameterToTask = (taskIndex: number) => {
     if (selectedParameterToAdd()) {
-      const paramToAdd = parameters().find(
+      const paramToAdd = parameters.find(
         (param) => param.name === selectedParameterToAdd()
       );
       if (paramToAdd) {
-        const updatedTasks = [...tasks()];
-        updatedTasks[taskIndex].parameters = [
-          ...(updatedTasks[taskIndex].parameters || []),
+        console.log("in here");
+        setTasks(taskIndex, "parameters", [
+          ...(tasks[taskIndex].parameters || []),
           paramToAdd,
-        ];
-        setTasks(updatedTasks);
-        setSelectedParameterToAdd("");
+        ]);
+
+        console.log("tasks", tasks);
       }
     }
   };
 
   const handleParameterToggle = (index: number) => {
-    const updatedParams = [...parameters()];
-    updatedParams[index].defaultValue =
-      paramInputType() === "value" ? updatedParams[index].defaultValue : "";
-    updatedParams[index].defaultFromSecret =
-      paramInputType() === "secret"
-        ? updatedParams[index].defaultFromSecret
-        : "";
-    setParameters(updatedParams);
+    setParameters(index, "isSecret", !parameters[index].isSecret);
   };
 
   const submitDAG = () => {
     const dagSpec: DAGSpec = {
       schedule: schedule(),
-      task: tasks(),
-      parameters: parameters(),
+      task: tasks,
+      parameters: parameters,
     };
     console.log(dagSpec);
     // Submit logic here
@@ -150,7 +137,9 @@ export default function DAGForm() {
         />
       </div>
       <div>
-        <label class="block text-lg font-medium">Schedule</label>
+        <label class="block text-lg font-medium">
+          Cron Schedule (Optional)
+        </label>
         <input
           type="text"
           value={schedule()}
@@ -160,7 +149,7 @@ export default function DAGForm() {
       </div>
 
       <h2 class="text-2xl font-semibold">Tasks</h2>
-      <For each={tasks()}>
+      <For each={tasks}>
         {(task, i) => (
           <div class="p-4 border rounded-lg bg-gray-700 border-gray-600 space-y-4">
             <div>
@@ -169,9 +158,7 @@ export default function DAGForm() {
                 type="text"
                 value={task.name}
                 onInput={(e) => {
-                  const updatedTasks = [...tasks()];
-                  updatedTasks[i()].name = e.currentTarget.value;
-                  setTasks(updatedTasks);
+                  setTasks(i(), "name", e.currentTarget.value);
                 }}
                 class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               />
@@ -181,11 +168,9 @@ export default function DAGForm() {
               <label class="block text-lg font-medium">Command</label>
               <input
                 type="text"
-                value={task.command.join(" ")}
+                value={task.command}
                 onInput={(e) => {
-                  const updatedTasks = [...tasks()];
-                  updatedTasks[i()].command = e.currentTarget.value.split(" ");
-                  setTasks(updatedTasks);
+                  setTasks(i(), "command", e.currentTarget.value);
                 }}
                 class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               />
@@ -197,9 +182,7 @@ export default function DAGForm() {
                 type="text"
                 value={task.image}
                 onInput={(e) => {
-                  const updatedTasks = [...tasks()];
-                  updatedTasks[i()].image = e.currentTarget.value;
-                  setTasks(updatedTasks);
+                  setTasks(i(), "image", e.currentTarget.value);
                 }}
                 class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               />
@@ -209,17 +192,18 @@ export default function DAGForm() {
               <label class="block text-lg font-medium">Run After</label>
               <div class="flex space-x-2 items-center">
                 <select
-                  value={selectedTaskToAdd()}
-                  onInput={(e) => setSelectedTaskToAdd(e.currentTarget.value)}
+                  onChange={(e) => {
+                    setSelectedTaskToAdd(e.currentTarget.value);
+                  }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
                   <option value="" disabled>
-                    Select a task
+                    Select a parameter
                   </option>
-                  <For each={tasks().filter((_, index) => index !== i())}>
+                  <For each={tasks.filter((_, index) => index !== i())}>
                     {(t) => (
                       <option value={t.name}>
-                        {t.name || `Task ${tasks().indexOf(t) + 1}`}
+                        {t.name || `Task ${tasks.indexOf(t) + 1}`}
                       </option>
                     )}
                   </For>
@@ -249,27 +233,28 @@ export default function DAGForm() {
               </label>
               <div class="flex space-x-2 items-center">
                 <select
-                  value={selectedParameterToAdd()}
-                  onInput={(e) =>
-                    setSelectedParameterToAdd(e.currentTarget.value)
-                  }
+                  onChange={(e) => {
+                    setSelectedParameterToAdd(e.currentTarget.value);
+                  }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
                   <option value="" disabled>
                     Select a parameter
                   </option>
-                  <For each={parameters()}>
+                  <For each={parameters}>
                     {(param) => (
                       <option value={param.name}>
                         {param.name ||
-                          `Parameter ${parameters().indexOf(param) + 1}`}
+                          `Parameter ${parameters.indexOf(param) + 1}`}
                       </option>
                     )}
                   </For>
                 </select>
                 <button
                   type="button"
-                  onClick={() => addParameterToTask(i())}
+                  onClick={() => {
+                    addParameterToTask(i());
+                  }}
                   class="px-3 py-1 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
                   Add
@@ -286,7 +271,7 @@ export default function DAGForm() {
                         type="button"
                         onClick={() => {
                           // Implement a toggle effect here if needed
-                          const updatedTasks = [...tasks()];
+                          const updatedTasks = [...tasks];
                           //   const paramIndex = updatedTasks[i()].parameters.indexOf(param);
                           // Update your state or toggle logic here
                         }}
@@ -312,7 +297,7 @@ export default function DAGForm() {
 
       <h2 class="text-2xl font-semibold">Parameters</h2>
       <div class="rounded-lg space-y-4">
-        <For each={parameters()}>
+        <For each={parameters}>
           {(param, i) => (
             <div class="mt-4 p-4 border rounded-lg bg-gray-700 border-gray-600 space-y-2">
               <div>
@@ -321,64 +306,34 @@ export default function DAGForm() {
                   type="text"
                   value={param.name}
                   onInput={(e) => {
-                    const updatedParams = [...parameters()];
-                    updatedParams[i()].name = e.currentTarget.value;
-                    setParameters(updatedParams);
+                    setParameters(i(), "name", e.currentTarget.value);
                   }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 />
               </div>
 
               <div class="flex items-center space-x-4 mt-2">
-                <label class="block text-lg font-medium">
-                  Use Default Value
-                </label>
+                <label class="block text-lg font-medium">Secret Env</label>
                 <input
                   type="checkbox"
-                  checked={paramInputType() === "value"}
-                  onChange={() =>
-                    setParamInputType(
-                      paramInputType() === "value" ? "secret" : "value"
-                    )
-                  }
+                  checked={param.isSecret}
+                  onChange={() => handleParameterToggle(i())}
                   class="form-checkbox h-5 w-5 text-indigo-600"
                 />
               </div>
-
-              {paramInputType() === "value" ? (
-                <div>
-                  <label class="block text-lg font-medium">Default Value</label>
-                  <input
-                    type="text"
-                    value={param.defaultValue}
-                    onInput={(e) => {
-                      const updatedParams = [...parameters()];
-                      updatedParams[i()].defaultValue = e.currentTarget.value;
-                      handleParameterToggle(i());
-                      setParameters(updatedParams);
-                    }}
-                    class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label class="block text-lg font-medium">
-                    Default From Secret
-                  </label>
-                  <input
-                    type="text"
-                    value={param.defaultFromSecret}
-                    onInput={(e) => {
-                      const updatedParams = [...parameters()];
-                      updatedParams[i()].defaultFromSecret =
-                        e.currentTarget.value;
-                      handleParameterToggle(i());
-                      setParameters(updatedParams);
-                    }}
-                    class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-                  />
-                </div>
-              )}
+              <div>
+                <label class="block text-lg font-medium">
+                  {param.isSecret ? "Secret Name" : "Value"}
+                </label>
+                <input
+                  type="text"
+                  value={param.value}
+                  onInput={(e) => {
+                    setParameters(i(), "value", e.currentTarget.value);
+                  }}
+                  class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+                />
+              </div>
             </div>
           )}
         </For>
