@@ -91,11 +91,32 @@ export default function DAGForm() {
   };
 
   const deleteTask = (index: number) => {
-    setTasks((tasks) => [...tasks.slice(0, index), ...tasks.slice(index + 1)]);
+    const name = tasks[index].name;
+
+    // Remove the task
+    setTasks((tasks) => {
+      const newTasks = [...tasks.slice(0, index), ...tasks.slice(index + 1)];
+
+      // Now, update runAfter for the remaining tasks
+      for (let i = 0; i < newTasks.length; i++) {
+        const ind = newTasks[i].runAfter?.indexOf(name);
+        const arr = newTasks[i].runAfter;
+
+        if (ind !== undefined && ind > -1 && arr) {
+          arr.splice(ind, 1); // Remove the task name from runAfter
+          newTasks[i] = { ...newTasks[i], runAfter: arr }; // Update the task with the new runAfter array
+        }
+      }
+
+      return newTasks;
+    });
   };
 
   const deleteParameter = (index: number) => {
-    setParameters((parameters) => [...parameters.slice(0, index), ...parameters.slice(index + 1)]);
+    setParameters((parameters) => [
+      ...parameters.slice(0, index),
+      ...parameters.slice(index + 1),
+    ]);
   };
 
   const addParameter = () => {
@@ -380,7 +401,7 @@ export default function DAGForm() {
               <div>
                 <label class="text-lg font-medium flex items-center justify-between">
                   Parameter Name
-                  <DeleteButton  delete={deleteParameter} taskIndex={i()}/>
+                  <DeleteButton delete={deleteParameter} taskIndex={i()} />
                 </label>
                 <input
                   type="text"
