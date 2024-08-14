@@ -7,40 +7,20 @@ type DagParameterSpec = {
   value: string;
 };
 
-type PodTemplateSpec = {
-  volumes?: string[];
-  volumeMounts?: string[];
-  imagePullSecrets?: string[];
-  securityContext?: string;
-  nodeSelector?: Record<string, string>;
-  tolerations?: string[];
-  affinity?: string;
-  serviceAccountName?: string;
-  automountServiceAccountToken?: boolean;
-};
-
 type TaskSpec = {
   name: string;
-  command: string; // will need to convert this into an array
-  args: string[];
+  command?: string[]; // will need to convert this into an array
+  args?: string[]; // will need to convert this into an array
   image: string;
   runAfter?: string[];
-  backoff: Backoff;
-  conditional: Conditional;
-  parameters?: DagParameterSpec[]; // Parameters assigned to the task
-  podTemplate?: PodTemplateSpec;
-};
-
-type Backoff = {
-  limit: number;
-};
-
-type Conditional = {
-  enabled: boolean;
-  retryCodes: number[];
+  backoffLimit: number;
+  retryCodes?: number[];
+  parameters?: string[]; // Parameters assigned to the task
+  podTemplate?: string;
 };
 
 type DAGSpec = {
+  name: string;
   schedule?: string;
   task: TaskSpec[];
   parameters?: DagParameterSpec[]; // Global parameters
@@ -60,27 +40,25 @@ export default function DAGForm() {
       ...tasks,
       {
         name: "",
-        command: "",
-        args: [""],
+        command: [],
+        args: [],
         image: "",
         runAfter: [],
-        backoff: { limit: 0 },
-        conditional: { enabled: false, retryCodes: [] },
-        parameters: [], // Start with no parameters assigned
-        podTemplate: undefined,
+        backoffLimit: 0,
+        retryCodes: [],
+        parameters: [],
+        podTemplate: "",
       },
     ]);
   };
 
   const addRunAfter = (taskIndex: number) => {
+    console.log(taskIndex, selectedTaskToAdd());
     if (selectedTaskToAdd()) {
-      const updatedTasks = [...tasks];
-      updatedTasks[taskIndex].runAfter = [
-        ...(updatedTasks[taskIndex].runAfter || []),
+      setTasks(taskIndex, "runAfter", [
+        ...(tasks[taskIndex].runAfter || []),
         selectedTaskToAdd(),
-      ];
-      setTasks(updatedTasks);
-      setSelectedTaskToAdd("");
+      ]);
     }
   };
 
@@ -94,13 +72,10 @@ export default function DAGForm() {
         (param) => param.name === selectedParameterToAdd()
       );
       if (paramToAdd) {
-        console.log("in here");
         setTasks(taskIndex, "parameters", [
           ...(tasks[taskIndex].parameters || []),
-          paramToAdd,
+          selectedParameterToAdd(),
         ]);
-
-        console.log("tasks", tasks);
       }
     }
   };
@@ -111,6 +86,7 @@ export default function DAGForm() {
 
   const submitDAG = () => {
     const dagSpec: DAGSpec = {
+      name: name(),
       schedule: schedule(),
       task: tasks,
       parameters: parameters,
@@ -168,9 +144,37 @@ export default function DAGForm() {
               <label class="block text-lg font-medium">Command</label>
               <input
                 type="text"
-                value={task.command}
                 onInput={(e) => {
-                  setTasks(i(), "command", e.currentTarget.value);
+                  try {
+                    const array = JSON.parse(e.currentTarget.value);
+                    if (Array.isArray(array)) {
+                      setTasks(i(), "command", array);
+                    } else {
+                      setTasks(i(), "command", undefined);
+                    }
+                  } catch (error) {
+                    setTasks(i(), "command", undefined);
+                  }
+                }}
+                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+              />
+            </div>
+
+            <div>
+              <label class="block text-lg font-medium">Args</label>
+              <input
+                type="text"
+                onInput={(e) => {
+                  try {
+                    const array = JSON.parse(e.currentTarget.value);
+                    if (Array.isArray(array)) {
+                      setTasks(i(), "args", array);
+                    } else {
+                      setTasks(i(), "args", undefined);
+                    }
+                  } catch (error) {
+                    setTasks(i(), "args", undefined);
+                  }
                 }}
                 class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               />
@@ -189,6 +193,58 @@ export default function DAGForm() {
             </div>
 
             <div>
+              <label class="block text-lg font-medium">Retry Codes</label>
+              <input
+                type="text"
+                onInput={(e) => {
+                  try {
+                    const array = JSON.parse(e.currentTarget.value);
+                    if (
+                      Array.isArray(array) &&
+                      array.every((item) => typeof item === "number")
+                    ) {
+                      setTasks(i(), "retryCodes", array);
+                    } else {
+                      setTasks(i(), "retryCodes", undefined);
+                    }
+                  } catch (error) {
+                    setTasks(i(), "retryCodes", undefined);
+                  }
+                }}
+                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+              />
+            </div>
+
+            <div>
+              <label class="block text-lg font-medium">BackoffLimit</label>
+              <input
+                type="text"
+                onInput={(e) => {
+                  setTasks(
+                    i(),
+                    "backoffLimit",
+                    parseInt(e.currentTarget.value)
+                  );
+                }}
+                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+              />
+            </div>
+
+            <div>
+              <label class="block text-lg font-medium">
+                Pod Template (Optional)
+              </label>
+              <textarea
+                value={task.podTemplate}
+                onInput={(e) => {
+                  setTasks(i(), "podTemplate", e.currentTarget.value);
+                }}
+                rows={10}
+                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+              />
+            </div>
+
+            <div>
               <label class="block text-lg font-medium">Run After</label>
               <div class="flex space-x-2 items-center">
                 <select
@@ -197,9 +253,7 @@ export default function DAGForm() {
                   }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
-                  <option value="" disabled>
-                    Select a parameter
-                  </option>
+                  <option value="">Select a parameter</option>
                   <For each={tasks.filter((_, index) => index !== i())}>
                     {(t) => (
                       <option value={t.name}>
@@ -217,9 +271,9 @@ export default function DAGForm() {
                 </button>
               </div>
               <div class="mt-2">
-                <For each={task.runAfter}>
+                <For each={tasks[i()].runAfter}>
                   {(runAfterTask) => (
-                    <span class="inline-block bg-gray-600 text-gray-200 text-sm px-2 py-1 rounded-full mr-2">
+                    <span class="inline-block bg-blue-600 text-gray-200 text-lg px-2 py-1 mt-2 rounded-full mr-2">
                       {runAfterTask}
                     </span>
                   )}
@@ -238,9 +292,7 @@ export default function DAGForm() {
                   }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
-                  <option value="" disabled>
-                    Select a parameter
-                  </option>
+                  <option value="">Select a parameter</option>
                   <For each={parameters}>
                     {(param) => (
                       <option value={param.name}>
@@ -263,23 +315,9 @@ export default function DAGForm() {
               <div class="mt-2">
                 <For each={task.parameters}>
                   {(param) => (
-                    <div class="flex items-center space-x-2">
-                      <span class="inline-block bg-gray-600 text-gray-200 text-sm px-2 py-1 rounded-full mr-2">
-                        {param.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Implement a toggle effect here if needed
-                          const updatedTasks = [...tasks];
-                          //   const paramIndex = updatedTasks[i()].parameters.indexOf(param);
-                          // Update your state or toggle logic here
-                        }}
-                        class="px-2 py-1 bg-gray-500 text-white rounded-md shadow hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                      >
-                        Toggle Value/Secret
-                      </button>
-                    </div>
+                    <span class="inline-block bg-blue-600 text-gray-200 text-lg px-2 py-1 mt-2 rounded-full mr-2">
+                      {param}
+                    </span>
                   )}
                 </For>
               </div>
