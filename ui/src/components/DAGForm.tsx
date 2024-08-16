@@ -1,30 +1,6 @@
-import { createSignal, For } from "solid-js";
+import { createSignal, createUniqueId, For } from "solid-js";
 import { createStore } from "solid-js/store";
-
-type DagParameterSpec = {
-  name: string;
-  isSecret: boolean;
-  value: string;
-};
-
-type TaskSpec = {
-  name: string;
-  command?: string[]; // will need to convert this into an array
-  args?: string[]; // will need to convert this into an array
-  image: string;
-  runAfter?: string[];
-  backoffLimit: number;
-  retryCodes?: number[];
-  parameters?: string[]; // Parameters assigned to the task
-  podTemplate?: string;
-};
-
-type DAGSpec = {
-  name: string;
-  schedule?: string;
-  task: TaskSpec[];
-  parameters?: DagParameterSpec[]; // Global parameters
-};
+import { DagParameterSpec, TaskSpec, DagFormObj } from "../types/dagForm";
 
 type DeleteButtonProps = {
   taskIndex: number;
@@ -66,7 +42,6 @@ export default function DAGForm() {
   const [name, setName] = createSignal("");
   const [schedule, setSchedule] = createSignal("");
   const [selectedTaskToAdd, setSelectedTaskToAdd] = createSignal("");
-  const [selectedParameterToAdd, setSelectedParameterToAdd] = createSignal("");
 
   const addTask = () => {
     setTasks([
@@ -116,15 +91,15 @@ export default function DAGForm() {
     });
   };
 
-  const setSelectedParameterForTask = (
-    taskIndex: number,
-    paramName: string
-  ) => {
-    setSelectedParameters((prev) => ({ ...prev, [taskIndex]: paramName }));
+  const setSelectedParameterForTask = (taskIndex: number, id: string) => {
+    setSelectedParameters((prev) => ({
+      ...prev,
+      [taskIndex]: id,
+    }));
   };
 
   const deleteParameter = (index: number) => {
-    const paramName = parameters[index].name;
+    const paramId = parameters[index].id;
 
     // Remove the parameter
     setParameters((parameters) => {
@@ -137,7 +112,7 @@ export default function DAGForm() {
       setTasks((tasks) => {
         return tasks.map((task) => {
           const updatedParams = task.parameters?.filter(
-            (param) => param !== paramName
+            (param) => param !== paramId
           );
 
           // Return a new task object if parameters have been updated, otherwise return the original task
@@ -152,39 +127,41 @@ export default function DAGForm() {
   };
 
   const addParameter = () => {
-    setParameters([...parameters, { name: "", value: "", isSecret: false }]);
+    setParameters([
+      ...parameters,
+      { id: createUniqueId(), name: "", value: "", isSecret: false },
+    ]);
   };
 
   const addParameterToTask = (taskIndex: number) => {
-    const selectedParamName = selectedParameters()[taskIndex];
-    if (selectedParamName) {
+    const selectedParamId = selectedParameters()[taskIndex];
+
+    if (
+      selectedParamId &&
+      !tasks[taskIndex].parameters?.includes(selectedParamId)
+    ) {
       setTasks(taskIndex, "parameters", [
         ...(tasks[taskIndex].parameters || []),
-        selectedParamName,
+        selectedParamId,
       ]);
-
-      // Clear the selection after adding the parameter
-      setSelectedParameterForTask(taskIndex, "");
     }
   };
 
   const setParameterName = (paramIndex: number, newName: string) => {
-    const oldName = parameters[paramIndex].name;
+    const oldParam = parameters[paramIndex];
 
+    // Update the parameter name in the parameters store
     setParameters(paramIndex, "name", newName);
 
-    // Now update the tasks that reference the old parameter name
-    setTasks((tasks) => {
-      return tasks.map((task) => {
-        if (task.parameters?.includes(oldName)) {
-          const updatedParams = task.parameters.map((param) =>
-            param === oldName ? newName : param
-          );
-          return { ...task, parameters: updatedParams };
-        }
-        return task;
-      });
-    });
+    // Now update the tasks that reference the old parameter
+    setTasks(
+      (task) => task.parameters?.includes(oldParam.id) ?? false, // Ensure it returns a boolean
+      "parameters",
+      (params) =>
+        params?.map(
+          (param) => (param === oldParam.id ? oldParam.id : param) // Ensure param ID remains the same
+        )
+    );
   };
 
   const handleParameterToggle = (index: number) => {
@@ -192,13 +169,12 @@ export default function DAGForm() {
   };
 
   const submitDAG = () => {
-    const dagSpec: DAGSpec = {
+    const dagSpec: DagFormObj = {
       name: name(),
       schedule: schedule(),
-      task: tasks,
+      tasks: tasks,
       parameters: parameters,
     };
-    console.log(dagSpec);
     // Submit logic here
   };
 
@@ -363,7 +339,7 @@ export default function DAGForm() {
                   }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
-                  <option value="">Select a Task</option>
+                  <option value="">Select a </option>
                   <For each={tasks.filter((_, index) => index !== i())}>
                     {(t) => (
                       <option value={t.name}>
@@ -406,7 +382,7 @@ export default function DAGForm() {
                   <option value="">Select a parameter</option>
                   <For each={parameters}>
                     {(param) => (
-                      <option value={param.name}>
+                      <option value={param.id}>
                         {param.name ||
                           `Parameter ${parameters.indexOf(param) + 1}`}
                       </option>
@@ -426,7 +402,10 @@ export default function DAGForm() {
                 <For each={task.parameters}>
                   {(param) => (
                     <span class="inline-block bg-blue-600 text-gray-200 text-lg px-2 py-1 mt-2 rounded-full mr-2">
-                      {param}
+                      {
+                        parameters.find((parameter) => (parameter.id = param))
+                          ?.name
+                      }
                     </span>
                   )}
                 </For>
