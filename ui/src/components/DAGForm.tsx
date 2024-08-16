@@ -59,6 +59,10 @@ export default function DAGForm() {
   const [parameters, setParameters] = createStore<DagParameterSpec[]>([]);
   const [tasks, setTasks] = createStore<TaskSpec[]>([]);
 
+  const [selectedParameters, setSelectedParameters] = createSignal<
+    Record<number, string>
+  >({});
+
   const [name, setName] = createSignal("");
   const [schedule, setSchedule] = createSignal("");
   const [selectedTaskToAdd, setSelectedTaskToAdd] = createSignal("");
@@ -112,11 +116,39 @@ export default function DAGForm() {
     });
   };
 
+  const setSelectedParameterForTask = (
+    taskIndex: number,
+    paramName: string
+  ) => {
+    setSelectedParameters((prev) => ({ ...prev, [taskIndex]: paramName }));
+  };
+
   const deleteParameter = (index: number) => {
-    setParameters((parameters) => [
-      ...parameters.slice(0, index),
-      ...parameters.slice(index + 1),
-    ]);
+    const paramName = parameters[index].name;
+
+    // Remove the parameter
+    setParameters((parameters) => {
+      const newParameters = [
+        ...parameters.slice(0, index),
+        ...parameters.slice(index + 1),
+      ];
+
+      // Now, update each task's parameters to remove the deleted parameter
+      setTasks((tasks) => {
+        return tasks.map((task) => {
+          const updatedParams = task.parameters?.filter(
+            (param) => param !== paramName
+          );
+
+          // Return a new task object if parameters have been updated, otherwise return the original task
+          return updatedParams?.length !== task.parameters?.length
+            ? { ...task, parameters: updatedParams }
+            : task;
+        });
+      });
+
+      return newParameters;
+    });
   };
 
   const addParameter = () => {
@@ -124,17 +156,35 @@ export default function DAGForm() {
   };
 
   const addParameterToTask = (taskIndex: number) => {
-    if (selectedParameterToAdd()) {
-      const paramToAdd = parameters.find(
-        (param) => param.name === selectedParameterToAdd()
-      );
-      if (paramToAdd) {
-        setTasks(taskIndex, "parameters", [
-          ...(tasks[taskIndex].parameters || []),
-          selectedParameterToAdd(),
-        ]);
-      }
+    const selectedParamName = selectedParameters()[taskIndex];
+    if (selectedParamName) {
+      setTasks(taskIndex, "parameters", [
+        ...(tasks[taskIndex].parameters || []),
+        selectedParamName,
+      ]);
+
+      // Clear the selection after adding the parameter
+      setSelectedParameterForTask(taskIndex, "");
     }
+  };
+
+  const setParameterName = (paramIndex: number, newName: string) => {
+    const oldName = parameters[paramIndex].name;
+
+    setParameters(paramIndex, "name", newName);
+
+    // Now update the tasks that reference the old parameter name
+    setTasks((tasks) => {
+      return tasks.map((task) => {
+        if (task.parameters?.includes(oldName)) {
+          const updatedParams = task.parameters.map((param) =>
+            param === oldName ? newName : param
+          );
+          return { ...task, parameters: updatedParams };
+        }
+        return task;
+      });
+    });
   };
 
   const handleParameterToggle = (index: number) => {
@@ -313,7 +363,7 @@ export default function DAGForm() {
                   }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
-                  <option value="">Select a parameter</option>
+                  <option value="">Select a Task</option>
                   <For each={tasks.filter((_, index) => index !== i())}>
                     {(t) => (
                       <option value={t.name}>
@@ -348,8 +398,9 @@ export default function DAGForm() {
               <div class="flex space-x-2 items-center">
                 <select
                   onChange={(e) => {
-                    setSelectedParameterToAdd(e.currentTarget.value);
+                    setSelectedParameterForTask(i(), e.currentTarget.value);
                   }}
+                  value={selectedParameters()[i()] || ""}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 >
                   <option value="">Select a parameter</option>
@@ -364,14 +415,13 @@ export default function DAGForm() {
                 </select>
                 <button
                   type="button"
-                  onClick={() => {
-                    addParameterToTask(i());
-                  }}
+                  onClick={() => addParameterToTask(i())}
                   class="px-3 py-1 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
                 >
                   Add
                 </button>
               </div>
+
               <div class="mt-2">
                 <For each={task.parameters}>
                   {(param) => (
@@ -407,7 +457,7 @@ export default function DAGForm() {
                   type="text"
                   value={param.name}
                   onInput={(e) => {
-                    setParameters(i(), "name", e.currentTarget.value);
+                    setParameterName(i(), e.currentTarget.value);
                   }}
                   class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
                 />
