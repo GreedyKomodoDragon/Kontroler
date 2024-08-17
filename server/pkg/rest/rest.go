@@ -5,9 +5,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"k8s.io/client-go/dynamic"
 )
 
-func NewFiberHttpServer(dbManager db.DbManager) *fiber.App {
+func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
@@ -18,7 +19,7 @@ func NewFiberHttpServer(dbManager db.DbManager) *fiber.App {
 		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
 	}))
 
-	addV1(app, dbManager)
+	addV1(app, dbManager, kClient)
 
 	return app
 }
