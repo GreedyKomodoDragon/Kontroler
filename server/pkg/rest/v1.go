@@ -1,21 +1,24 @@
 package rest
 
 import (
+	"fmt"
 	"kubeconductor-server/pkg/db"
+	kclient "kubeconductor-server/pkg/kClient"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
+	"k8s.io/client-go/dynamic"
 )
 
-func addV1(app *fiber.App, dbManager db.DbManager) {
+func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface) {
 
 	router := app.Group("/api/v1")
 
-	addDags(router, dbManager)
+	addDags(router, dbManager, kubClient)
 }
 
-func addDags(router fiber.Router, dbManager db.DbManager) {
+func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
 	dagRouter := router.Group("/dag")
 
 	dagRouter.Get("/meta/:page", func(c *fiber.Ctx) error {
@@ -121,6 +124,26 @@ func addDags(router fiber.Router, dbManager db.DbManager) {
 		}
 
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
+	})
+
+	dagRouter.Post("/create", func(c *fiber.Ctx) error {
+		var dagForm kclient.DagFormObj
+		if err := c.BodyParser(&dagForm); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "cannot parse JSON",
+			})
+		}
+
+		if err := kclient.CreateDAG(c.Context(), dagForm, kubClient); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to create DAG: %v", err),
+			})
+		}
+
+		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+			"message": "DAG created successfully",
+		})
+
 	})
 
 }
