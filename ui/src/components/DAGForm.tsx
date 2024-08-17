@@ -1,6 +1,10 @@
 import { createSignal, createUniqueId, For } from "solid-js";
 import { createStore } from "solid-js/store";
 import { DagParameterSpec, TaskSpec, DagFormObj } from "../types/dagForm";
+import { validateDagFormObj } from "../utils/dagform";
+import ErrorAlert from "./errorAlert";
+import { createDag } from "../api/dags";
+import SuccessfulAlert from "./successfulAlert";
 
 type DeleteButtonProps = {
   taskIndex: number;
@@ -32,6 +36,8 @@ export function DeleteButton(props: DeleteButtonProps) {
 }
 
 export default function DAGForm() {
+  const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
+  const [successMsg, setSuccessMsg] = createSignal<string>("");
   const [parameters, setParameters] = createStore<DagParameterSpec[]>([]);
   const [tasks, setTasks] = createStore<TaskSpec[]>([]);
 
@@ -40,6 +46,7 @@ export default function DAGForm() {
   >({});
 
   const [name, setName] = createSignal("");
+  const [namespace, setNamespace] = createSignal("");
   const [schedule, setSchedule] = createSignal("");
   const [selectedTaskToAdd, setSelectedTaskToAdd] = createSignal("");
 
@@ -169,13 +176,30 @@ export default function DAGForm() {
   };
 
   const submitDAG = () => {
+    setErrorMsgs([]);
+    setSuccessMsg("");
+
     const dagSpec: DagFormObj = {
       name: name(),
       schedule: schedule(),
       tasks: tasks,
       parameters: parameters,
+      namespace: namespace(),
     };
-    // Submit logic here
+
+    const errors = validateDagFormObj(dagSpec);
+    if (errors.length !== 0) {
+      setErrorMsgs(errors);
+      return;
+    }
+
+    createDag(dagSpec)
+      .then((res) => {
+        setSuccessMsg(res.message);
+      })
+      .catch((err) => {
+        setErrorMsgs([err.error]);
+      });
   };
 
   return (
@@ -192,6 +216,15 @@ export default function DAGForm() {
           type="text"
           value={name()}
           onInput={(e) => setName(e.currentTarget.value)}
+          class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+        />
+      </div>
+      <div>
+        <label class="block text-lg font-medium">Namespace</label>
+        <input
+          type="text"
+          value={namespace()}
+          onInput={(e) => setNamespace(e.currentTarget.value)}
           class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
         />
       </div>
@@ -482,6 +515,8 @@ export default function DAGForm() {
       >
         Submit DAG
       </button>
+      {errorMsgs().length !== 0 && <ErrorAlert msgs={errorMsgs()} />}
+      {successMsg() && <SuccessfulAlert msg={successMsg()} />}
     </form>
   );
 }

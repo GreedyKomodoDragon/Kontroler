@@ -54,12 +54,24 @@ export function validateDagFormObj(dagFormObj: DagFormObj): string[] {
     errors.push("Invalid schedule: should be empty or a valid cron string.");
   }
 
+  if (dagFormObj.tasks.length === 0) {
+    errors.push("You must provide at least one task for a dag");
+  }
+
   // Validate tasks
   const taskNames = dagFormObj.tasks.map((task) => task.name);
 
   dagFormObj.tasks.forEach((task) => {
     if (!task.command || task.command.length === 0) {
-      errors.push(`Task "${task.name}" is missing a command.`);
+      errors.push(`Task "${task.name}" is missing a command. Must be an array of strings`);
+    }
+
+    if (task.args === undefined) {
+      errors.push(`Task "${task.name}": args is invalid, must be a array of strings`);
+    }
+
+    if (task.retryCodes === undefined) {
+      errors.push(`Task "${task.name}": retry codes is invalid, must be a array of numbers`);
     }
 
     if (!task.image) {

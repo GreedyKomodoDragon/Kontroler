@@ -14,14 +14,18 @@ describe('validateDagFormObj', () => {
           name: "task1",
           command: ["echo", "hello"],
           image: "alpine",
+          args: [],
           runAfter: ["task2"],
           backoffLimit: 3,
+          retryCodes: []
         },
         {
           name: "task2",
           command: ["echo", "world"],
+          args: [],
           image: "alpine",
           backoffLimit: 3,
+          retryCodes: []
         },
       ],
     };
@@ -65,7 +69,7 @@ describe('validateDagFormObj', () => {
     };
 
     const errors = validateDagFormObj(invalidDagForm);
-    expect(errors).toContain('Task "task1" is missing a command.');
+    expect(errors).toContain('Task "task1" is missing a command. Must be an array of strings');
   });
 
   it('should fail when a task is missing an image', () => {
@@ -136,7 +140,14 @@ describe('validateDagFormObj', () => {
           name: "task2",
           command: ["echo", "world"],
           image: "alpine",
-          runAfter: ["task1"],
+          runAfter: ["task2"],
+          backoffLimit: 3,
+        },
+        {
+          name: "task3",
+          command: ["echo", "world"],
+          image: "alpine",
+          runAfter: ["task3", "task2"],
           backoffLimit: 3,
         },
       ],

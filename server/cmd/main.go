@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"kubeconductor-server/pkg/db"
+	kclient "kubeconductor-server/pkg/kClient"
 	"kubeconductor-server/pkg/rest"
 	"os"
 	"os/signal"
@@ -48,7 +49,12 @@ func main() {
 		panic(err)
 	}
 
-	app := rest.NewFiberHttpServer(dbManager)
+	kubClient, err := kclient.NewClient()
+	if err != nil {
+		panic(err)
+	}
+
+	app := rest.NewFiberHttpServer(dbManager, kubClient)
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)

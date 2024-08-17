@@ -7,13 +7,13 @@ export type DagParameterSpec = {
 
 export type TaskSpec = {
   name: string;
-  command?: string[]; // will need to convert this into an array
-  args?: string[]; // will need to convert this into an array
+  command?: string[];
+  args?: string[];
   image: string;
   runAfter?: string[];
   backoffLimit: number;
   retryCodes?: number[];
-  parameters?: string[]; // Parameters assigned to the task
+  parameters?: string[];
   podTemplate?: string;
 };
 
@@ -21,5 +21,6 @@ export type DagFormObj = {
   name: string;
   schedule?: string;
   tasks: TaskSpec[];
-  parameters?: DagParameterSpec[]; // Global parameters
+  parameters?: DagParameterSpec[];
+  namespace: string;
 };
