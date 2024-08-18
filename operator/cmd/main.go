@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -196,13 +197,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	taskAllocator := dag.NewTaskAllocator(clientset)
+	// defaults to one hour
+	var jobTTL int32 = 3600
+
+	jobTTLStr := os.Getenv("JOB_TTL")
+	if jobTTLStr != "" {
+		val, err := strconv.ParseInt(jobTTLStr, 10, 32)
+		if err != nil {
+			setupLog.Error(err, "failed to convert jobTTLStr to int")
+			os.Exit(1)
+		}
+
+		jobTTL = int32(val)
+		setupLog.Info("jobTTL non-default configured", "jobTTL", jobTTL)
+	}
+
+	taskAllocator := dag.NewTaskAllocator(clientset, &jobTTL)
 	taskWatcher, err := dag.NewTaskWatcher(clientset, taskAllocator, dbDAGManager)
 	if err != nil {
 		setupLog.Error(err, "failed to create task watcher")
 		os.Exit(1)
 	}
 
+	// TODO: Make leader run this only
 	podWatcher, err := pod.NewPodWatcher(clientset, dbDAGManager)
 	if err != nil {
 		setupLog.Error(err, "failed to create pod watcher")

@@ -23,11 +23,13 @@ type TaskAllocator interface {
 
 type taskAllocator struct {
 	clientSet *kubernetes.Clientset
+	jobTTL    *int32
 }
 
-func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
+func NewTaskAllocator(clientSet *kubernetes.Clientset, jobTTL *int32) TaskAllocator {
 	return &taskAllocator{
 		clientSet: clientSet,
+		jobTTL:    jobTTL,
 	}
 }
 
@@ -113,6 +115,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 				},
 				Spec: podSpec,
 			},
+			TTLSecondsAfterFinished: t.jobTTL,
 		},
 	}
 
@@ -179,6 +182,7 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 					RestartPolicy: "Never",
 				},
 			},
+			TTLSecondsAfterFinished: t.jobTTL,
 		},
 	}
 
