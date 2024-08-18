@@ -72,10 +72,6 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		RestartPolicy: "Never",
 	}
 
-	// Volumes []corev1.Volume `json:"volumes,omitempty"`
-	// // +optional
-	// VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
-
 	if task.PodTemplate != nil {
 		podSpec.Volumes = task.PodTemplate.Volumes
 		podSpec.ImagePullSecrets = task.PodTemplate.ImagePullSecrets
@@ -86,6 +82,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		podSpec.ServiceAccountName = task.PodTemplate.ServiceAccountName
 		podSpec.AutomountServiceAccountToken = task.PodTemplate.AutomountServiceAccountToken
 		podSpec.Containers[0].VolumeMounts = task.PodTemplate.VolumeMounts
+		podSpec.Containers[0].Resources = *task.PodTemplate.Resources
 	}
 
 	job := &batchv1.Job{
