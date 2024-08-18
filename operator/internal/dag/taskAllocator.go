@@ -82,7 +82,10 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		podSpec.ServiceAccountName = task.PodTemplate.ServiceAccountName
 		podSpec.AutomountServiceAccountToken = task.PodTemplate.AutomountServiceAccountToken
 		podSpec.Containers[0].VolumeMounts = task.PodTemplate.VolumeMounts
-		podSpec.Containers[0].Resources = *task.PodTemplate.Resources
+
+		if task.PodTemplate.Resources != nil {
+			podSpec.Containers[0].Resources = *task.PodTemplate.Resources
+		}
 	}
 
 	job := &batchv1.Job{
