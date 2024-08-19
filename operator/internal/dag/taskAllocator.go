@@ -18,7 +18,7 @@ import (
 
 type TaskAllocator interface {
 	AllocateTask(context.Context, db.Task, int, int, string) (types.UID, error)
-	AllocateTaskWithEnv(context.Context, db.Task, int, int, string, []v1.EnvVar) (types.UID, error)
+	AllocateTaskWithEnv(context.Context, db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements) (types.UID, error)
 }
 
 type taskAllocator struct {
@@ -72,10 +72,6 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		RestartPolicy: "Never",
 	}
 
-	// Volumes []corev1.Volume `json:"volumes,omitempty"`
-	// // +optional
-	// VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
-
 	if task.PodTemplate != nil {
 		podSpec.Volumes = task.PodTemplate.Volumes
 		podSpec.ImagePullSecrets = task.PodTemplate.ImagePullSecrets
@@ -86,6 +82,10 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		podSpec.ServiceAccountName = task.PodTemplate.ServiceAccountName
 		podSpec.AutomountServiceAccountToken = task.PodTemplate.AutomountServiceAccountToken
 		podSpec.Containers[0].VolumeMounts = task.PodTemplate.VolumeMounts
+
+		if task.PodTemplate.Resources != nil {
+			podSpec.Containers[0].Resources = *task.PodTemplate.Resources
+		}
 	}
 
 	job := &batchv1.Job{
@@ -141,8 +141,22 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 	return "", fmt.Errorf("failed to create pod due to naming collisions")
 }
 
-func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar) (types.UID, error) {
+func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
 	backoff := int32(0)
+
+	containerSpec := []v1.Container{
+		{
+			Name:    task.Name,
+			Image:   task.Image,
+			Command: task.Command,
+			Args:    task.Args,
+			Env:     envs,
+		},
+	}
+
+	if resources != nil {
+		containerSpec[0].Resources = *resources
+	}
 
 	job := &batchv1.Job{
 		// TODO: Refactor this to enable it to be re-used in DAG task
@@ -170,15 +184,7 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 					},
 				},
 				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name:    task.Name,
-							Image:   task.Image,
-							Command: task.Command,
-							Args:    task.Args,
-							Env:     envs,
-						},
-					},
+					Containers:    containerSpec,
 					RestartPolicy: "Never",
 				},
 			},

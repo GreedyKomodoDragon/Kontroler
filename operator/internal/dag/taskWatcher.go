@@ -233,7 +233,7 @@ func (t *taskWatcher) handleFailedJob(ctx context.Context, job *batchv1.Job, tas
 					ServiceAccountName:           pod.Spec.ServiceAccountName,
 					AutomountServiceAccountToken: pod.Spec.AutomountServiceAccountToken,
 				},
-			}, dagRunId, taskRunId, pod.Namespace, container.Env)
+			}, dagRunId, taskRunId, pod.Namespace, container.Env, &container.Resources)
 
 		if err != nil {
 			log.Log.Error(err, "failed to allocate new pod")
