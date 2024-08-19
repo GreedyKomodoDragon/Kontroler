@@ -54,6 +54,8 @@ type PodTemplateSpec struct {
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	// +optional
 	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 func (p PodTemplateSpec) Serialize() (string, error) {
