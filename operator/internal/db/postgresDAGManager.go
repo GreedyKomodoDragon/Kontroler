@@ -613,7 +613,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, schedule, namespace
         FROM DAGs
-        WHERE nexttime <= NOW() AND schedule != '';
+        WHERE nexttime <= NOW() AND schedule != '' AND active = TRUE;
     `)
 	if err != nil {
 		return nil, nil, err
