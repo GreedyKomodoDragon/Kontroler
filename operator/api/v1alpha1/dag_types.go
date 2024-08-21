@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -43,7 +42,7 @@ type PodTemplateSpec struct {
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// +optional
-	SecurityContext *v1.PodSecurityContext `json:"securityContext,omitempty"`
+	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// +optional
@@ -63,6 +62,7 @@ func (p PodTemplateSpec) Serialize() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return string(jsonData), nil
 }
 

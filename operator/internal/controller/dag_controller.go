@@ -19,9 +19,12 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
@@ -49,22 +52,49 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	log.Log.Info("reconcile event", "controller", "dag", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
 
-	// Fetch the Schedule object that triggered the reconciliation
+	// Fetch the DAG object that triggered the reconciliation
 	var dag kubeconductorv1alpha1.DAG
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
-		// Return error if unable to fetch Schedule object
+		// Handle the case where the DAG object was deleted before reconciliation
+		if errors.IsNotFound(err) {
+			// DAG was deleted, remove it from the database
+			if err := r.deleteFromDatabase(ctx, req.NamespacedName); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{}, nil
+		}
+
+		// Return error if unable to fetch DAG object
 		return ctrl.Result{}, err
 	}
 
-	// check if it a valid DAG
+	// Check if the DAG is marked for deletion
+	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The DAG is being deleted, remove it from the database
+		if err := r.deleteFromDatabase(ctx, req.NamespacedName); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Remove the finalizer if it exists
+		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kubeconductor.greedykomodo") {
+			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kubeconductor.greedykomodo")
+			if err := r.Update(ctx, &dag); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	// Validate the DAG
 	if err := dag.ValidateDAG(); err != nil {
 		// Return error if DAG is not valid
 		return ctrl.Result{}, err
 	}
 
-	// Schedule object was found, store it in the database
+	// Store the DAG object in the database
 	if err := r.storeInDatabase(ctx, &dag, req.NamespacedName.Namespace); err != nil {
 		if err.Error() == "applying the same dag" {
+			log.Log.Info("reconcile event", "controller", "dag", "event", "applying the same dag")
 			return ctrl.Result{}, nil
 		}
 
@@ -76,6 +106,10 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kubeconductorv1alpha1.DAG, namespace string) error {
 	return r.DbManager.InsertDAG(ctx, dag, namespace)
+}
+
+func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName types.NamespacedName) error {
+	return r.DbManager.SoftDeleteDAG(ctx, namespacedName.Name, namespacedName.Namespace)
 }
 
 // SetupWithManager sets up the controller with the Manager.
