@@ -1,10 +1,8 @@
 package db
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -136,11 +134,16 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
 }
 
 func hashDagSpec(s *v1alpha1.DAGSpec) []byte {
-	var b bytes.Buffer
-	gob.NewEncoder(&b).Encode(s)
+	// Convert the DAGSpec to JSON
+	data, err := json.Marshal(s)
+	if err != nil {
+		// Handle the error appropriately
+		return nil
+	}
 
+	// Hash the JSON bytes
 	hash := sha256.New()
-	hash.Write(b.Bytes())
+	hash.Write(data)
 
 	return hash.Sum(nil)
 }
@@ -163,13 +166,18 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 	err = tx.QueryRow(ctx, `
 	SELECT dag_id, version, hash
 	FROM DAGs
-	WHERE name = $1
-	ORDER BY version DESC;`, dag.Name).Scan(&existingDAGID, &version, &hash)
+	WHERE name = $1 AND namespace = $2
+	ORDER BY version DESC;`, dag.Name, namespace).Scan(&existingDAGID, &version, &hash)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
 
-	hashValue := fmt.Sprintf("%x", hashDagSpec(&dag.Spec))
+	hashBytes := hashDagSpec(&dag.Spec)
+	if hashBytes == nil {
+		return fmt.Errorf("failed to create hash")
+	}
+
+	hashValue := fmt.Sprintf("%x", hashBytes)
 	if hash == hashValue {
 		return fmt.Errorf("applying the same dag")
 	}
@@ -184,21 +192,12 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 	}
 
 	// SET previous version to false - allows version but stops multiple versions running
-	if err := p.setInactive(ctx, tx, dag.Name, version-1); err != nil {
+	if err := p.setInactive(ctx, tx, dag.Name, namespace, version-1); err != nil {
 		return err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name string, prevVersion int) error {
-	_, err := tx.Exec(ctx, "UPDATE DAGs SET active = FALSE WHERE name = $1 and version = $2", name, prevVersion)
-	if err != nil {
 		return err
 	}
 
@@ -256,8 +255,9 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	}
 
 	// Map the task to the DAG
-	_, err := tx.Exec(ctx, "INSERT INTO DAG_Parameters (dag_id, name, isSecret, defaultValue) VALUES ($1, $2, $3, $4)", dagID, parameter.Name, isSecret, value)
-	if err != nil {
+	if _, err := tx.Exec(ctx, `
+	INSERT INTO DAG_Parameters (dag_id, name, isSecret, defaultValue) 
+	VALUES ($1, $2, $3, $4)`, dagID, parameter.Name, isSecret, value); err != nil {
 		return err
 	}
 
@@ -613,7 +613,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, schedule, namespace
         FROM DAGs
-        WHERE nexttime <= NOW() AND schedule != '';
+        WHERE nexttime <= NOW() AND schedule != '' AND active = TRUE;
     `)
 	if err != nil {
 		return nil, nil, err
@@ -800,4 +800,47 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) error {
+	// Check if the DAG already exists
+	// Begin transaction
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Rollback transaction if not committed
+	defer tx.Rollback(ctx)
+
+	var version int
+	if err := tx.QueryRow(ctx, `
+	SELECT version
+	FROM DAGs
+	WHERE name = $1 AND namespace = $2
+	ORDER BY version DESC;`, name, namespace).Scan(&version); err != nil {
+		return err
+	}
+
+	if err := p.setInactive(ctx, tx, name, namespace, version); err != nil {
+		return err
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name string, namespace string, prevVersion int) error {
+	if _, err := tx.Exec(ctx, `
+	UPDATE DAGs 
+	SET active = FALSE 
+	WHERE name = $1 AND namespace = $2 AND version = $3`, name, namespace, prevVersion); err != nil {
+		return err
+	}
+
+	return nil
 }
