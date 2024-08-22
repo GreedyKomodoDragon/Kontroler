@@ -4,6 +4,7 @@ import {
   DagRunAll,
   DagRunGraph,
   DagRunMeta,
+  DashboardStats,
   TaskDetails,
   TaskRunDetails,
 } from "../types/dag";
@@ -77,3 +78,13 @@ export async function createDag(dagForm: DagFormObj): Promise<any> {
   );
   return result.data;
 }
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const result = await axios.get(
+    'http://localhost:8080/api/v1/stats/dashboard ',
+    {}
+  );
+  return result.data;
+}
+
+

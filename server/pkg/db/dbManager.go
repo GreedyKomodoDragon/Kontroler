@@ -97,6 +97,23 @@ type TaskDetails struct {
 	RetryCodes    []int       `json:"retryCodes"`
 }
 
+type DashboardStats struct {
+	DAGCount          int                `json:"dag_count"`
+	SuccessfulDagRuns int                `json:"successful_dag_runs"`
+	FailedDagRuns     int                `json:"failed_dag_runs"`
+	TotalDagRuns      int                `json:"total_dag_runs"`
+	ActiveDagRuns     int                `json:"active_dag_runs"`
+	DAGTypeCounts     map[string]int     `json:"dag_type_counts"`
+	TaskOutcomes      map[string]int     `json:"task_outcomes"`
+	DailyDagRunCounts []DailyDagRunCount `json:"daily_dag_run_counts"`
+}
+
+type DailyDagRunCount struct {
+	Day             time.Time `json:"day"`
+	SuccessfulCount int       `json:"successful_count"`
+	FailedCount     int       `json:"failed_count"`
+}
+
 type DbManager interface {
 	GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error)
 	GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error)
@@ -104,6 +121,7 @@ type DbManager interface {
 	GetDagRunAll(ctx context.Context, dagRunId int) (*DagRunAll, error)
 	GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error)
 	GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*TaskRunDetails, error)
+	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
 
 	Close()
 }
