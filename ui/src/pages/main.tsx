@@ -7,7 +7,7 @@ import { DashboardStats } from "../types/dag";
 
 const Main: Component = () => {
   // Updated bar chart data for DagRun Outcomes (30 Days)
-  const [chartOptions2] = createSignal({
+  const [timeLine, setTimeLine] = createSignal({
     chart: {
       type: "bar",
       height: 400,
@@ -56,12 +56,12 @@ const Main: Component = () => {
   });
 
   // New donut chart data for DAG Type
-  const [dagTypeDonutChartOptions] = createSignal({
+  const [dagTypeDonutChartOptions, setDagTypeDonutChartOptions] = createSignal({
     chart: {
       type: "donut",
     },
-    series: [50, 70], // New data specific to DAG Type
-    labels: ["Type A", "Type B"],
+    series: [0, 0],
+    labels: ["Event Driven Only", "Scheduled"],
     colors: ["#FFA500", "#1E90FF"],
     stroke: {
       colors: ["#000"],
@@ -81,35 +81,91 @@ const Main: Component = () => {
   });
 
   // New donut chart data for Task Outcomes (30 Days)
-  const [taskOutcomesDonutChartOptions] = createSignal({
-    chart: {
-      type: "donut",
-    },
-    series: [70, 20], // New data specific to Task Outcomes
-    labels: ["Completed", "Failed"],
-    colors: ["#00FF00", "#FF0000"],
-    stroke: {
-      colors: ["#000"],
-    },
-    plotOptions: {
-      pie: {
-        donut: {
-          labels: {
-            show: true,
+  const [taskOutcomesDonutChartOptions, setTaskOutcomesDonutChartOptions] =
+    createSignal({
+      chart: {
+        type: "donut",
+      },
+      series: [0, 0], // New data specific to Task Outcomes
+      labels: ["Completed", "Failed"],
+      colors: ["#00FF00", "#FF0000"],
+      stroke: {
+        colors: ["#000"],
+      },
+      plotOptions: {
+        pie: {
+          donut: {
+            labels: {
+              show: true,
+            },
           },
         },
       },
-    },
-    legend: {
-      show: false,
-    },
-  });
+      legend: {
+        show: false,
+      },
+    });
 
   const [stats, setStats] = createSignal<DashboardStats | undefined>();
 
   getDashboardStats()
     .then((data) => {
       setStats(data);
+
+      const series = [
+        data.dag_type_counts["Event Driven"] || 0,
+        data.dag_type_counts["Scheduled"] || 0,
+      ];
+
+      const seriesTask = [
+        data.task_outcomes["Completed"] || 0,
+        data.task_outcomes["Failed"] || 0,
+      ];
+
+      const seriesTime: string[] = [];
+      const seriesSuccessful = [];
+      const seriesFailed = [];
+
+      for (let index = 0; index < data.daily_dag_run_counts.length; index++) {
+        const element = data.daily_dag_run_counts[index];
+        seriesFailed.push(element.failed_count);
+        seriesSuccessful.push(element.successful_count);
+        seriesTime.push(element.day.substring(0, 10));
+      }
+
+      const timeSeriesFinal = [
+        {
+          name: "Successful",
+          data: seriesSuccessful,
+        },
+        {
+          name: "Failed",
+          data: seriesFailed,
+        },
+      ];
+
+      setDagTypeDonutChartOptions((prevOptions) => ({
+        ...prevOptions,
+        series: series,
+      }));
+
+      setTaskOutcomesDonutChartOptions((prevOptions) => ({
+        ...prevOptions,
+        series: seriesTask,
+      }));
+
+      setTimeLine((prevOptions) => ({
+        ...prevOptions,
+        series: timeSeriesFinal,
+        xaxis: {
+          categories: seriesTime,
+          labels: {
+            style: {
+              colors: "#FFFFFF",
+            },
+          },
+        },
+      }));
     })
     .catch((err) => {
       console.log(err);
@@ -132,7 +188,9 @@ const Main: Component = () => {
               </h3>
             </div>
             <div class="p-6">
-              <div class="text-4xl font-bold">{stats() ? stats()?.dag_count : 0}</div>
+              <div class="text-4xl font-bold">
+                {stats() ? stats()?.dag_count : 0}
+              </div>
             </div>
           </div>
           <div
@@ -145,7 +203,9 @@ const Main: Component = () => {
               </h3>
             </div>
             <div class="p-6">
-              <div class="text-4xl font-bold text-green-500">{stats() ? stats()?.successful_dag_runs : 0}</div>
+              <div class="text-4xl font-bold text-green-500">
+                {stats() ? stats()?.successful_dag_runs : 0}
+              </div>
             </div>
           </div>
           <div
@@ -158,7 +218,9 @@ const Main: Component = () => {
               </h3>
             </div>
             <div class="p-6">
-              <div class="text-4xl font-bold text-red-500">{stats() ? stats()?.failed_dag_runs : 0}</div>
+              <div class="text-4xl font-bold text-red-500">
+                {stats() ? stats()?.failed_dag_runs : 0}
+              </div>
             </div>
           </div>
           <div
@@ -171,7 +233,9 @@ const Main: Component = () => {
               </h3>
             </div>
             <div class="p-6">
-              <div class="text-4xl font-bold">{stats() ? stats()?.total_dag_runs : 0}</div>
+              <div class="text-4xl font-bold">
+                {stats() ? stats()?.total_dag_runs : 0}
+              </div>
             </div>
           </div>
         </div>
@@ -186,7 +250,7 @@ const Main: Component = () => {
             </h3>
           </div>
           <div class="p-6">
-            <Chart options={chartOptions2() as ApexOptions} />
+            <Chart options={timeLine() as ApexOptions} />
           </div>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -201,7 +265,9 @@ const Main: Component = () => {
             </div>
             <div class="p-6">
               {/* Apply responsive font size */}
-              <div class="text-8xl font-bold text-fit">{stats() ? stats()?.active_dag_runs : 0}</div>
+              <div class="text-8xl font-bold text-fit">
+                {stats() ? stats()?.active_dag_runs : 0}
+              </div>
             </div>
           </div>
           <div
