@@ -30,18 +30,6 @@ type ConditionalRetry struct {
 	RetryCodes []int32
 }
 
-type DashboardStats struct {
-	DAGCount           int
-	SuccessfulDagRuns  int
-	FailedDagRuns      int
-	TotalDagRuns       int
-	SuccessfulTaskRuns int
-	FailedTaskRuns     int
-	ActiveDagRuns      int
-	DAGTypeCounts      map[string]int
-	TaskOutcomes       map[string]int
-}
-
 type DBDAGManager interface {
 	// InitaliseDatabase will ensure all create requires components such as tables in a relational database are within the database
 	InitaliseDatabase(ctx context.Context) error
