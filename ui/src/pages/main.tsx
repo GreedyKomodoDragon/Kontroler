@@ -18,16 +18,16 @@ const Main: Component = () => {
     series: [
       {
         name: "Successful",
-        data: [12, 18, 15, 22, 19, 28, 32, 48, 60],
+        data: [] as number[],
       },
       {
         name: "Failed",
-        data: [3, 5, 7, 8, 4, 6, 10, 20, 1],
+        data: [] as number[],
       },
     ],
     colors: ["#00FF00", "#FF0000"],
     xaxis: {
-      categories: ["Q1", "Q2", "Q3", "Q4", "Q1", "Q2", "Q3", "Q4", "Q1"],
+      categories: [] as string[],
       labels: {
         style: {
           colors: "#FFFFFF",
