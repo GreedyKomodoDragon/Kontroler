@@ -16,6 +16,7 @@ func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface) 
 	router := app.Group("/api/v1")
 
 	addDags(router, dbManager, kubClient)
+	addStats(router, dbManager)
 }
 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
@@ -146,4 +147,18 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 
 	})
 
+}
+
+func addStats(router fiber.Router, dbManager db.DbManager) {
+	statsRouter := router.Group("/stats")
+
+	statsRouter.Get("/dashboard", func(c *fiber.Ctx) error {
+		stats, err := dbManager.GetDashboardStats(c.Context())
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting main stats")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(stats)
+	})
 }
