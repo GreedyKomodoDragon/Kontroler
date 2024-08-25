@@ -68,3 +68,20 @@ export type TaskDetails = {
   podTemplate: string;
   retryCodes: number[];
 };
+
+export type DashboardStats = {
+  dag_count: number;
+  successful_dag_runs: number;
+  failed_dag_runs: number;
+  total_dag_runs: number;
+  active_dag_runs: number;
+  dag_type_counts: { [key: string]: number };
+  task_outcomes: { [key: string]: number };
+  daily_dag_run_counts: DailyDagRunCount[];
+};
+
+export type DailyDagRunCount = {
+  day: string; 
+  successful_count: number;
+  failed_count: number;
+};

@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS DAG_Runs (
 	status VARCHAR(255) NOT NULL,
 	successfulCount INTEGER NOT NULL,
 	failedCount INTEGER NOT NULL,
+	run_time TIMESTAMP NOT NULL,
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
 	UNIQUE(name)
 );
@@ -325,8 +326,8 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	// Map the task to the DAG
 	var dagRunID int
 	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount) 
-	VALUES ($1, $2, 'running', 0, 0) 
+	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
+	VALUES ($1, $2, 'running', 0, 0, NOW()) 
 	RETURNING run_id`, dag.DagId, name).Scan(&dagRunID); err != nil {
 		return 0, err
 	}
