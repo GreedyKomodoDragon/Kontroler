@@ -152,7 +152,7 @@ func hashDagSpec(s *v1alpha1.DAGSpec) []byte {
 func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
 	// Check if the DAG already exists
 	// Begin transaction
-	tx, err := p.pool.Begin(context.Background())
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}

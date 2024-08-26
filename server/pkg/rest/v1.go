@@ -2,6 +2,7 @@ package rest
 
 import (
 	"fmt"
+	"kubeconductor-server/pkg/auth"
 	"kubeconductor-server/pkg/db"
 	kclient "kubeconductor-server/pkg/kClient"
 	"strconv"
@@ -11,12 +12,13 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface) {
+func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, authManager auth.AuthManager) {
 
 	router := app.Group("/api/v1")
 
 	addDags(router, dbManager, kubClient)
 	addStats(router, dbManager)
+	addAccountAuth(router, authManager)
 }
 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
@@ -160,5 +162,59 @@ func addStats(router fiber.Router, dbManager db.DbManager) {
 		}
 
 		return c.Status(fiber.StatusOK).JSON(stats)
+	})
+}
+
+func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
+	statsRouter := router.Group("/auth")
+
+	statsRouter.Post("/login", func(c *fiber.Ctx) error {
+		var req auth.Credentials
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
+		token, err := authManager.Login(c.Context(), &req)
+		if err != nil {
+			log.Error().Err(err).Msg("Error checking credentials")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		if token == "" {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"token": token,
+		})
+	})
+
+	statsRouter.Post("/create", func(c *fiber.Ctx) error {
+		var req auth.Credentials
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
+		if err := authManager.CreateAccount(c.Context(), &req); err != nil {
+			log.Error().Err(err).Msg("Error creating account")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.SendStatus(fiber.StatusCreated)
+	})
+
+	statsRouter.Post("/revoke", func(c *fiber.Ctx) error {
+		token := c.Locals("token").(string)
+
+		if err := authManager.RevokeToken(c.Context(), token); err != nil {
+			log.Error().Err(err).Msg("Error creating account")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.SendStatus(fiber.StatusAccepted)
 	})
 }
