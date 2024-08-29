@@ -8,6 +8,8 @@ import DagRuns from "./pages/dagRuns";
 import DagRun from "./pages/dagRun";
 import Create from "./pages/create";
 import Login from "./pages/login";
+import { AuthProvider } from "./providers/authProvider";
+import { ProtectedRoute } from "./components/protectedRoute";
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -30,50 +32,62 @@ const Layout: Component<{ children: JSX.Element }> = (props) => {
 // Main App component
 const App: Component = () => {
   return (
-    <Router>
-      {/* Route for login without Layout */}
-      <Route path="/login" component={Login} />
-      <Route
-        path="/"
-        component={(props) => (
-          <Layout>
-            <Main />
-          </Layout>
-        )}
-      />
-      <Route
-        path="/create"
-        component={(props) => (
-          <Layout>
-            <Create />
-          </Layout>
-        )}
-      />
-      <Route
-        path="/dags"
-        component={(props) => (
-          <Layout>
-            <Dags />
-          </Layout>
-        )}
-      />
-      <Route
-        path="/dags/runs"
-        component={(props) => (
-          <Layout>
-            <DagRuns />
-          </Layout>
-        )}
-      />
-      <Route
-        path="/dags/run/:id"
-        component={(props) => (
-          <Layout>
-            <DagRun />
-          </Layout>
-        )}
-      />
-    </Router>
+    <AuthProvider>
+      <Router>
+        {/* Route for login without Layout */}
+        <Route path="/login" component={Login} />
+        <Route
+          path="/"
+          component={(props) => (
+            <ProtectedRoute>
+              <Layout>
+                <Main />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/create"
+          component={(props) => (
+            <ProtectedRoute>
+              <Layout>
+                <Create />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/dags"
+          component={(props) => (
+            <ProtectedRoute>
+              <Layout>
+                <Dags />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/dags/runs"
+          component={(props) => (
+            <ProtectedRoute>
+              <Layout>
+                <DagRuns />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/dags/run/:id"
+          component={(props) => (
+            <ProtectedRoute>
+              <Layout>
+                <DagRun />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+      </Router>
+    </AuthProvider>
   );
 };
 

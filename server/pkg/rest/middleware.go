@@ -8,7 +8,7 @@ import (
 )
 
 func Authentication(c *fiber.Ctx, authManager auth.AuthManager) error {
-	if strings.HasSuffix(c.Path(), "/login") {
+	if strings.HasSuffix(c.Path(), "/login") || strings.HasSuffix(c.Path(), "/check") {
 		return c.Next()
 	}
 
