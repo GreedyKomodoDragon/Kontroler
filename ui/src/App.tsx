@@ -10,6 +10,7 @@ import Create from "./pages/create";
 import Login from "./pages/login";
 import { AuthProvider } from "./providers/authProvider";
 import { ProtectedRoute } from "./components/protectedRoute";
+import Logout from "./pages/logout";
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -36,6 +37,14 @@ const App: Component = () => {
       <Router>
         {/* Route for login without Layout */}
         <Route path="/login" component={Login} />
+        <Route
+          path="/logout"
+          component={(props) => (
+            <ProtectedRoute>
+              <Logout />
+            </ProtectedRoute>
+          )}
+        />
         <Route
           path="/"
           component={(props) => (

@@ -11,7 +11,7 @@ interface AuthContextType {
   isAuthenticated: () => boolean;
   isLoading: () => boolean;
   login: (username: string, password: string) => Promise<boolean>;
-  logout: () => Promise<void>;
+  logout: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,7 +56,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ username, password }),
-        credentials: "include", // Include cookies in the request
+        credentials: "include",
       });
 
       if (response.ok) {
@@ -73,19 +73,23 @@ export function AuthProvider(props: { children: JSX.Element }) {
     }
   };
 
-  const logout = async (): Promise<void> => {
+  const logout = async (): Promise<boolean> => {
     setIsLoading(true);
+    let worked = true;
     try {
-      await fetch("/api/logout", {
+      await fetch("http://localhost:8080/api/v1/auth/logout", {
         method: "POST",
-        credentials: "include", // Include cookies in the request
+        credentials: "include",
       });
       setIsAuthenticated(false);
     } catch (error) {
       console.error("Logout error:", error);
+      worked = false;
     } finally {
       setIsLoading(false);
     }
+
+    return worked;
   };
 
   const value: AuthContextType = {

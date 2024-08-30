@@ -217,7 +217,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		return c.SendStatus(fiber.StatusCreated)
 	})
 
-	statsRouter.Post("/revoke", func(c *fiber.Ctx) error {
+	statsRouter.Post("/logout", func(c *fiber.Ctx) error {
 		token := c.Locals("token").(string)
 
 		if err := authManager.RevokeToken(c.Context(), token); err != nil {
