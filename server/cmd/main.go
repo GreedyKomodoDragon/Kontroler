@@ -30,6 +30,11 @@ func main() {
 		panic("missing DB_USER")
 	}
 
+	jwtKey, exists := os.LookupEnv("JWT_KEY")
+	if !exists {
+		panic("missing JWT_KEY")
+	}
+
 	dbPassword, exists := os.LookupEnv("DB_PASSWORD")
 	if !exists {
 		panic("missing DB_PASSWORD")
@@ -56,7 +61,7 @@ func main() {
 		panic(err)
 	}
 
-	authManager, err := auth.NewAuthManager(ctx, pool, "secretKey")
+	authManager, err := auth.NewAuthManager(ctx, pool, jwtKey)
 	if err != nil {
 		panic(err)
 	}

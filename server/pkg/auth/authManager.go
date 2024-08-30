@@ -17,12 +17,18 @@ type Credentials struct {
 	Password string `json:"password"`
 }
 
+type User struct {
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
 type AuthManager interface {
 	InitialiseDatabase(ctx context.Context) error
 	CreateAccount(ctx context.Context, crednetials *Credentials) error
 	Login(ctx context.Context, crednetials *Credentials) (string, error)
 	IsValidLogin(ctx context.Context, token string) (string, error)
 	RevokeToken(ctx context.Context, tokenString string) error
+	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)
 }
 
 type authManager struct {
@@ -190,4 +196,33 @@ func (a *authManager) RevokeToken(ctx context.Context, tokenString string) error
 	}
 
 	return nil
+}
+
+func (a *authManager) GetUsers(ctx context.Context, limit, offset int) ([]*User, error) {
+	rows, err := a.pool.Query(ctx, `
+	SELECT username
+	FROM accounts
+	ORDER BY created_at DESC
+	LIMIT $1 OFFSET $2;
+	`, limit, offset)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	users := []*User{}
+	for rows.Next() {
+		user := User{}
+		if err := rows.Scan(&user.Username); err != nil {
+			return nil, err
+		}
+
+		user.Role = "Admin"
+
+		users = append(users, &user)
+	}
+
+	return users, nil
 }

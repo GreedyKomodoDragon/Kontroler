@@ -167,9 +167,9 @@ func addStats(router fiber.Router, dbManager db.DbManager) {
 }
 
 func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
-	statsRouter := router.Group("/auth")
+	authRouter := router.Group("/auth")
 
-	statsRouter.Post("/login", func(c *fiber.Ctx) error {
+	authRouter.Post("/login", func(c *fiber.Ctx) error {
 		var req auth.Credentials
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -201,7 +201,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			"message": "Login successful",
 		})
 	})
-	statsRouter.Post("/create", func(c *fiber.Ctx) error {
+	authRouter.Post("/create", func(c *fiber.Ctx) error {
 		var req auth.Credentials
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -217,7 +217,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		return c.SendStatus(fiber.StatusCreated)
 	})
 
-	statsRouter.Post("/logout", func(c *fiber.Ctx) error {
+	authRouter.Post("/logout", func(c *fiber.Ctx) error {
 		token := c.Locals("token").(string)
 
 		if err := authManager.RevokeToken(c.Context(), token); err != nil {
@@ -228,7 +228,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		return c.SendStatus(fiber.StatusAccepted)
 	})
 
-	statsRouter.Get("/check", func(c *fiber.Ctx) error {
+	authRouter.Get("/check", func(c *fiber.Ctx) error {
 		jwtToken := c.Cookies("jwt-kontroler")
 		if jwtToken == "" {
 			return c.SendStatus(fiber.StatusUnauthorized)
@@ -239,5 +239,25 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		}
 
 		return c.SendStatus(fiber.StatusOK)
+	})
+
+	authRouter.Get("/users/:page", func(c *fiber.Ctx) error {
+		page, err := strconv.Atoi(c.Params("page"))
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		if page < 0 {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		users, err := authManager.GetUsers(c.Context(), 10, page*10)
+		if err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"users": users,
+		})
 	})
 }
