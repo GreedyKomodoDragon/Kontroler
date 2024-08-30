@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"kubeconductor-server/pkg/auth"
 	"kubeconductor-server/pkg/db"
 	kclient "kubeconductor-server/pkg/kClient"
 	"kubeconductor-server/pkg/rest"
@@ -44,8 +45,23 @@ func main() {
 		panic(err)
 	}
 
-	dbManager, err := db.NewPostgresManager(context.Background(), pgConfig)
+	ctx := context.Background()
+	pool, err := pgxpool.NewWithConfig(ctx, pgConfig)
 	if err != nil {
+		panic(err)
+	}
+
+	dbManager, err := db.NewPostgresManager(ctx, pool)
+	if err != nil {
+		panic(err)
+	}
+
+	authManager, err := auth.NewAuthManager(ctx, pool, "secretKey")
+	if err != nil {
+		panic(err)
+	}
+
+	if err := authManager.InitialiseDatabase(ctx); err != nil {
 		panic(err)
 	}
 
@@ -54,7 +70,7 @@ func main() {
 		panic(err)
 	}
 
-	app := rest.NewFiberHttpServer(dbManager, kubClient)
+	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager)
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)
