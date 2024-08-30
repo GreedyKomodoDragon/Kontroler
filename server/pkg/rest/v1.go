@@ -2,21 +2,24 @@ package rest
 
 import (
 	"fmt"
+	"kubeconductor-server/pkg/auth"
 	"kubeconductor-server/pkg/db"
 	kclient "kubeconductor-server/pkg/kClient"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
 	"k8s.io/client-go/dynamic"
 )
 
-func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface) {
+func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, authManager auth.AuthManager) {
 
 	router := app.Group("/api/v1")
 
 	addDags(router, dbManager, kubClient)
 	addStats(router, dbManager)
+	addAccountAuth(router, authManager)
 }
 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
@@ -160,5 +163,81 @@ func addStats(router fiber.Router, dbManager db.DbManager) {
 		}
 
 		return c.Status(fiber.StatusOK).JSON(stats)
+	})
+}
+
+func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
+	statsRouter := router.Group("/auth")
+
+	statsRouter.Post("/login", func(c *fiber.Ctx) error {
+		var req auth.Credentials
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
+		token, err := authManager.Login(c.Context(), &req)
+		if err != nil {
+			log.Error().Err(err).Msg("Error checking credentials")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		if token == "" {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+
+		// Set the JWT as an HTTP-only cookie
+		c.Cookie(&fiber.Cookie{
+			Name:     "jwt-kontroler",
+			Value:    token,
+			Expires:  time.Now().Add(24 * time.Hour), // Set cookie expiration time as needed
+			HTTPOnly: true,                           // Ensure the cookie is HTTP-only
+			Secure:   false,                          // Set to true in production (requires HTTPS)
+			SameSite: "Strict",                       // or "Lax", depending on your requirements
+		})
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message": "Login successful",
+		})
+	})
+	statsRouter.Post("/create", func(c *fiber.Ctx) error {
+		var req auth.Credentials
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
+		if err := authManager.CreateAccount(c.Context(), &req); err != nil {
+			log.Error().Err(err).Msg("Error creating account")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.SendStatus(fiber.StatusCreated)
+	})
+
+	statsRouter.Post("/logout", func(c *fiber.Ctx) error {
+		token := c.Locals("token").(string)
+
+		if err := authManager.RevokeToken(c.Context(), token); err != nil {
+			log.Error().Err(err).Msg("Error creating account")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.SendStatus(fiber.StatusAccepted)
+	})
+
+	statsRouter.Get("/check", func(c *fiber.Ctx) error {
+		jwtToken := c.Cookies("jwt-kontroler")
+		if jwtToken == "" {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+
+		if _, err := authManager.IsValidLogin(c.Context(), jwtToken); err != nil {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+
+		return c.SendStatus(fiber.StatusOK)
 	})
 }

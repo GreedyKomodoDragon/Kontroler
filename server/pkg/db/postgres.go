@@ -12,16 +12,7 @@ type postgresManager struct {
 	pool *pgxpool.Pool
 }
 
-func NewPostgresManager(ctx context.Context, config *pgxpool.Config) (DbManager, error) {
-	if config == nil {
-		return nil, fmt.Errorf("missing config")
-	}
-
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-
+func NewPostgresManager(ctx context.Context, pool *pgxpool.Pool) (DbManager, error) {
 	return &postgresManager{
 		pool: pool,
 	}, nil
