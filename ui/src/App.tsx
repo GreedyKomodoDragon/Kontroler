@@ -11,6 +11,8 @@ import Login from "./pages/login";
 import { AuthProvider } from "./providers/authProvider";
 import { ProtectedRoute } from "./components/protectedRoute";
 import Logout from "./pages/logout";
+import Admin from "./pages/admin";
+import CreateAccountPage from "./pages/createAccount";
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -39,7 +41,7 @@ const App: Component = () => {
         <Route path="/login" component={Login} />
         <Route
           path="/logout"
-          component={(props) => (
+          component={() => (
             <ProtectedRoute>
               <Logout />
             </ProtectedRoute>
@@ -47,7 +49,7 @@ const App: Component = () => {
         />
         <Route
           path="/"
-          component={(props) => (
+          component={() => (
             <ProtectedRoute>
               <Layout>
                 <Main />
@@ -57,7 +59,7 @@ const App: Component = () => {
         />
         <Route
           path="/create"
-          component={(props) => (
+          component={() => (
             <ProtectedRoute>
               <Layout>
                 <Create />
@@ -67,7 +69,7 @@ const App: Component = () => {
         />
         <Route
           path="/dags"
-          component={(props) => (
+          component={() => (
             <ProtectedRoute>
               <Layout>
                 <Dags />
@@ -77,7 +79,7 @@ const App: Component = () => {
         />
         <Route
           path="/dags/runs"
-          component={(props) => (
+          component={() => (
             <ProtectedRoute>
               <Layout>
                 <DagRuns />
@@ -87,10 +89,30 @@ const App: Component = () => {
         />
         <Route
           path="/dags/run/:id"
-          component={(props) => (
+          component={() => (
             <ProtectedRoute>
               <Layout>
                 <DagRun />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin"
+          component={() => (
+            <ProtectedRoute>
+              <Layout>
+                <Admin />
+              </Layout>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/account/create"
+          component={() => (
+            <ProtectedRoute>
+              <Layout>
+                <CreateAccountPage />
               </Layout>
             </ProtectedRoute>
           )}
