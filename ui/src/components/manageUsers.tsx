@@ -1,18 +1,25 @@
-import { createSignal } from "solid-js";
-import { User } from "../types/admin";
-import { getUsers } from "../api/admin";
+import { createSignal, Show } from "solid-js";
+import { getUserPageCount, getUsers } from "../api/admin";
 import { A } from "@solidjs/router";
+import PaginationComponent from "./pagination";
+import { createQuery } from "@tanstack/solid-query";
+import Spinner from "./spinner";
 
 export default function ManageUsers() {
-  const [users, setUsers] = createSignal<User[]>([]);
+  const [maxPage, setMaxPage] = createSignal(-1);
+  const [page, setPage] = createSignal(1);
 
-  getUsers(0)
-    .then((data) => {
-      setUsers(data);
+  const users = createQuery(() => ({
+    queryKey: ["users", page().toString()],
+    queryFn: getUsers,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  }));
+
+  getUserPageCount()
+    .then((count) => {
+      setMaxPage(count);
     })
-    .catch(() => {
-      console.log("failed to get users");
-    });
+    .catch((error) => console.error(error));
 
   return (
     <div class="mx-auto px-4">
@@ -44,32 +51,44 @@ export default function ManageUsers() {
           New member
         </A>
       </div>
-      <ul class="mt-12 divide-y">
-        {users().map((item, idx) => (
-          <li class="py-5 flex items-start justify-between">
-            <div class="flex gap-3">
-              <img
-                src="https://randomuser.me/api/portraits/men/86.jpg"
-                class="flex-none w-12 h-12 rounded-full"
-              />
-              <div>
-                <div>
-                  <span class="block text-lg font-semibold">
-                    {item.username}
-                  </span>
-                  <span class="block text-sm ">{item.role}</span>
+      <Show when={users.isError}>
+        <div>Error: {users.error && users.error.message}</div>
+      </Show>
+      <Show when={users.isLoading}>
+        <Spinner />
+      </Show>
+      <Show when={users.isSuccess}>
+        <ul class="mt-12 divide-y">
+          {users.data &&
+            users.data.map((item, idx) => (
+              <li class="py-5 flex items-start justify-between">
+                <div class="flex gap-3">
+                  <img
+                    src="https://randomuser.me/api/portraits/men/86.jpg"
+                    class="flex-none w-12 h-12 rounded-full"
+                  />
+                  <div>
+                    <div>
+                      <span class="block text-lg font-semibold">
+                        {item.username}
+                      </span>
+                      <span class="block text-sm ">{item.role}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <button
-              class="text-gray-700 text-sm border rounded-lg px-3 py-2 duration-150 bg-white"
-              disabled
-            >
-              Manage
-            </button>
-          </li>
-        ))}
-      </ul>
+                <button
+                  class="text-gray-700 text-sm border rounded-lg px-3 py-2 duration-150 bg-white"
+                  disabled
+                >
+                  Manage
+                </button>
+              </li>
+            ))}
+        </ul>
+      </Show>
+      <Show when={maxPage() > 1}>
+        <PaginationComponent setPage={setPage} maxPage={maxPage} />
+      </Show>
     </div>
   );
 }

@@ -241,7 +241,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	authRouter.Get("/users/:page", func(c *fiber.Ctx) error {
+	authRouter.Get("/users/page/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -258,6 +258,18 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"users": users,
+		})
+	})
+
+	authRouter.Get("/users/pages/count", func(c *fiber.Ctx) error {
+		pageCount, err := authManager.GetUserPageCount(c.Context(), 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting user page count")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"count": pageCount,
 		})
 	})
 }
