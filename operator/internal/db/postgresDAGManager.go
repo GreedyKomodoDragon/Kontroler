@@ -482,6 +482,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		return nil, err
 	}
 
+	// TODO: Also needs to check for tasks that are already running!!!
 	rows, err := tx.Query(ctx, `
 		WITH CompletedTask AS (
 			SELECT run_id, task_id 
@@ -509,8 +510,10 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		)
 		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters
 		FROM Tasks t
-		WHERE t.task_id in (SELECT task_id FROM RunnableTask)
-    `, taskRunId)
+		WHERE 
+			t.task_id in (SELECT task_id FROM RunnableTask) 
+			AND t.task_id not in (select task_id FROM task_runs WHERE run_id = $2)
+    `, taskRunId, runId)
 
 	if err != nil {
 		return nil, err
@@ -844,4 +847,17 @@ func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name st
 	}
 
 	return nil
+}
+
+func (p *postgresDAGManager) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {
+	var count int
+	if err := p.pool.QueryRow(ctx, `
+	SELECT COUNT(*)
+	FROM DAG_Runs
+	WHERE name = $1;
+	`, name).Scan(&count); err != nil && err != pgx.ErrNoRows {
+		return false, err
+	}
+
+	return count > 0, nil
 }

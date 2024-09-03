@@ -29,6 +29,7 @@ type AuthManager interface {
 	IsValidLogin(ctx context.Context, token string) (string, error)
 	RevokeToken(ctx context.Context, tokenString string) error
 	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)
+	GetUserPageCount(ctx context.Context, limit int) (int, error)
 }
 
 type authManager struct {
@@ -225,4 +226,22 @@ func (a *authManager) GetUsers(ctx context.Context, limit, offset int) ([]*User,
 	}
 
 	return users, nil
+}
+
+func (a *authManager) GetUserPageCount(ctx context.Context, limit int) (int, error) {
+	var pageCount int
+
+	if err := a.pool.QueryRow(ctx, `
+	SELECT COUNT(*)
+	FROM accounts;
+	`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+
+	pages := pageCount / limit
+	if pageCount%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
 }
