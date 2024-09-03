@@ -122,6 +122,8 @@ type DbManager interface {
 	GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error)
 	GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*TaskRunDetails, error)
 	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
+	GetDagRunPageCount(ctx context.Context, limit int) (int, error)
+	GetDagPageCount(ctx context.Context, limit int) (int, error)
 
 	Close()
 }

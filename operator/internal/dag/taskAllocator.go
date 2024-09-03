@@ -23,13 +23,11 @@ type TaskAllocator interface {
 
 type taskAllocator struct {
 	clientSet *kubernetes.Clientset
-	jobTTL    *int32
 }
 
-func NewTaskAllocator(clientSet *kubernetes.Clientset, jobTTL *int32) TaskAllocator {
+func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
 	return &taskAllocator{
 		clientSet: clientSet,
-		jobTTL:    jobTTL,
 	}
 }
 
@@ -115,7 +113,6 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 				},
 				Spec: podSpec,
 			},
-			TTLSecondsAfterFinished: t.jobTTL,
 		},
 	}
 
@@ -123,18 +120,18 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 	for i := 0; i < 5; i++ {
 		job.ObjectMeta.Name = utils.GenerateRandomName()
 
-		// Create the Job
-		// TODO: Make namespace more dynamic
 		createdJob, err := t.clientSet.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
-				// just try again with a new name
+				// Name collision, retry with a new name
 				continue
+			} else {
+				// For any other error, return immediately to avoid multiple job creation
+				return "", err
 			}
-
-			return "", err
 		}
 
+		// If the job is created successfully, return its UID
 		return createdJob.UID, nil
 	}
 
@@ -188,7 +185,6 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 					RestartPolicy: "Never",
 				},
 			},
-			TTLSecondsAfterFinished: t.jobTTL,
 		},
 	}
 
@@ -196,18 +192,18 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 	for i := 0; i < 5; i++ {
 		job.ObjectMeta.Name = utils.GenerateRandomName()
 
-		// Create the Job
-		// TODO: Make namespace more dynamic
 		createdJob, err := t.clientSet.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
-				// just try again with a new name
+				// Name collision, retry with a new name
 				continue
+			} else {
+				// For any other error, return immediately to avoid multiple job creation
+				return "", err
 			}
-
-			return "", err
 		}
 
+		// If the job is created successfully, return its UID
 		return createdJob.UID, nil
 	}
 

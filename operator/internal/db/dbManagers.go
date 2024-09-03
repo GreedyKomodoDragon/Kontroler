@@ -56,4 +56,5 @@ type DBDAGManager interface {
 	MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32) error
 	// Soft deletes the dag in database
 	SoftDeleteDAG(ctx context.Context, name string, namespace string) error
+	FindExistingDAGRun(ctx context.Context, name string) (bool, error)
 }

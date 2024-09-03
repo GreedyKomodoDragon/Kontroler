@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
@@ -32,6 +33,7 @@ type taskWatcher struct {
 	clientSet     *kubernetes.Clientset
 	taskAllocator TaskAllocator
 	startTime     time.Time
+	lock          *sync.Mutex
 }
 
 func NewTaskWatcher(clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager) (TaskWatcher, error) {
@@ -55,11 +57,12 @@ func NewTaskWatcher(clientSet *kubernetes.Clientset, taskAllocator TaskAllocator
 		clientSet:     clientSet,
 		taskAllocator: taskAllocator,
 		startTime:     time.Now(), // Track the start time of the watcher
+		lock:          &sync.Mutex{},
 	}
 
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    watcher.handleJobAddOrUpdate,
-		UpdateFunc: func(oldObj, newObj interface{}) { watcher.handleJobAddOrUpdate(newObj) },
+		AddFunc:    watcher.handleAdd,
+		UpdateFunc: func(oldObj, newObj interface{}) { watcher.handleUpdate(newObj) },
 		DeleteFunc: watcher.handleJobDelete,
 	})
 
@@ -72,7 +75,7 @@ func (t *taskWatcher) StartWatching() {
 	t.informer.Run(stopCh)
 }
 
-func (t *taskWatcher) handleJobAddOrUpdate(obj interface{}) {
+func (t *taskWatcher) handleAdd(obj interface{}) {
 	job, ok := obj.(*batchv1.Job)
 	if !ok {
 		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse job object")
@@ -84,8 +87,27 @@ func (t *taskWatcher) handleJobAddOrUpdate(obj interface{}) {
 		return
 	}
 
+	t.handleOutcome(job, "add")
+}
+
+func (t *taskWatcher) handleUpdate(obj interface{}) {
+	job, ok := obj.(*batchv1.Job)
+	if !ok {
+		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse job object")
+		return
+	}
+
+	// Filter out jobs created before the watcher started
+	if job.CreationTimestamp.Time.Before(t.startTime) {
+		return
+	}
+
+	t.handleOutcome(job, "update")
+}
+
+func (t *taskWatcher) handleOutcome(job *batchv1.Job, event string) {
 	ctx := context.Background()
-	log.Log.Info("job event", "jobUid", job.UID, "event", "add/update")
+	log.Log.Info("job event", "jobUid", job.UID, "event", event)
 
 	taskRunIdStr, ok := job.Annotations["kubeconductor/task-rid"]
 	if !ok {
@@ -132,12 +154,15 @@ func (t *taskWatcher) handleSuccessfulJob(ctx context.Context, job *batchv1.Job,
 		return
 	}
 
-	// Mark this as success in db
+	// Mark this as success in db - Have to use lock to avoid getting already started task
+	t.lock.Lock()
 	tasks, err := t.dbManager.MarkSuccessAndGetNextTasks(ctx, taskRunId)
 	if err != nil {
 		log.Log.Error(err, "failed to mark outcome and get next task", "jobUid", job.UID, "event", "add/update")
+		t.lock.Unlock()
 		return
 	}
+	t.lock.Unlock()
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
@@ -156,6 +181,13 @@ func (t *taskWatcher) handleSuccessfulJob(ctx context.Context, job *batchv1.Job,
 
 		log.Log.Info("allocated task", "jobId", job, "task.Id", task.Id, "task.Name", task.Name)
 	}
+
+	backgroundDeletion := metav1.DeletePropagationBackground
+	if err := t.clientSet.BatchV1().Jobs(job.Namespace).Delete(ctx, job.Name, metav1.DeleteOptions{
+		PropagationPolicy: &backgroundDeletion,
+	}); err != nil {
+		log.Log.Error(err, "failed to delete job in failed", "jobId", job)
+	}
 }
 
 func (t *taskWatcher) handleFailedJob(ctx context.Context, job *batchv1.Job, taskRunId int) {
@@ -171,7 +203,7 @@ func (t *taskWatcher) handleFailedJob(ctx context.Context, job *batchv1.Job, tas
 		return
 	}
 
-	log.Log.Info("number of pods in job", "jobUid", job.UID, "count", len(pods.Items))
+	// log.Log.Info("number of pods in job", "jobUid", job.UID, "count", len(pods.Items))
 
 	// Get Exitable codes to restart with and backoff limit
 	for _, pod := range pods.Items {
@@ -189,6 +221,14 @@ func (t *taskWatcher) handleFailedJob(ctx context.Context, job *batchv1.Job, tas
 
 		if pod.Status.ContainerStatuses[0].State.Terminated == nil {
 			log.Log.Error(err, "missing status informationt", "job", job.Name)
+			continue
+		}
+
+		backgroundDeletion := metav1.DeletePropagationBackground
+		if err := t.clientSet.BatchV1().Jobs(job.Namespace).Delete(ctx, job.Name, metav1.DeleteOptions{
+			PropagationPolicy: &backgroundDeletion,
+		}); err != nil {
+			log.Log.Error(err, "failed to delete job in failed", "jobId", job)
 			continue
 		}
 
@@ -244,7 +284,7 @@ func (t *taskWatcher) handleFailedJob(ctx context.Context, job *batchv1.Job, tas
 			log.Log.Error(err, "failed to increment attempts", "taskRunId", taskRunId)
 		}
 
-		log.Log.Info("new task allocated allocated", "taskId", taskId)
+		log.Log.Info("new task allocated allocated with env", "taskId", taskId)
 
 	}
 }

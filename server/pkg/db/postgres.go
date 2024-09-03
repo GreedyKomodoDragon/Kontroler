@@ -473,3 +473,39 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 
 	return &stats, nil
 }
+
+func (p *postgresManager) GetDagRunPageCount(ctx context.Context, limit int) (int, error) {
+	var pageCount int
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT COUNT(*)
+	FROM DAG_Runs;
+	`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+
+	pages := pageCount / limit
+	if pageCount%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
+}
+
+func (p *postgresManager) GetDagPageCount(ctx context.Context, limit int) (int, error) {
+	var pageCount int
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT COUNT(*)
+	FROM DAGs;
+	`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+
+	pages := pageCount / limit
+	if pageCount%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
+}

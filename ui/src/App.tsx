@@ -13,6 +13,7 @@ import { ProtectedRoute } from "./components/protectedRoute";
 import Logout from "./pages/logout";
 import Admin from "./pages/admin";
 import CreateAccountPage from "./pages/createAccount";
+import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -32,93 +33,97 @@ const Layout: Component<{ children: JSX.Element }> = (props) => {
   );
 };
 
+const queryClient = new QueryClient()
+
 // Main App component
 const App: Component = () => {
   return (
-    <AuthProvider>
-      <Router>
-        {/* Route for login without Layout */}
-        <Route path="/login" component={Login} />
-        <Route
-          path="/logout"
-          component={() => (
-            <ProtectedRoute>
-              <Logout />
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <Main />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/create"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <Create />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/dags"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <Dags />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/dags/runs"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <DagRuns />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/dags/run/:id"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <DagRun />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/admin"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <Admin />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/admin/account/create"
-          component={() => (
-            <ProtectedRoute>
-              <Layout>
-                <CreateAccountPage />
-              </Layout>
-            </ProtectedRoute>
-          )}
-        />
-      </Router>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <Router>
+          {/* Route for login without Layout */}
+          <Route path="/login" component={Login} />
+          <Route
+            path="/logout"
+            component={() => (
+              <ProtectedRoute>
+                <Logout />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <Main />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/create"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <Create />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/dags"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <Dags />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/dags/runs"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <DagRuns />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/dags/run/:id"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <DagRun />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/admin"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <Admin />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/admin/account/create"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <CreateAccountPage />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+        </Router>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 };
 

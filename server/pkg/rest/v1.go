@@ -46,6 +46,18 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
+	dagRouter.Get("/pages/count", func(c *fiber.Ctx) error {
+		pageCount, err := dbManager.GetDagPageCount(c.Context(), 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag page count")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"count": pageCount,
+		})
+	})
+
 	dagRouter.Get("/runs/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
@@ -150,6 +162,18 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 
 	})
 
+	dagRouter.Get("/run/pages/count", func(c *fiber.Ctx) error {
+		pageCount, err := dbManager.GetDagRunPageCount(c.Context(), 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag run page count")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"count": pageCount,
+		})
+	})
+
 }
 
 func addStats(router fiber.Router, dbManager db.DbManager) {
@@ -241,7 +265,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	authRouter.Get("/users/:page", func(c *fiber.Ctx) error {
+	authRouter.Get("/users/page/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -258,6 +282,18 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"users": users,
+		})
+	})
+
+	authRouter.Get("/users/pages/count", func(c *fiber.Ctx) error {
+		pageCount, err := authManager.GetUserPageCount(c.Context(), 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting user page count")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"count": pageCount,
 		})
 	})
 }
