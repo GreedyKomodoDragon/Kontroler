@@ -75,6 +75,18 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
+	// Check if a DagRun with the same parameters already exists
+	alreadyExists, err := r.DbManager.FindExistingDAGRun(ctx, dagRun.Name)
+	if err != nil {
+		log.Log.Error(err, "failed to check for existing DagRun", "dag_id", dagRun.Spec.DagId)
+		return ctrl.Result{}, err
+	}
+
+	if alreadyExists {
+		log.Log.Info("DagRun with the same name already exists", "dagRun_id", dagRun.Spec.DagId, "dag_name", dagRun.Name)
+		return ctrl.Result{}, nil
+	}
+
 	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagId)
 	if err != nil {
 		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagId)

@@ -46,6 +46,18 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
+	dagRouter.Get("/pages/count", func(c *fiber.Ctx) error {
+		pageCount, err := dbManager.GetDagPageCount(c.Context(), 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag page count")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"count": pageCount,
+		})
+	})
+
 	dagRouter.Get("/runs/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
@@ -148,6 +160,18 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 			"message": "DAG created successfully",
 		})
 
+	})
+
+	dagRouter.Get("/run/pages/count", func(c *fiber.Ctx) error {
+		pageCount, err := dbManager.GetDagRunPageCount(c.Context(), 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dag run page count")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"count": pageCount,
+		})
 	})
 
 }
