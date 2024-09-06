@@ -1,5 +1,4 @@
 import { Component, createSignal, Show } from "solid-js";
-import { DagRunMeta } from "../types/dag";
 import { getDagRunPageCount, getDagRuns } from "../api/dags";
 import DagRunComponent from "../components/dagRunComponent";
 import { createQuery } from "@tanstack/solid-query";

@@ -369,7 +369,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 	for rows.Next() {
 		var task Task
 		var parameters []string
-		var podTemplateJSON string
+		var podTemplateJSON *string
 		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON); err != nil {
 			return nil, err
 		}
@@ -392,8 +392,8 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([
 		}
 
 		var podTemplate *v1alpha1.PodTemplateSpec
-		if podTemplateJSON != "" {
-			if err := json.Unmarshal([]byte(podTemplateJSON), &podTemplate); err != nil {
+		if podTemplateJSON != nil {
+			if err := json.Unmarshal([]byte(*podTemplateJSON), &podTemplate); err != nil {
 				return nil, err
 			}
 		}
