@@ -10,8 +10,8 @@ import (
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 
-	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -32,8 +32,6 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
 }
 
 func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
-	backoff := int32(0)
-
 	envs := []v1.EnvVar{}
 	for _, param := range task.Parameters {
 		if param.IsSecret {
@@ -67,7 +65,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 				Env:     envs,
 			},
 		},
-		RestartPolicy: "Never",
+		RestartPolicy: v1.RestartPolicyNever,
 	}
 
 	if task.PodTemplate != nil {
@@ -86,8 +84,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 		}
 	}
 
-	job := &batchv1.Job{
-		// TODO: Refactor this to enable it to be re-used in DAG task
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
 				"managed-by":         "kubeconductor",
@@ -98,49 +95,32 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 				"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
 			},
 		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: &backoff,
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"managed-by":         "kubeconductor",
-						"kubeconductor/type": "taskPod",
-					},
-					Annotations: map[string]string{
-						"kubeconductor/task-rid":  strconv.Itoa(taskRunId),
-						"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
-					},
-				},
-				Spec: podSpec,
-			},
-		},
+		Spec: podSpec,
 	}
 
 	// TODO: make this dynamic
 	for i := 0; i < 5; i++ {
-		job.ObjectMeta.Name = utils.GenerateRandomName()
+		pod.ObjectMeta.Name = utils.GenerateRandomName()
 
-		createdJob, err := t.clientSet.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
+		createdPod, err := t.clientSet.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
 				// Name collision, retry with a new name
 				continue
 			} else {
-				// For any other error, return immediately to avoid multiple job creation
+				// For any other error, return immediately to avoid multiple pod creation
 				return "", err
 			}
 		}
 
-		// If the job is created successfully, return its UID
-		return createdJob.UID, nil
+		// If the pod is created successfully, return its UID
+		return createdPod.UID, nil
 	}
 
 	return "", fmt.Errorf("failed to create pod due to naming collisions")
 }
 
 func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
-	backoff := int32(0)
-
 	containerSpec := []v1.Container{
 		{
 			Name:    task.Name,
@@ -155,8 +135,7 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 		containerSpec[0].Resources = *resources
 	}
 
-	job := &batchv1.Job{
-		// TODO: Refactor this to enable it to be re-used in DAG task
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
 				"managed-by":         "kubeconductor",
@@ -167,41 +146,28 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 				"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
 			},
 		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: &backoff,
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"managed-by":         "kubeconductor",
-						"kubeconductor/type": "taskPod",
-					},
-					Annotations: map[string]string{
-						"kubeconductor/task-rid":  strconv.Itoa(taskRunId),
-						"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
-					},
-				},
-				Spec: v1.PodSpec{
-					Containers:    containerSpec,
-					RestartPolicy: "Never",
-				},
-			},
+		Spec: v1.PodSpec{
+			Containers:    containerSpec,
+			RestartPolicy: v1.RestartPolicyNever,
 		},
 	}
 
 	// TODO: make this dynamic
 	for i := 0; i < 5; i++ {
-		job.ObjectMeta.Name = utils.GenerateRandomName()
+		pod.ObjectMeta.Name = utils.GenerateRandomName()
 
-		createdJob, err := t.clientSet.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
+		createdJob, err := t.clientSet.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
 				// Name collision, retry with a new name
 				continue
 			} else {
-				// For any other error, return immediately to avoid multiple job creation
+				// For any other error, return immediately to avoid multiple pod creation
 				return "", err
 			}
 		}
+
+		log.Log.Info("created pod", "podUID", createdJob.UID, "name", createdJob.Name)
 
 		// If the job is created successfully, return its UID
 		return createdJob.UID, nil
