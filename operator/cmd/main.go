@@ -32,7 +32,6 @@ import (
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/pod"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -203,18 +202,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Make leader run this only
-	podWatcher, err := pod.NewPodWatcher(clientset, dbDAGManager)
-	if err != nil {
-		setupLog.Error(err, "failed to create pod watcher")
-		os.Exit(1)
-	}
-
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
 
 	go taskScheduler.Run()
 	go taskWatcher.StartWatching()
-	go podWatcher.StartWatching()
+	// go podWatcher.StartWatching()
 
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
