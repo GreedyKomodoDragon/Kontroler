@@ -296,4 +296,24 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			"count": pageCount,
 		})
 	})
+
+	authRouter.Delete("/users/:user", func(c *fiber.Ctx) error {
+		user := c.Params("user")
+		if user == "" {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		if user == "admin" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "cannot delete admin account",
+			})
+		}
+
+		if err := authManager.DeleteUser(c.Context(), user); err != nil {
+			log.Error().Err(err).Msg("Failed to delete user")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.SendStatus(fiber.StatusOK)
+	})
 }
