@@ -30,6 +30,7 @@ type AuthManager interface {
 	RevokeToken(ctx context.Context, tokenString string) error
 	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)
 	GetUserPageCount(ctx context.Context, limit int) (int, error)
+	DeleteUser(ctx context.Context, user string) error
 }
 
 type authManager struct {
@@ -244,4 +245,19 @@ func (a *authManager) GetUserPageCount(ctx context.Context, limit int) (int, err
 	}
 
 	return pages, nil
+}
+
+func (a *authManager) DeleteUser(ctx context.Context, user string) error {
+	if user == "admin" {
+		return fmt.Errorf("Cannot delete the admin account")
+	}
+
+	if _, err := a.pool.Exec(ctx, `
+	DELETE FROM accounts 
+	WHERE username = $1;
+	`, user); err != nil {
+		return err
+	}
+
+	return nil
 }
