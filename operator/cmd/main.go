@@ -28,10 +28,10 @@ import (
 	cron "github.com/robfig/cron/v3"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/controller"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -43,7 +43,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(kubeconductorv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kontrolerv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -226,7 +226,7 @@ func main() {
 		os.Exit(1)
 	}
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = (&kubeconductorv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&kontrolerv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DagRun")
 			os.Exit(1)
 		}

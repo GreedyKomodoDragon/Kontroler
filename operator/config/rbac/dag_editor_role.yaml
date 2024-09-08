@@ -12,7 +12,7 @@ metadata:
   name: dag-editor-role
 rules:
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags
   verbs:
@@ -24,7 +24,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags/status
   verbs:

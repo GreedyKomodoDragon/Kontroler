@@ -1,4 +1,4 @@
-apiVersion: kubeconductor.greedykomodo/v1alpha1
+apiVersion: kontroler.greedykomodo/v1alpha1
 kind: DagRun
 metadata:
   labels:

@@ -1,4 +1,4 @@
-module github.com/GreedyKomodoDragon/KubeConductor/operator
+module github.com/GreedyKomodoDragon/Kontroler/operator
 
 go 1.21
 

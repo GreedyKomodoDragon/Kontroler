@@ -3,7 +3,7 @@ package v1alpha1_test
 import (
 	"testing"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 )
 
 func TestValidateDAG(t *testing.T) {

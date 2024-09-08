@@ -3,7 +3,7 @@ package auth_test
 import (
 	"context"
 	"fmt"
-	"kubeconductor-server/pkg/auth"
+	"kontroler-server/pkg/auth"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"

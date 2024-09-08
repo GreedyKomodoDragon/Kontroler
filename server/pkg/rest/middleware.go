@@ -1,7 +1,7 @@
 package rest
 
 import (
-	"kubeconductor-server/pkg/auth"
+	"kontroler-server/pkg/auth"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"

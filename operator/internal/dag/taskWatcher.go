@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -40,8 +40,8 @@ type taskWatcher struct {
 func NewTaskWatcher(clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager) (TaskWatcher, error) {
 	// Define label selector
 	labelSelector := labels.Set(map[string]string{
-		"managed-by":         "kubeconductor",
-		"kubeconductor/type": "task",
+		"managed-by":     "kontroler",
+		"kontroler/type": "task",
 	}).AsSelector().String()
 
 	// Create a factory that watches all namespaces
@@ -134,9 +134,9 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string) {
 	ctx := context.Background()
 	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event)
 
-	taskRunIdStr, ok := pod.Annotations["kubeconductor/task-rid"]
+	taskRunIdStr, ok := pod.Annotations["kontroler/task-rid"]
 	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kubeconductor/task-rid", "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/task-rid", "pod", pod.Name)
 		return
 	}
 
@@ -199,9 +199,9 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 	log.Log.Info("task succeeded", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 
 	// Get the run ID from the Pod
-	dagRunIdStr, ok := pod.Annotations["kubeconductor/dagRun-id"]
+	dagRunIdStr, ok := pod.Annotations["kontroler/dagRun-id"]
 	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kubeconductor/dagRun-id", "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/dagRun-id", "pod", pod.Name)
 		return
 	}
 
@@ -248,9 +248,9 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
 	log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 
-	dagRunStr, ok := pod.Annotations["kubeconductor/dagRun-id"]
+	dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
 	if !ok {
-		log.Log.Error(fmt.Errorf("find to find annotation"), "found pod missing kubeconductor/dagRun-id", "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("find to find annotation"), "found pod missing kontroler/dagRun-id", "pod", pod.Name)
 		return
 	}
 
@@ -316,9 +316,9 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 }
 
 func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
-	taskRunIDStr, ok := pod.Annotations["kubeconductor/task-rid"]
+	taskRunIDStr, ok := pod.Annotations["kontroler/task-rid"]
 	if !ok {
-		return fmt.Errorf("missing annotation kubeconductor/task-rid")
+		return fmt.Errorf("missing annotation kontroler/task-rid")
 	}
 
 	taskRunId, err := strconv.Atoi(taskRunIDStr)
