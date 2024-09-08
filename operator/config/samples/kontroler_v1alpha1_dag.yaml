@@ -1,4 +1,4 @@
-apiVersion: kubeconductor.greedykomodo/v1alpha1
+apiVersion: kontroler.greedykomodo/v1alpha1
 kind: DAG
 metadata:
   labels:
@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
-  name: dag-sample
+  name: dag-sample1
 spec:
   schedule: "*/1 * * * *"
   parameters:

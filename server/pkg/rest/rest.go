@@ -1,8 +1,8 @@
 package rest
 
 import (
-	"kubeconductor-server/pkg/auth"
-	"kubeconductor-server/pkg/db"
+	"kontroler-server/pkg/auth"
+	"kontroler-server/pkg/db"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"

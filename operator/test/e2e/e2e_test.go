@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/test/utils"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/test/utils"
 )
 
 const namespace = "operator-system"

@@ -12,7 +12,7 @@ metadata:
   name: dag-viewer-role
 rules:
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags
   verbs:
@@ -20,7 +20,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags/status
   verbs:

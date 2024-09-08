@@ -5,7 +5,7 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dagruns
   verbs:
@@ -17,13 +17,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dagruns/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dagruns/status
   verbs:
@@ -31,7 +31,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags
   verbs:
@@ -43,13 +43,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubeconductor.greedykomodo
+  - kontroler.greedykomodo
   resources:
   - dags/status
   verbs:

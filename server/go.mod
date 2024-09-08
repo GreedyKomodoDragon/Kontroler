@@ -1,4 +1,4 @@
-module kubeconductor-server
+module kontroler-server
 
 go 1.22.0
 
@@ -83,7 +83,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.5
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect

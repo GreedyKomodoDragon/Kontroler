@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"

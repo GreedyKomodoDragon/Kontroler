@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )

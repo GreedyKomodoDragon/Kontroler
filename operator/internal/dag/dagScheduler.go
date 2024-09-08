@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	"github.com/google/uuid"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -25,7 +25,7 @@ type dagscheduler struct {
 }
 
 var gvr schema.GroupVersionResource = schema.GroupVersionResource{
-	Group:    "kubeconductor.greedykomodo",
+	Group:    "kontroler.greedykomodo",
 	Version:  "v1alpha1",
 	Resource: "dagruns",
 }
@@ -64,7 +64,7 @@ func (d *dagscheduler) Run() {
 
 			dagRun := &unstructured.Unstructured{
 				Object: map[string]interface{}{
-					"apiVersion": "kubeconductor.greedykomodo/v1alpha1",
+					"apiVersion": "kontroler.greedykomodo/v1alpha1",
 					"kind":       "DagRun",
 					"metadata": map[string]interface{}{
 						"name": name,

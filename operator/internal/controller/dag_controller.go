@@ -27,8 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 )
 
 // DAGReconciler reconciles a DAG object
@@ -38,9 +38,9 @@ type DAGReconciler struct {
 	DbManager db.DBDAGManager
 }
 
-//+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dags,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dags/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dags/finalizers,verbs=update
+//+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -53,7 +53,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	log.Log.Info("reconcile event", "controller", "dag", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
 
 	// Fetch the DAG object that triggered the reconciliation
-	var dag kubeconductorv1alpha1.DAG
+	var dag kontrolerv1alpha1.DAG
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
 		// Handle the case where the DAG object was deleted before reconciliation
 		if errors.IsNotFound(err) {
@@ -75,8 +75,8 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return ctrl.Result{}, err
 		}
 		// Remove the finalizer if it exists
-		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kubeconductor.greedykomodo") {
-			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kubeconductor.greedykomodo")
+		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
+			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
 			if err := r.Update(ctx, &dag); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -104,7 +104,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	return ctrl.Result{}, nil
 }
 
-func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kubeconductorv1alpha1.DAG, namespace string) error {
+func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kontrolerv1alpha1.DAG, namespace string) error {
 	return r.DbManager.InsertDAG(ctx, dag, namespace)
 }
 
@@ -115,6 +115,6 @@ func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName t
 // SetupWithManager sets up the controller with the Manager.
 func (r *DAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubeconductorv1alpha1.DAG{}).
+		For(&kontrolerv1alpha1.DAG{}).
 		Complete(r)
 }

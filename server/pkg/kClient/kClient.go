@@ -87,7 +87,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 
 	// Create the DAG object
 	dag := map[string]interface{}{
-		"apiVersion": "kubeconductor.greedykomodo/v1alpha1",
+		"apiVersion": "kontroler.greedykomodo/v1alpha1",
 		"kind":       "DAG",
 		"metadata": map[string]interface{}{
 			"labels": labels,
@@ -101,7 +101,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 
 	// Define the GVR (Group, Version, Resource) for your custom resource
 	gvr := schema.GroupVersionResource{
-		Group:    "kubeconductor.greedykomodo",
+		Group:    "kontroler.greedykomodo",
 		Version:  "v1alpha1",
 		Resource: "dags",
 	}

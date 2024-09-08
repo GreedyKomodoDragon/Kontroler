@@ -24,10 +24,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/dag"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 )
 
 // DagRunReconciler reconciles a DagRun object
@@ -38,9 +38,9 @@ type DagRunReconciler struct {
 	TaskAllocator dag.TaskAllocator
 }
 
-//+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dagruns,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dagruns/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=kubeconductor.greedykomodo,resources=dagruns/finalizers,verbs=update
+//+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -57,7 +57,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	log.Log.Info("reconcile event", "controller", "DagRun", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
 
 	// Fetch the Schedule object that triggered the reconciliation
-	var dagRun kubeconductorv1alpha1.DagRun
+	var dagRun kontrolerv1alpha1.DagRun
 	if err := r.Get(ctx, req.NamespacedName, &dagRun); err != nil {
 		// Return error if unable to fetch Schedule object
 		return ctrl.Result{}, err
@@ -165,6 +165,6 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 // SetupWithManager sets up the controller with the Manager.
 func (r *DagRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubeconductorv1alpha1.DagRun{}).
+		For(&kontrolerv1alpha1.DagRun{}).
 		Complete(r)
 }

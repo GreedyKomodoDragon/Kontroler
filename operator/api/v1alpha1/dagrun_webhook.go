@@ -21,7 +21,7 @@ func (r *DagRun) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-kubeconductor-greedykomodo-v1alpha1-dagrun,mutating=true,failurePolicy=fail,sideEffects=None,groups=kubeconductor.greedykomodo,resources=dagruns,verbs=create;update,versions=v1alpha1,name=mdagrun.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-kontroler-greedykomodo-v1alpha1-dagrun,mutating=true,failurePolicy=fail,sideEffects=None,groups=kontroler.greedykomodo,resources=dagruns,verbs=create;update,versions=v1alpha1,name=mdagrun.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &DagRun{}
 
@@ -32,7 +32,7 @@ func (r *DagRun) Default() {
 	// TODO: fill in your defaulting logic.
 }
 
-//+kubebuilder:webhook:path=/validate-kubeconductor-greedykomodo-v1alpha1-dagrun,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubeconductor.greedykomodo,resources=dagruns,verbs=create;update,versions=v1alpha1,name=vdagrun.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-kontroler-greedykomodo-v1alpha1-dagrun,mutating=false,failurePolicy=fail,sideEffects=None,groups=kontroler.greedykomodo,resources=dagruns,verbs=create;update,versions=v1alpha1,name=vdagrun.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &DagRun{}
 
