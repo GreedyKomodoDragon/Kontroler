@@ -23,7 +23,7 @@ spec:
         ]
       image: "alpine:latest"
       backoff:
-        limit: 3
+        limit: 5
       parameters:
         - second
       conditional:
@@ -36,7 +36,7 @@ spec:
             cpu: "250m"
           limits:
             memory: "128Mi"
-            cpu: "400m"
+            cpu: "791m"
         volumes:
           - name: example-pvc
             persistentVolumeClaim:
