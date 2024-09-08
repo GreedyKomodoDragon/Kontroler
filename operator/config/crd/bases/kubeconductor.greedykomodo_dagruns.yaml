@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.13.0
-  name: dagruns.kubeconductor.greedykomodo
+  name: dagruns.kontroler.greedykomodo
 spec:
-  group: kubeconductor.greedykomodo
+  group: kontroler.greedykomodo
   names:
     kind: DagRun
     listKind: DagRunList

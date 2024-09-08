@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/utils"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
@@ -87,12 +87,12 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				"managed-by":         "kubeconductor",
-				"kubeconductor/type": "task",
+				"managed-by":     "kontroler",
+				"kontroler/type": "task",
 			},
 			Annotations: map[string]string{
-				"kubeconductor/task-rid":  strconv.Itoa(taskRunId),
-				"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
+				"kontroler/task-rid":  strconv.Itoa(taskRunId),
+				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
 			},
 		},
 		Spec: podSpec,
@@ -138,12 +138,12 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				"managed-by":         "kubeconductor",
-				"kubeconductor/type": "task",
+				"managed-by":     "kontroler",
+				"kontroler/type": "task",
 			},
 			Annotations: map[string]string{
-				"kubeconductor/task-rid":  strconv.Itoa(taskRunId),
-				"kubeconductor/dagRun-id": strconv.Itoa(dagRunId),
+				"kontroler/task-rid":  strconv.Itoa(taskRunId),
+				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
 			},
 		},
 		Spec: v1.PodSpec{

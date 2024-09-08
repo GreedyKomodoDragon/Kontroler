@@ -1,6 +1,6 @@
 ## Append samples of your project ##
 resources:
-- kubeconductor_v1alpha1_schedule.yaml
-- kubeconductor_v1alpha1_dag.yaml
-- kubeconductor_v1alpha1_dagrun.yaml
+- kontroler_v1alpha1_schedule.yaml
+- kontroler_v1alpha1_dag.yaml
+- kontroler_v1alpha1_dagrun.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

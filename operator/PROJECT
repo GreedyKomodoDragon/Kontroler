@@ -9,34 +9,34 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: operator
-repo: github.com/GreedyKomodoDragon/KubeConductor/operator
+repo: github.com/GreedyKomodoDragon/Kontroler/operator
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
   domain: greedykomodo
-  group: kubeconductor
+  group: kontroler
   kind: Schedule
-  path: github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1
+  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
   domain: greedykomodo
-  group: kubeconductor
+  group: kontroler
   kind: DAG
-  path: github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1
+  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
   domain: greedykomodo
-  group: kubeconductor
+  group: kontroler
   kind: DagRun
-  path: github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1
+  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     defaulting: true

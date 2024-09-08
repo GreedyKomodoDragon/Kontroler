@@ -10,12 +10,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-kubeconductor-greedykomodo-v1alpha1-dagrun
+      path: /mutate-kontroler-greedykomodo-v1alpha1-dagrun
   failurePolicy: Fail
   name: mdagrun.kb.io
   rules:
   - apiGroups:
-    - kubeconductor.greedykomodo
+    - kontroler.greedykomodo
     apiVersions:
     - v1alpha1
     operations:
@@ -36,12 +36,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-kubeconductor-greedykomodo-v1alpha1-dagrun
+      path: /validate-kontroler-greedykomodo-v1alpha1-dagrun
   failurePolicy: Fail
   name: vdagrun.kb.io
   rules:
   - apiGroups:
-    - kubeconductor.greedykomodo
+    - kontroler.greedykomodo
     apiVersions:
     - v1alpha1
     operations:

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/KubeConductor/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"

@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kubeconductorv1alpha1 "github.com/GreedyKomodoDragon/KubeConductor/operator/api/v1alpha1"
+	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 )
 
 var _ = Describe("DAG Controller", func() {
@@ -40,13 +40,13 @@ var _ = Describe("DAG Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		dag := &kubeconductorv1alpha1.DAG{}
+		dag := &kontrolerv1alpha1.DAG{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind DAG")
 			err := k8sClient.Get(ctx, typeNamespacedName, dag)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &kubeconductorv1alpha1.DAG{
+				resource := &kontrolerv1alpha1.DAG{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,7 +59,7 @@ var _ = Describe("DAG Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &kubeconductorv1alpha1.DAG{}
+			resource := &kontrolerv1alpha1.DAG{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 

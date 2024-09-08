@@ -2,9 +2,9 @@ package rest
 
 import (
 	"fmt"
-	"kubeconductor-server/pkg/auth"
-	"kubeconductor-server/pkg/db"
-	kclient "kubeconductor-server/pkg/kClient"
+	"kontroler-server/pkg/auth"
+	"kontroler-server/pkg/db"
+	kclient "kontroler-server/pkg/kClient"
 	"strconv"
 	"time"
 
