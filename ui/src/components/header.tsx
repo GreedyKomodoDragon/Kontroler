@@ -1,12 +1,12 @@
 import { Component, createSignal } from "solid-js";
 import Identicon from "./navbar/icon";
+import { useAuth } from "../providers/authProvider";
 
 const Header: Component = () => {
   const [state, setState] = createSignal<boolean>(false);
+  const auth = useAuth();
 
-  const navigation = [
-    { title: "Log out", path: "/logout" },
-  ];
+  const navigation = [{ title: "Log out", path: "/logout" }];
 
   return (
     <div class="flex items-center h-16 px-4 border-b border-gray-800">
@@ -21,7 +21,9 @@ const Header: Component = () => {
               setState(!state());
             }}
           >
-            <Identicon value="administrator" size={50} />
+            {auth.isAuthenticated() && auth.username() && (
+              <Identicon value={auth.username()} size={50} />
+            )}
           </button>
         </div>
         <ul
