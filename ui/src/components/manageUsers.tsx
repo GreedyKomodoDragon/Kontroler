@@ -7,6 +7,7 @@ import Spinner from "./spinner";
 import { DeleteButton } from "./admin/deleteButton";
 import ConfirmDeletion from "./admin/confirmDeletion";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
+import Identicon from "./navbar/icon";
 
 export default function ManageUsers() {
   const queryClient = useQueryClient();
@@ -99,17 +100,12 @@ export default function ManageUsers() {
             users.data.map((item, idx) => (
               <li class="py-5 flex items-start justify-between">
                 <div class="flex gap-3">
-                  <img
-                    src="https://randomuser.me/api/portraits/men/86.jpg"
-                    class="flex-none w-12 h-12 rounded-full"
-                  />
+                  <Identicon value={item.username} size={50} />
                   <div>
-                    <div>
-                      <span class="block text-lg font-semibold">
-                        {item.username}
-                      </span>
-                      <span class="block text-sm ">{item.role}</span>
-                    </div>
+                    <span class="block text-lg font-semibold">
+                      {item.username}
+                    </span>
+                    <span class="block text-sm ">{item.role}</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
