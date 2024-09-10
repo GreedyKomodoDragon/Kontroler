@@ -12,6 +12,7 @@ interface AuthContextType {
   isLoading: () => boolean;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<boolean>;
+  username: () => string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider(props: { children: JSX.Element }) {
   const [isAuthenticated, setIsAuthenticated] = createSignal<boolean>(false);
   const [isLoading, setIsLoading] = createSignal<boolean>(true);
+  const [username, setUsername] = createSignal<string>("");
 
   const checkAuthentication = async () => {
     try {
@@ -29,6 +31,9 @@ export function AuthProvider(props: { children: JSX.Element }) {
 
       if (response.ok) {
         setIsAuthenticated(true);
+        response.json().then((data) => {
+          setUsername(data.username);
+        });
       } else {
         setIsAuthenticated(false);
       }
@@ -60,6 +65,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
       });
 
       if (response.ok) {
+        setUsername(username);
         setIsAuthenticated(true);
         setIsLoading(false);
         return true;
@@ -97,6 +103,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
     isLoading,
     login,
     logout,
+    username,
   };
 
   return (

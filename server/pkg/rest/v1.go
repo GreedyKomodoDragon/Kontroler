@@ -258,11 +258,14 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 
-		if _, err := authManager.IsValidLogin(c.Context(), jwtToken); err != nil {
+		username, err := authManager.IsValidLogin(c.Context(), jwtToken)
+		if err != nil {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 
-		return c.SendStatus(fiber.StatusOK)
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"username": username,
+		})
 	})
 
 	authRouter.Get("/users/page/:page", func(c *fiber.Ctx) error {

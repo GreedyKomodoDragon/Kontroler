@@ -1,13 +1,12 @@
 import { Component, createSignal } from "solid-js";
+import Identicon from "./navbar/icon";
+import { useAuth } from "../providers/authProvider";
 
 const Header: Component = () => {
-
   const [state, setState] = createSignal<boolean>(false);
+  const auth = useAuth();
 
-  const navigation = [
-    { title: "Settings", path: "javascript:void(0)" },
-    { title: "Log out", path: "/logout" },
-  ];
+  const navigation = [{ title: "Log out", path: "/logout" }];
 
   return (
     <div class="flex items-center h-16 px-4 border-b border-gray-800">
@@ -17,29 +16,25 @@ const Header: Component = () => {
       </a>
       <div class="flex items-center ml-auto gap-4">
         <div class="flex items-center space-x-4">
-          <button class="w-10 h-10 outline-none rounded-full ring-offset-2 ring-gray-200 ring-2 "
-          onClick={() => {
-            setState(!state())
-          }}>
-            <img
-              src="https://randomuser.me/api/portraits/men/46.jpg"
-              class="w-full h-full rounded-full"
-            />
+          <button
+            onClick={() => {
+              setState(!state());
+            }}
+          >
+            {auth.isAuthenticated() && auth.username() && (
+              <Identicon value={auth.username()} size={50} />
+            )}
           </button>
-          <div class="lg:hidden">
-            <span class="block">Micheal John</span>
-            <span class="block text-sm text-gray-500">john@gmail.com</span>
-          </div>
         </div>
         <ul
-          class={`bg-white top-14 right-6 space-y-5 lg:absolute lg:border lg:rounded-md lg:text-sm lg:w-52 lg:shadow-md lg:space-y-0 lg:mt-0 ${
-            state() ? "" : "lg:hidden"
+          class={`bg-white top-14 right-6 mt-2 absolute border rounded-md text-sm w-36 shadow-md space-y-0 ${
+            state() ? "" : "hidden"
           }`}
         >
           {navigation.map((item, idx) => (
             <li>
               <a
-                class="block text-gray-600 lg:hover:bg-gray-50 lg:p-2.5"
+                class="block text-gray-600 hover:bg-gray-50 p-2.5"
                 href={item.path}
               >
                 {item.title}

@@ -185,7 +185,19 @@ func (a *authManager) IsValidLogin(ctx context.Context, tokenString string) (str
 		return "", fmt.Errorf("token has been revoked")
 	}
 
-	return accountId.String(), nil
+	var username string
+	if err := a.pool.QueryRow(ctx, `
+		SELECT username
+		FROM accounts 
+		WHERE id = $1
+	`, accountId).Scan(&username); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("could not found username")
+		}
+		return "", fmt.Errorf("failed to query for username: %v", err)
+	}
+
+	return username, nil
 }
 
 func (a *authManager) RevokeToken(ctx context.Context, tokenString string) error {
