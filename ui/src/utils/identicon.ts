@@ -1,7 +1,7 @@
 export async function generateIdenticon(
   input: string,
   size: number = 100,
-  gridSize: number = 7 // You can change this to any desired grid size
+  gridSize: number = 7
 ): Promise<HTMLCanvasElement> {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
