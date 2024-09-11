@@ -216,12 +216,10 @@ metadata:
     app.kubernetes.io/created-by: operator
   name: dagrun-sample3
 spec:
-  dagId: 1
+  dagName: dag-schedule
   parameters:
     - name: first
       fromSecret: secret-name-new
     - name: second
       value: value_new
 ```
-
-Currently it is based off the DagId, this can be found in the UI. The plan is to move this over to using the name,

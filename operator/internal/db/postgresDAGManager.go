@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS DAGs (
 	namespace VARCHAR(255) NOT NULL,
 	active BOOL NOT NULL,
 	taskCount INTEGER NOT NULL,
-	nexttime TIMESTAMP
+	nexttime TIMESTAMP,
+	UNIQUE(name)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Parameters (
@@ -316,6 +317,11 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 }
 
 func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
+	dagId, err := p.dagNameToDagId(ctx, dag.DagName)
+	if err != nil {
+		return 0, err
+	}
+
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -328,7 +334,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	if err := tx.QueryRow(ctx, `
 	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
 	VALUES ($1, $2, 'running', 0, 0, NOW()) 
-	RETURNING run_id`, dag.DagId, name).Scan(&dagRunID); err != nil {
+	RETURNING run_id`, dagId, name).Scan(&dagRunID); err != nil {
 		return 0, err
 	}
 
@@ -350,7 +356,12 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	return dagRunID, nil
 }
 
-func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagId int) ([]Task, error) {
+func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
+	dagId, err := p.dagNameToDagId(ctx, dagName)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := p.pool.Query(ctx, `
 	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate
 	FROM Tasks t
@@ -605,51 +616,60 @@ func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, t
 	return taskRunId, nil
 }
 
-func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int, []string, error) {
+type DagInfo struct {
+	DagId     int
+	DagName   string
+	Namespace string
+}
+
+func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	defer tx.Rollback(ctx)
 
 	// Maybe able to cut this down
 	rows, err := tx.Query(ctx, `
-        SELECT dag_id, schedule, namespace
+        SELECT dag_id, name, schedule, namespace
         FROM DAGs
         WHERE nexttime <= NOW() AND schedule != '' AND active = TRUE;
     `)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer rows.Close()
 
-	ids := []int{}
-	namespaces := []string{}
+	namespaces := []*DagInfo{}
 
-	schedules := map[int]string{}
+	schedules := []string{}
 	for rows.Next() {
-		var id int
+		var dagId int
+		var name string
 		var schedule string
 		var namespace string
-		if err := rows.Scan(&id, &schedule, &namespace); err != nil {
-			return nil, nil, err
+		if err := rows.Scan(&dagId, &name, &schedule, &namespace); err != nil {
+			return nil, err
 		}
 
-		schedules[id] = schedule
-		ids = append(ids, id)
-		namespaces = append(namespaces, namespace)
+		namespaces = append(namespaces, &DagInfo{
+			DagName:   name,
+			Namespace: namespace,
+		})
+
+		schedules = append(schedules, schedule)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	for id, schedule := range schedules {
+	for i, schedule := range schedules {
 		// Parse the cron expression
 		sched, err := p.parser.Parse(schedule)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		// Get the next occurrence of the scheduled time
@@ -658,20 +678,25 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]int
 		if _, err := tx.Exec(ctx, `
 		UPDATE DAGs 
 		SET nextTime = $1 
-		WHERE dag_id = $2;`, nextTime, id); err != nil {
-			return nil, nil, err
+		WHERE dag_id = $2;`, nextTime, namespaces[i].DagId); err != nil {
+			return nil, err
 		}
 
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return ids, namespaces, nil
+	return namespaces, nil
 }
 
-func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagId int) (map[string]*Parameter, error) {
+func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagName string) (map[string]*Parameter, error) {
+	dagId, err := p.dagNameToDagId(ctx, dagName)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := p.pool.Query(ctx, `
 	SELECT name, isSecret, defaultValue
 	FROM DAG_Parameters
@@ -697,19 +722,17 @@ func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagId int) (m
 	return parameters, nil
 }
 
-func (p *postgresDAGManager) DagExists(ctx context.Context, dagId int) (bool, error) {
-	var name string
-	err := p.pool.QueryRow(ctx, `
-	SELECT name
-	FROM DAG_Parameters
-	WHERE dag_id = $1;
-	`, dagId).Scan(&name)
-
-	if err != nil && err != pgx.ErrNoRows {
+func (p *postgresDAGManager) DagExists(ctx context.Context, dagName string) (bool, error) {
+	dagId := -1
+	if err := p.pool.QueryRow(ctx, `
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = $1
+	`, dagName).Scan(&dagId); err != nil && err != pgx.ErrNoRows {
 		return false, err
 	}
 
-	return name != "", nil
+	return dagId != -1, nil
 }
 
 func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error) {
@@ -860,4 +883,21 @@ func (p *postgresDAGManager) FindExistingDAGRun(ctx context.Context, name string
 	}
 
 	return count > 0, nil
+}
+
+func (p *postgresDAGManager) dagNameToDagId(ctx context.Context, dagName string) (int, error) {
+	dagId := -1
+	if err := p.pool.QueryRow(ctx, `
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = $1
+	`, dagName).Scan(&dagId); err != nil {
+		return -1, err
+	}
+
+	if dagId == -1 {
+		return -1, fmt.Errorf("could not find dag")
+	}
+
+	return dagId, nil
 }
