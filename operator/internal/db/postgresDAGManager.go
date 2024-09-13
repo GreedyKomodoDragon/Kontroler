@@ -357,18 +357,16 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 }
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
-	dagId, err := p.dagNameToDagId(ctx, dagName)
-	if err != nil {
-		return nil, err
-	}
-
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate
+	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id
 	FROM Tasks t
 	LEFT JOIN Dependencies d ON t.task_id = d.task_id
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
-	WHERE d.depends_on_task_id IS NULL AND dt.dag_id = $1;
-	`, dagId)
+	WHERE d.depends_on_task_id IS NULL AND dt.dag_id in (
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = $1);
+	`, dagName)
 
 	if err != nil {
 		return nil, err
@@ -381,7 +379,8 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		var task Task
 		var parameters []string
 		var podTemplateJSON *string
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON); err != nil {
+		var dagId int
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId); err != nil {
 			return nil, err
 		}
 
@@ -692,16 +691,14 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 }
 
 func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagName string) (map[string]*Parameter, error) {
-	dagId, err := p.dagNameToDagId(ctx, dagName)
-	if err != nil {
-		return nil, err
-	}
-
 	rows, err := p.pool.Query(ctx, `
 	SELECT name, isSecret, defaultValue
 	FROM DAG_Parameters
-	WHERE dag_id = $1;
-	`, dagId)
+	WHERE dag_id in (
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = $1);
+	`, dagName)
 
 	if err != nil {
 		return nil, err
