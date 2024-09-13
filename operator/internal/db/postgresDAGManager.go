@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
 	active BOOL NOT NULL,
 	taskCount INTEGER NOT NULL,
 	nexttime TIMESTAMP,
-	UNIQUE(name)
+	UNIQUE(name, version)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Parameters (
@@ -362,10 +362,14 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 	FROM Tasks t
 	LEFT JOIN Dependencies d ON t.task_id = d.task_id
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
-	WHERE d.depends_on_task_id IS NULL AND dt.dag_id in (
+	WHERE d.depends_on_task_id IS NULL
+	AND dt.dag_id IN (
 		SELECT dag_id
 		FROM DAGs
-		WHERE name = $1);
+		WHERE name = $1
+		ORDER BY version DESC
+		LIMIT 1
+  	);
 	`, dagName)
 
 	if err != nil {
@@ -694,10 +698,13 @@ func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagName strin
 	rows, err := p.pool.Query(ctx, `
 	SELECT name, isSecret, defaultValue
 	FROM DAG_Parameters
-	WHERE dag_id in (
+	WHERE dag_id IN (
 		SELECT dag_id
 		FROM DAGs
-		WHERE name = $1);
+		WHERE name = $1
+		ORDER BY version DESC
+		LIMIT 1
+  	);
 	`, dagName)
 
 	if err != nil {
@@ -888,6 +895,8 @@ func (p *postgresDAGManager) dagNameToDagId(ctx context.Context, dagName string)
 		SELECT dag_id
 		FROM DAGs
 		WHERE name = $1
+		ORDER BY version DESC
+		LIMIT 1;
 	`, dagName).Scan(&dagId); err != nil {
 		return -1, err
 	}
