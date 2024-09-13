@@ -17,11 +17,11 @@ This system allows for running containers as tasks within a DAG, while providing
 
 ## Getting Started
 
-TBD
+Helm Charts coming soon!
 
 ## State
 
-Kontroler is in a very early alpha state and is not ready for any kind of production workload with many breaking changes coming to the product.
+Kontroler is in a very early alpha state and if it is used in production expect bugs along with breaking changes coming in future releases.
 
 ## Aims of Kontroler
 
@@ -210,10 +210,7 @@ kind: DagRun
 metadata:
   labels:
     app.kubernetes.io/name: dagrun
-    app.kubernetes.io/instance: dagrun-sample
-    app.kubernetes.io/part-of: operator
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/created-by: operator
+    app.kubernetes.io/instance: kontroler-DagRun
   name: dagrun-sample3
 spec:
   dagName: dag-schedule
