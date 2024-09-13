@@ -45,6 +45,11 @@ func main() {
 		panic("missing DB_ENDPOINT")
 	}
 
+	corsUiAddress, exists := os.LookupEnv("CORS_UI_ADDRESS")
+	if !exists {
+		panic("missing CORS_UI_ADDRESS")
+	}
+
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
 	if err != nil {
 		panic(err)
@@ -75,7 +80,7 @@ func main() {
 		panic(err)
 	}
 
-	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager)
+	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress)
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)
