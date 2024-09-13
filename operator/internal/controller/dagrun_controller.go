@@ -64,32 +64,32 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// check if dag exists
-	ok, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagId)
+	ok, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)
 	if err != nil {
-		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagId)
+		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
 	if !ok {
-		log.Log.Info("dag does not exist", "dag_id", dagRun.Spec.DagId)
+		log.Log.Info("dag does not exist", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, nil
 	}
 
 	// Check if a DagRun with the same parameters already exists
 	alreadyExists, err := r.DbManager.FindExistingDAGRun(ctx, dagRun.Name)
 	if err != nil {
-		log.Log.Error(err, "failed to check for existing DagRun", "dag_id", dagRun.Spec.DagId)
+		log.Log.Error(err, "failed to check for existing DagRun", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
 	if alreadyExists {
-		log.Log.Info("DagRun with the same name already exists", "dagRun_id", dagRun.Spec.DagId, "dag_name", dagRun.Name)
+		log.Log.Info("DagRun with the same name already exists", "dagRun_id", dagRun.Spec.DagName, "dag_name", dagRun.Name)
 		return ctrl.Result{}, nil
 	}
 
-	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagId)
+	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagName)
 	if err != nil {
-		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagId)
+		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
@@ -118,23 +118,23 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	runId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Name, &dagRun.Spec, paramMap)
 	if err != nil {
-		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagId)
+		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
-	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagId)
+	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagName)
 	if err != nil {
-		log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagRun.Spec.DagId)
+		log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
-	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagId, "tasks_len", len(tasks))
+	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagName, "tasks_len", len(tasks))
 
 	// Provide task to allocator
 	for _, task := range tasks {
 		taskRunId, err := r.DbManager.MarkTaskAsStarted(ctx, runId, task.Id)
 		if err != nil {
-			log.Log.Error(err, "failed to mask task as stated", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
+			log.Log.Error(err, "failed to mask task as stated", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
 			continue
 		}
 
@@ -151,11 +151,11 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		taskID, err := r.TaskAllocator.AllocateTask(ctx, task, runId, taskRunId, req.NamespacedName.Namespace)
 		if err != nil {
-			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagId, "task_id", task.Id)
+			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
 			continue
 		}
 
-		log.Log.Info("allocated task", "dag_id", dagRun.Spec.DagId, "task_id", task.Id, "kube_task_Id", taskID)
+		log.Log.Info("allocated task", "dag_id", dagRun.Spec.DagName, "task_id", task.Id, "kube_task_Id", taskID)
 
 	}
 
