@@ -9,13 +9,13 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authManager auth.AuthManager) *fiber.App {
+func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authManager auth.AuthManager, corsUiAddress string) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:3000",
+		AllowOrigins:     corsUiAddress,
 		AllowCredentials: true,
 		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
 	}))
