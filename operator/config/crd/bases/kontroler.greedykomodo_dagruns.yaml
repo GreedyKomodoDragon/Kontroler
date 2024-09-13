@@ -34,8 +34,8 @@ spec:
           spec:
             description: DagRunSpec defines the desired state of DagRun
             properties:
-              dagId:
-                type: integer
+              dagName:
+                type: string
               parameters:
                 items:
                   properties:
@@ -50,7 +50,7 @@ spec:
                   type: object
                 type: array
             required:
-            - dagId
+            - dagName
             type: object
           status:
             description: DagRunStatus defines the observed state of DagRun

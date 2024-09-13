@@ -34,13 +34,13 @@ type DBDAGManager interface {
 	// InitaliseDatabase will ensure all create requires components such as tables in a relational database are within the database
 	InitaliseDatabase(ctx context.Context) error
 	// Gets all dags to start, then updates to the next time it should be executed
-	GetDAGsToStartAndUpdate(ctx context.Context) ([]int, []string, error)
+	GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error)
 	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
 	InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error
 	// Create the update to show that a new DAG has been started
 	CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error)
 	// Get all the tasks in the DAG that do not have any dependencies
-	GetStartingTasks(ctx context.Context, dagId int) ([]Task, error)
+	GetStartingTasks(ctx context.Context, dagName string) ([]Task, error)
 	// Add an update to show the task has been started
 	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
 	// Mark the outcome of the taskRun
@@ -49,8 +49,8 @@ type DBDAGManager interface {
 	MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error)
 	// Update the DAGRun to show the overall outcome
 	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
-	GetDagParameters(ctx context.Context, dagId int) (map[string]*Parameter, error)
-	DagExists(ctx context.Context, dagId int) (bool, error)
+	GetDagParameters(ctx context.Context, dagName string) (map[string]*Parameter, error)
+	DagExists(ctx context.Context, dagName string) (bool, error)
 	ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error)
 	MarkTaskAsFailed(ctx context.Context, taskRunId int) error
 	MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32) error

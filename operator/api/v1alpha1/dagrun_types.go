@@ -33,7 +33,7 @@ type ParameterSpec struct {
 
 // DagRunSpec defines the desired state of DagRun
 type DagRunSpec struct {
-	DagId int `json:"dagId"`
+	DagName string `json:"dagName"`
 	// +optional
 	Parameters []ParameterSpec `json:"parameters"`
 }

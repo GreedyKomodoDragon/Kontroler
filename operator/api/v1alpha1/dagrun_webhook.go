@@ -57,8 +57,8 @@ func (r *DagRun) ValidateDelete() (admission.Warnings, error) {
 
 // validateDagRun is a helper function to validate DagRun creation and update.
 func (r *DagRun) validateDagRun() (admission.Warnings, error) {
-	if r.Spec.DagId == 0 {
-		return nil, errors.New("DagId must be set")
+	if r.Spec.DagName == "" {
+		return nil, errors.New("DagName cannot be empty")
 	}
 
 	for _, param := range r.Spec.Parameters {
