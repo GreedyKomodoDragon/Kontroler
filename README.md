@@ -342,6 +342,21 @@ env:
     value: my-release-postgresql.default.svc.cluster.local:5432
 ```
 
+### Building/Running the UI
+
+You will need to perform the following to build the docker & publish it to your registry of choice:
+
+```sh
+cd ui
+
+export VERSION=YOUR_TAG
+export IMAGE_TAG_BASE=YOUR_NAMESPACE/kontroler-ui
+
+make docker-build docker-push
+```
+
+Currently there is no Helm chart to handle this so for now you will need to create your own, this is coming soon!
+
 # Contributing
 
 There are many ways in which you can contribute to Kontroler, it doesn't have to be providing contributes to the codebase. Some examples are:
