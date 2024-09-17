@@ -11,9 +11,20 @@ crds:
   install: true
   retain: false
 
+
+# Needs to be a postgres compact. DB
+db:
+  name: kontroler
+  endpoint: my-release-postgresql.default.svc.cluster.local:5432
+
 controller:
   enabled: true
   image: ""
+  db:
+    user: postgres
+    password:
+      secret: postgres-kontroler-password
+      key: password
   serviceAccount:
     create: true
     annotations: {}
@@ -36,8 +47,18 @@ server:
   name: "kontroler-server"
   enabled: true
   replicaCount: 1
-  image: ""
+  image: "greedykomodo/kontroler-server:0.0.1"
+  db:
+    user: postgres
+    password:
+      secret: postgres-kontroler-password
+      key: password
+  jwt:
+    secret: jwt-kontroller-key
+    key: jwt
   imagePullPolicy: Always
+  # Assumes some local port forwarding is being applied
+  uiAddress: http://localhost:3000
   serviceAccount:
     create: true
     annotations: {}
@@ -84,7 +105,7 @@ ui:
   name: "kontroler-ui"
   enabled: true
   replicaCount: 1
-  image: ""
+  image: "greedykomodo/kontroler-ui:0.0.1"
   imagePullPolicy: Always
   serviceAccount:
     create: true
@@ -111,7 +132,7 @@ ui:
   affinity: {}
   service:
     type: ClusterIP
-    port: 80
+    port: 3000
   ingress:
     enabled: false
     className: ""

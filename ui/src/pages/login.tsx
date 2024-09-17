@@ -28,7 +28,7 @@ export default function Login() {
     <main class="w-full h-screen flex flex-col items-center justify-center px-4">
       <div class="max-w-sm w-full text-gray-600 space-y-5">
         <img
-          src="/src/assets/logo.svg"
+          src="/logo.svg"
           width="1500"
           style={{
             margin: "0px 0px -100px 0px",
