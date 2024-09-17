@@ -36,17 +36,23 @@ spec:
           imagePullPolicy: {{ .Values.server.imagePullPolicy }}
           env:
           - name: DB_NAME
-            value: kontroler
+            value: {{ .Values.db.name }}
           - name: DB_USER
-            value: postgres
+            value: {{ .Values.server.db.user }}
           - name: DB_PASSWORD
-            value: 
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.server.db.password.secret }}
+                key:  {{ .Values.server.db.password.key }}
           - name: JWT_KEY
-            value: 
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.server.jwt.secret }}
+                key:  {{ .Values.server.jwt.key }}
           - name: CORS_UI_ADDRESS
-            value: http://localhost:3000
+            value: {{ .Values.server.uiAddress }}
           - name: DB_ENDPOINT
-            value: my-release-postgresql.default.svc.cluster.local:5432
+            value: {{ .Values.db.endpoint }}
           ports:
             - name: http
               containerPort: {{ .Values.server.service.port }}

@@ -28,8 +28,8 @@ WORKDIR /usr/share/nginx/html
 # Copy built files from the previous stage
 COPY --from=builder /app/dist .
 
-# Expose port 8080
-EXPOSE 8080
+# Expose port 3000
+EXPOSE 3000
 
 # Start NGINX in the foreground and listen on port 8080
 CMD ["nginx", "-g", "daemon off;", "-c", "/etc/nginx/nginx.conf"]
