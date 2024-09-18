@@ -11,15 +11,17 @@ crds:
   install: true
   retain: false
 
-
 # Needs to be a postgres compact. DB
 db:
   name: kontroler
   endpoint: my-release-postgresql.default.svc.cluster.local:5432
 
+certManager:
+  enabled: true
+
 controller:
   enabled: true
-  image: ""
+  image: greedykomodo/kontroler-controller:0.0.1
   db:
     user: postgres
     password:
