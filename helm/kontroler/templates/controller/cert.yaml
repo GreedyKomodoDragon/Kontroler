@@ -1,0 +1,20 @@
+{{ if and .Values.certManager.enabled .Values.controller.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/component: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/part-of: operator
+  name: operator-serving-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  dnsNames:
+  - operator-webhook-service.{{ .Release.Namespace }}.svc
+  - operator-webhook-service.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: operator-selfsigned-issuer
+  secretName: webhook-server-cert
+{{ end }}

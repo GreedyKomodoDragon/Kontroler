@@ -1,0 +1,81 @@
+{{ if .Values.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-manager-role
+  namespace: {{ .Release.Namespace }}
+rules:
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagruns
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagruns/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagruns/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dags
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dags/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dags/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: operator
+    app.kubernetes.io/instance: manager-rolebinding
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrolebinding
+    app.kubernetes.io/part-of: operator
+  name: operator-manager-rolebinding
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: operator-manager-role
+subjects:
+- kind: ServiceAccount
+  name: operator-controller-manager
+  namespace: {{ .Release.Namespace }}
+{{ end }}
