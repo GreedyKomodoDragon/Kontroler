@@ -1,7 +1,6 @@
 <p align="center">
-<img src="./ui/public/logo.svg" width="350" />
+<img src="./ui/public/logo.svg" width="150" />
 </p>
-
 <h1 align="center">
     Always in control - Always on time
     <p align="center">
@@ -15,9 +14,23 @@ Kontroler is a Kubernetes scheduling engine for managing Directed Acyclic Graphs
 
 This system allows for running containers as tasks within a DAG, while providing an optional web-based UI for creating, managing, and visualizing DAG runs.
 
+<p align="center">
+<img src="./images/ui-screenshot.png" width="600" />
+</p>
+
 ## Getting Started
 
-Helm Charts coming soon! See the Building/Running from Source section further down for now
+### Helm Chart
+
+You can find the unified helm chart under the /helm directory in this repo. The helm chart contains:
+
+* CRDS
+* Controller
+* Server
+* UI
+
+Currently the helm chart leans on cert-manager, there is planned out to de-couple the chart from relying on cert-manager.
+
 
 ## State
 
