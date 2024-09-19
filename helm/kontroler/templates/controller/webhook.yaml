@@ -1,0 +1,67 @@
+{{ if .Values.controller.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/operator-serving-cert
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/instance: mutating-webhook-configuration
+    app.kubernetes.io/name: mutatingwebhookconfiguration
+    app.kubernetes.io/part-of: kontroler
+  name: operator-mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: operator-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /mutate-kontroler-greedykomodo-v1alpha1-dagrun
+  failurePolicy: Fail
+  name: mdagrun.kb.io
+  rules:
+  - apiGroups:
+    - kontroler.greedykomodo
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dagruns
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/operator-serving-cert
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/instance: validating-webhook-configuration
+    app.kubernetes.io/name: validatingwebhookconfiguration
+    app.kubernetes.io/part-of: kontroler
+  name: operator-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: operator-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /validate-kontroler-greedykomodo-v1alpha1-dagrun
+  failurePolicy: Fail
+  name: vdagrun.kb.io
+  rules:
+  - apiGroups:
+    - kontroler.greedykomodo
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dagruns
+  sideEffects: None
+{{ end }}

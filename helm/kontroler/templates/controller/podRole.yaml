@@ -1,0 +1,38 @@
+{{ if .Values.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-pod-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kontroler
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - get
+  - list
+  - delete
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/instance: manager-rolebinding-pod
+    app.kubernetes.io/name: clusterrolebinding-pod
+    app.kubernetes.io/part-of: kontroler
+  name: operator-manager-rolebinding-pod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: operator-pod-operator
+subjects:
+- kind: ServiceAccount
+  name: operator-controller-manager
+  namespace: {{ .Release.Namespace }}
+{{ end }}
