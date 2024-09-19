@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"
-	width="1080" height="1080" viewBox="-159.05 -133.33 1080 1080" xml:space="preserve">
+	width="1080" height="1080" viewBox="340 150 80 510" xml:space="preserve">
 <defs>
 </defs>
 <g transform="matrix(1 0 0 1 380.15 404.14)"  >
@@ -107,8 +107,5 @@
 </g>
 <g transform="matrix(0.88 0 0 2.14 156.62 431.69)" id="5a83995b-2838-4a26-b8de-e775a305bc59"  >
 <circle style="stroke: rgb(0,0,0); stroke-width: 0; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(41,85,134); fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  cx="0" cy="0" r="35" />
-</g>
-<g transform="matrix(1 0 0 1 292.88 428.41)"  >
-<path style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,242,243); fill-rule: nonzero; opacity: 1;" vector-effect="non-scaling-stroke"  transform=" translate(-379.49, -265.28)" d="M 379.5 257 C 383.289 258.083 384.804 258.75 387 262 C 387.563 264.938 387.563 264.938 387 268 C 384.514 271.363 383.086 272.8 378.938 273.563 C 376 273 376 273 373.625 271.5 C 371.342 267.988 371.191 265.076 372 261 C 374.22 257.36 375.223 257 379.5 257" stroke-linecap="round" />
 </g>
 </svg>
