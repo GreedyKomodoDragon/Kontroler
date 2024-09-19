@@ -4,6 +4,8 @@ kind: ClusterRole
 metadata:
   name: operator-manager-role
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kontroler
 rules:
 - apiGroups:
   - kontroler.greedykomodo
@@ -63,11 +65,9 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: operator
     app.kubernetes.io/instance: manager-rolebinding
-    app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: clusterrolebinding
-    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/part-of: kontroler
   name: operator-manager-rolebinding
   namespace: {{ .Release.Namespace }}
 roleRef:

@@ -18,6 +18,13 @@ db:
 
 certManager:
   enabled: true
+  issuerRef:
+    kind: Issuer
+    name: operator-selfsigned-issuer
+  issuer:
+    enabled: true
+    spec:
+      selfSigned: {}
 
 controller:
   enabled: true
