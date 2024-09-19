@@ -1,5 +1,5 @@
 <p align="center">
-<img src="./ui/public/logo.svg" width="350" />
+<img src="./ui/public/logo.svg" width="150" />
 </p>
 <h1 align="center">
     Always in control - Always on time
