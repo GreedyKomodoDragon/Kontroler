@@ -4,6 +4,8 @@ kind: ClusterRole
 metadata:
   name: operator-pod-operator
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kontroler
 rules:
 - apiGroups:
   - ""
@@ -21,10 +23,9 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: operator
     app.kubernetes.io/instance: manager-rolebinding-pod
     app.kubernetes.io/name: clusterrolebinding-pod
-    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/part-of: kontroler
   name: operator-manager-rolebinding-pod
 roleRef:
   apiGroup: rbac.authorization.k8s.io

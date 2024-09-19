@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: webhook-service
     app.kubernetes.io/name: service
-    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/part-of: kontroler
   name: operator-webhook-service
   namespace: {{ .Release.Namespace }}
 spec:
@@ -15,5 +15,5 @@ spec:
     protocol: TCP
     targetPort: 9443
   selector:
-    control-plane: controller-manager
+    control-plane: kontroller-manager
 {{ end }}
