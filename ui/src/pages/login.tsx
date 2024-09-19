@@ -27,13 +27,9 @@ export default function Login() {
   return (
     <main class="w-full h-screen flex flex-col items-center justify-center px-4">
       <div class="max-w-sm w-full text-gray-600 space-y-5">
-        <img
-          src="/logo.svg"
-          width="1500"
-          style={{
-            margin: "0px 0px -100px 0px",
-          }}
-        />
+        <div class="flex items-center justify-center text-sm my-2">
+          <img src="/logo.svg" width="200" />
+        </div>
         <h1 class="text-4xl text-white text-center">Welcome to Kontroler</h1>
         <form onSubmit={handleLogin}>
           <div>
@@ -69,7 +65,7 @@ export default function Login() {
             Sign in
           </button>
         </form>
-        {error() && <h2 class="text-red-700" >{error()}</h2>}
+        {error() && <h2 class="text-red-700">{error()}</h2>}
       </div>
     </main>
   );
