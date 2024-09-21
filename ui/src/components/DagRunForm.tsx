@@ -1,17 +1,11 @@
-import { createSignal, For } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import ErrorAlert from "./errorAlert";
 import SuccessfulAlert from "./successfulAlert";
 import SelectMenu from "./inputs/selectMenu";
 import LabeledInput from "./inputs/labeledInput";
-import { createStore } from "solid-js/store";
 import { createQuery } from "@tanstack/solid-query";
-import { getDagNames } from "../api/dags";
+import { getDagNames, getDagParameters } from "../api/dags";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
-
-type Parameter = {
-  name: string;
-  value: string;
-};
 
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
   let timeoutId: ReturnType<typeof setTimeout>;
@@ -24,8 +18,6 @@ function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
 export default function DagRunForm() {
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
   const [successMsg, setSuccessMsg] = createSignal<string>("");
-
-  const [parameters, setParameters] = createStore<Parameter[]>([]);
   const [selectedDag, setSelectedDag] = createSignal<string>("");
 
   const [debouncedValue, setDebouncedValue] = createSignal<string>("");
@@ -37,6 +29,12 @@ export default function DagRunForm() {
   const dags = createQuery(() => ({
     queryKey: ["dags", debouncedValue()],
     queryFn: getDagNames,
+    staleTime: 5 * 60 * 1000,
+  }));
+
+  const parameters = createQuery(() => ({
+    queryKey: ["dagsParameters", selectedDag()],
+    queryFn: getDagParameters,
     staleTime: 5 * 60 * 1000,
   }));
 
@@ -61,11 +59,20 @@ export default function DagRunForm() {
             <ErrorSingleAlert msg="No results found" />
           </div>
         )}
-      <h2 class="mt-5 text-2xl font-semibold">Parameters</h2>
-      <For each={parameters}>
-        {(param, i) => <LabeledInput label={param.name} />}
-      </For>
-      <br/>
+
+      {parameters.data && parameters.data.length > 0 && (
+        <>
+          <h2 class="text-2xl mt-4">Parameter</h2>
+          <For each={parameters.data}>
+            {(param, i) => (
+              <div class="my-2">
+                <LabeledInput label={param.name} placeholder={param.defaultValue} />
+              </div>
+            )}
+          </For>
+        </>
+      )}
+      <br />
       <button
         type="submit"
         class="mt-8 px-6 py-3 bg-indigo-600 text-white rounded-md shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
