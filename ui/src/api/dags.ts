@@ -142,6 +142,10 @@ export async function getDagNames({
 }: {
   queryKey: string[];
 }): Promise<string[]> {
+  if (queryKey[1] === "") {
+    return [];
+  }
+
   const result = await axios.get(
     `http://localhost:8080/api/v1/dag/names?term=${queryKey[1]}`,
     {
