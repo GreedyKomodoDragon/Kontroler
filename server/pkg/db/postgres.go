@@ -509,3 +509,29 @@ func (p *postgresManager) GetDagPageCount(ctx context.Context, limit int) (int, 
 
 	return pages, nil
 }
+
+func (p *postgresManager) GetDagNames(ctx context.Context, term string, limit int) ([]*string, error) {
+	rows, err := p.pool.Query(ctx, `
+	SELECT name
+	FROM DAGs
+	WHERE name ILIKE $1
+	LIMIT $2;`, "%"+term+"%", limit)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	names := []*string{}
+
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, &name)
+	}
+
+	return names, nil
+}
