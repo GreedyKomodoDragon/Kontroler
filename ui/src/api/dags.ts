@@ -15,9 +15,12 @@ export async function getDags({
 }: {
   queryKey: string[];
 }): Promise<Dag[]> {
-  const result = await axios.get(`http://localhost:8080/api/v1/dag/meta/${queryKey[1]}`, {
-    withCredentials: true,
-  });
+  const result = await axios.get(
+    `http://localhost:8080/api/v1/dag/meta/${queryKey[1]}`,
+    {
+      withCredentials: true,
+    }
+  );
 
   return result.data.dags;
 }
@@ -114,7 +117,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
 export async function getDagRunPageCount(): Promise<number> {
   const result = await axios.get(
-    'http://localhost:8080/api/v1/dag/run/pages/count',
+    "http://localhost:8080/api/v1/dag/run/pages/count",
     {
       withCredentials: true,
     }
@@ -123,14 +126,28 @@ export async function getDagRunPageCount(): Promise<number> {
   return result.data.count;
 }
 
-
 export async function getDagPageCount(): Promise<number> {
   const result = await axios.get(
-    'http://localhost:8080/api/v1/dag/pages/count',
+    "http://localhost:8080/api/v1/dag/pages/count",
     {
       withCredentials: true,
     }
   );
 
   return result.data.count;
+}
+
+export async function getDagNames({
+  queryKey,
+}: {
+  queryKey: string[];
+}): Promise<string[]> {
+  const result = await axios.get(
+    `http://localhost:8080/api/v1/dag/names?term=${queryKey[1]}`,
+    {
+      withCredentials: true,
+    }
+  );
+
+  return result.data.names;
 }

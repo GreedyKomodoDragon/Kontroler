@@ -25,6 +25,23 @@ func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
 	dagRouter := router.Group("/dag")
 
+	dagRouter.Get("/names", func(c *fiber.Ctx) error {
+		term := c.Query("term")
+		if term == "" {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		names, err := dbManager.GetDagNames(c.Context(), term, 10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting dags")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"names": names,
+		})
+	})
+
 	dagRouter.Get("/meta/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {

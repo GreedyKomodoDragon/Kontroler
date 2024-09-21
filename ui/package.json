@@ -26,6 +26,7 @@
     "vitest": "^2.0.5"
   },
   "dependencies": {
+    "@kobalte/core": "^0.13.6",
     "@solid-primitives/pagination": "^0.3.0",
     "@solidjs/router": "^0.13.3",
     "@tanstack/solid-query": "^5.53.1",
