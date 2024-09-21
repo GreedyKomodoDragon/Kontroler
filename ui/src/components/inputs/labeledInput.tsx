@@ -1,5 +1,6 @@
 type LabeledInputProps = {
   label: string;
+  placeholder: string;
 };
 
 export default function LabeledInput(props: LabeledInputProps) {
@@ -10,7 +11,7 @@ export default function LabeledInput(props: LabeledInputProps) {
       </div>
       <input
         type="text"
-        placeholder="input parameter value"
+        placeholder={props.placeholder}
         id="website-url"
         class="w-full p-2.5 ml-2 bg-transparent outline-none"
       />

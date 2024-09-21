@@ -5,6 +5,7 @@ import {
   DagRunGraph,
   DagRunMeta,
   DashboardStats,
+  Parameter,
   TaskDetails,
   TaskRunDetails,
 } from "../types/dag";
@@ -154,4 +155,23 @@ export async function getDagNames({
   );
 
   return result.data.names;
+}
+
+export async function getDagParameters({
+  queryKey,
+}: {
+  queryKey: string[];
+}): Promise<Parameter[]> {
+  if (queryKey[1] === "") {
+    return [];
+  }
+
+  const result = await axios.get(
+    `http://localhost:8080/api/v1/dag/parameters?name=${queryKey[1]}`,
+    {
+      withCredentials: true,
+    }
+  );
+
+  return result.data.parameters;
 }

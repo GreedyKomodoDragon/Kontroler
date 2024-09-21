@@ -535,3 +535,34 @@ func (p *postgresManager) GetDagNames(ctx context.Context, term string, limit in
 
 	return names, nil
 }
+
+func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error) {
+	rows, err := p.pool.Query(ctx, `
+	SELECT parameter_id, name, isSecret, defaultValue
+	FROM DAG_Parameters
+	WHERE dag_id IN (
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = $1
+		ORDER BY version DESC
+		LIMIT 1
+  	);`, dagName)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	params := []*Parameter{}
+
+	for rows.Next() {
+		var param Parameter
+		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
+			return nil, err
+		}
+		params = append(params, &param)
+	}
+
+	return params, nil
+}

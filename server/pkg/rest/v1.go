@@ -42,6 +42,23 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
+	dagRouter.Get("/parameters", func(c *fiber.Ctx) error {
+		name := c.Query("name")
+		if name == "" {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		parameters, err := dbManager.GetDagParameters(c.Context(), name)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting parameters")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"parameters": parameters,
+		})
+	})
+
 	dagRouter.Get("/meta/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
