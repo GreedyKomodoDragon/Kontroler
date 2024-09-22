@@ -1,9 +1,9 @@
 import { DropdownMenu } from "@kobalte/core/dropdown-menu";
-import { For, Setter } from "solid-js";
+import { For } from "solid-js";
 
 type SelectMenuProps = {
   selectedValue: string;
-  setValue: Setter<string>;
+  setValue: (value: string) => void;
   search: (term: string) => void;
   items: string[];
 };

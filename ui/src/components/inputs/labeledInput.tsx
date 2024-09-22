@@ -1,6 +1,9 @@
+import { JSX } from "solid-js";
+
 type LabeledInputProps = {
   label: string;
   placeholder: string;
+  oninput: JSX.InputEventHandlerUnion<HTMLInputElement, InputEvent> | undefined
 };
 
 export default function LabeledInput(props: LabeledInputProps) {
@@ -14,6 +17,7 @@ export default function LabeledInput(props: LabeledInputProps) {
         placeholder={props.placeholder}
         id="website-url"
         class="w-full p-2.5 ml-2 bg-transparent outline-none"
+        oninput={props.oninput}
       />
     </div>
   );
