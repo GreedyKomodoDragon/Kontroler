@@ -92,3 +92,20 @@ type DagFormObj struct {
 	Parameters []DagParameterSpec `json:"parameters,omitempty"`
 	Namespace  string             `json:"namespace"`
 }
+
+type DagRunForm struct {
+	Name       string            `json:"name"`
+	RunName    string            `json:"runName"`
+	Parameters map[string]string `json:"parameters"`
+	Namespace  string            `json:"namespace"`
+}
+
+type ValParameter struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type SecretParameter struct {
+	Name       string `json:"name"`
+	FromSecret string `json:"fromSecret"`
+}

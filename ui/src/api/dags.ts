@@ -175,3 +175,25 @@ export async function getDagParameters({
 
   return result.data.parameters;
 }
+
+export async function createDagRun(
+  name: string,
+  parameters: {
+    [x: string]: string;
+  },
+  namespace: string,
+  runName: string
+): Promise<void> {
+  await axios.post(
+    `http://localhost:8080/api/v1/dag/run/create`,
+    {
+      name,
+      parameters,
+      namespace,
+      runName,
+    },
+    {
+      withCredentials: true,
+    }
+  );
+}
