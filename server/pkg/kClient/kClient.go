@@ -22,8 +22,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "dag",
 		"app.kubernetes.io/instance":   dagForm.Name,
-		"app.kubernetes.io/part-of":    "operator",
-		"app.kubernetes.io/managed-by": "kustomize",
+		"app.kubernetes.io/part-of":    "kontroler",
 		"app.kubernetes.io/created-by": "server",
 	}
 
@@ -112,6 +111,71 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	}
 
 	_, err := client.Resource(gvr).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
+	return err
+}
+
+func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) error {
+	if drForm.Name == "" {
+		return fmt.Errorf("cannot have an empty dagrun name")
+	}
+
+	labels := map[string]string{
+		"app.kubernetes.io/name":       "dag",
+		"app.kubernetes.io/instance":   drForm.Name,
+		"app.kubernetes.io/part-of":    "kontroler",
+		"app.kubernetes.io/created-by": "server",
+	}
+
+	dagRunSpec := map[string]interface{}{
+		"dagName": drForm.Name,
+	}
+
+	parameters := []interface{}{}
+
+	for _, p := range drForm.Parameters {
+		isSecret, ok := isSecretMap[p]
+		if !ok {
+			return fmt.Errorf("missing parameter: %s", p)
+		}
+
+		if isSecret {
+			parameters = append(parameters, SecretParameter{
+				Name:       p,
+				FromSecret: drForm.Parameters[p],
+			})
+		} else {
+			parameters = append(parameters, ValParameter{
+				Name:  p,
+				Value: drForm.Parameters[p],
+			})
+		}
+	}
+
+	dagRunSpec["parameters"] = parameters
+
+	dagRun := map[string]interface{}{
+		"apiVersion": "kontroler.greedykomodo/v1alpha1",
+		"kind":       "DagRun",
+		"metadata": map[string]interface{}{
+			"labels": labels,
+			"name":   drForm.RunName,
+		},
+		"spec": dagRunSpec,
+	}
+
+	// Define the GVR (Group, Version, Resource) for your custom resource
+	gvr := schema.GroupVersionResource{
+		Group:    "kontroler.greedykomodo",
+		Version:  "v1alpha1",
+		Resource: "dagruns",
+	}
+
+	// Define the custom resource object using an unstructured object
+	customResource := &unstructured.Unstructured{
+		Object: dagRun,
+	}
+
+	_, err := client.Resource(gvr).Namespace(namespace).Create(ctx, customResource, metav1.CreateOptions{})
 	return err
 }
 

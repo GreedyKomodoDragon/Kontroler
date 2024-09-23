@@ -208,6 +208,42 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
+	dagRouter.Post("/run/create", func(c *fiber.Ctx) error {
+		var dagrunForm kclient.DagRunForm
+		if err := c.BodyParser(&dagrunForm); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "cannot parse JSON",
+			})
+		}
+
+		keys := make([]string, 0, len(dagrunForm.Parameters))
+		for k := range dagrunForm.Parameters {
+			keys = append(keys, k)
+		}
+
+		isSecretMap, err := dbManager.GetIsSecrets(c.Context(), dagrunForm.Name, keys)
+		if err != nil {
+			// TODO: Improve better error handling
+			log.Error().Err(err).Msg("Error getting dag run parameters")
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		for k := range isSecretMap {
+			fmt.Println(k, isSecretMap[k])
+		}
+
+		if err := kclient.CreateDagRun(c.Context(), dagrunForm, isSecretMap, dagrunForm.Namespace, kubClient); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to create DagRun: %v", err),
+			})
+		}
+
+		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+			"message": "DagRun created successfully",
+		})
+
+	})
+
 }
 
 func addStats(router fiber.Router, dbManager db.DbManager) {

@@ -5,7 +5,7 @@ import SuccessfulAlert from "./successfulAlert";
 import SelectMenu from "./inputs/selectMenu";
 import LabeledInput from "./inputs/labeledInput";
 import { createQuery } from "@tanstack/solid-query";
-import { getDagNames, getDagParameters } from "../api/dags";
+import { createDagRun, getDagNames, getDagParameters } from "../api/dags";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
 
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
@@ -20,6 +20,8 @@ export default function DagRunForm() {
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
   const [successMsg, setSuccessMsg] = createSignal<string>("");
   const [selectedDag, setSelectedDag] = createSignal<string>("");
+  const [namespace, setNamespace] = createSignal<string>("");
+  const [runName, setRunName] = createSignal<string>("");
 
   const [debouncedValue, setDebouncedValue] = createSignal<string>("");
 
@@ -56,13 +58,12 @@ export default function DagRunForm() {
 
   const handleSubmit = (e: Event) => {
     e.preventDefault();
+    setErrorMsgs([]);
 
     if (!parameters.data) {
       setErrorMsgs(["No parameters available to submit."]);
       return;
     }
-
-    const parameterValues = { ...parameterStore };
 
     const errors: string[] = [];
     for (let i = 0; i < parameters.data.length; i++) {
@@ -83,7 +84,13 @@ export default function DagRunForm() {
       return;
     }
 
-    console.log("Submitting with parameters:", parameterValues);
+    createDagRun(selectedDag(), { ...parameterStore }, namespace(), runName())
+      .then(() => {
+        setSuccessMsg("DagRun was created!");
+      })
+      .catch((e) => {
+        setErrorMsgs(["failed to create DagRun"]);
+      });
   };
 
   return (
@@ -91,6 +98,21 @@ export default function DagRunForm() {
       onSubmit={handleSubmit}
       class="mx-auto text-gray-200 shadow-md rounded-lg"
     >
+      <h2 class="text-2xl mt-4">DagRun Details</h2>
+      <div class="my-2">
+        <LabeledInput
+          label={"Run Name"}
+          placeholder={"name"}
+          oninput={(e) => setRunName(e.currentTarget.value)}
+        />
+      </div>
+      <div class="mt-2 mb-4">
+        <LabeledInput
+          label={"Namespace"}
+          placeholder={"namespace"}
+          oninput={(e) => setNamespace(e.currentTarget.value)}
+        />
+      </div>
       <SelectMenu
         selectedValue={selectedDag()}
         search={debouncedSearch}
@@ -135,13 +157,21 @@ export default function DagRunForm() {
       <br />
       <button
         type="submit"
-        class="mt-8 px-6 py-3 disabled:bg-slate-600 bg-indigo-600 text-white rounded-md shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="mt-2 px-6 py-3 disabled:bg-slate-600 bg-indigo-600 text-white rounded-md shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         disabled={selectedDag() === ""}
       >
         Submit DagRun
       </button>
-      {errorMsgs().length !== 0 && <ErrorAlert msgs={errorMsgs()} />}
-      {successMsg() && <SuccessfulAlert msg={successMsg()} />}
+      {errorMsgs().length !== 0 && (
+        <div class="mt-4">
+          <ErrorAlert msgs={errorMsgs()} />
+        </div>
+      )}
+      {successMsg() && (
+        <div class="mt-4">
+          <SuccessfulAlert msg={successMsg()} />
+        </div>
+      )}
     </form>
   );
 }

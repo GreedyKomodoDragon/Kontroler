@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -565,4 +566,46 @@ func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) 
 	}
 
 	return params, nil
+}
+
+func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error) {
+	query := `
+		SELECT name, isSecret 
+		FROM DAG_Parameters 
+		WHERE dag_id IN (
+			SELECT dag_id
+			FROM DAGs
+			WHERE name = $1
+			ORDER BY version DESC
+			LIMIT 1
+		) AND name = ANY($2)`
+
+	rows, err := p.pool.Query(ctx, query, dagName, parameterNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make(map[string]bool)
+
+	for rows.Next() {
+		var name string
+		var isSecret bool
+		if err := rows.Scan(&name, &isSecret); err != nil {
+			return nil, err
+		}
+		results[name] = isSecret
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	for _, paramName := range parameterNames {
+		if _, exists := results[paramName]; !exists {
+			return nil, errors.New(fmt.Sprintf("parameter '%s' does not exist", paramName))
+		}
+	}
+
+	return results, nil
 }
