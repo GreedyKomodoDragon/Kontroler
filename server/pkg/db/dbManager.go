@@ -124,6 +124,9 @@ type DbManager interface {
 	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
 	GetDagRunPageCount(ctx context.Context, limit int) (int, error)
 	GetDagPageCount(ctx context.Context, limit int) (int, error)
+	GetDagNames(ctx context.Context, term string, limit int) ([]*string, error)
+	GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error)
+	GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error)
 
 	Close()
 }

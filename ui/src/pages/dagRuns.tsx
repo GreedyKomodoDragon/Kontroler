@@ -4,6 +4,7 @@ import DagRunComponent from "../components/dagRunComponent";
 import { createQuery } from "@tanstack/solid-query";
 import PaginationComponent from "../components/pagination";
 import Spinner from "../components/spinner";
+import { A } from "@solidjs/router";
 
 const DagRuns: Component = () => {
   const [maxPage, setMaxPage] = createSignal(-1);
@@ -24,7 +25,9 @@ const DagRuns: Component = () => {
   return (
     <div class="p-4">
       <h2 class="text-2xl font-semibold mb-4">DAG Runs</h2>
-      <div class="mt-4"></div>
+      <div class="my-4 flex">
+        <A href="/dags/runs/create" class="ml-auto bg-blue-500 p-2 rounded-md">Create New DagRun</A>
+      </div>
       <Show when={runs.isError}>
         <div>Error: {runs.error && runs.error.message}</div>
       </Show>
@@ -33,8 +36,11 @@ const DagRuns: Component = () => {
       </Show>
       <Show when={runs.isSuccess}>
         <div>
-          {runs.data ?
-            runs.data.map((run) => <DagRunComponent dagRun={run} />) : <p>No DAG Runs found!</p>}
+          {runs.data && runs.data.length !== 0 ? (
+            runs.data.map((run) => <DagRunComponent dagRun={run} />)
+          ) : (
+            <p>No DAG Runs found!</p>
+          )}
         </div>
       </Show>
       <Show when={maxPage() > 1}>
