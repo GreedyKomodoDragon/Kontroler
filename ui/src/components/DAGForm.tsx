@@ -6,6 +6,7 @@ import ErrorAlert from "./errorAlert";
 import { createDag } from "../api/dags";
 import SuccessfulAlert from "./successfulAlert";
 import { DeleteTaskButton } from "./deleteTaskButton";
+import LabeledInput from "./inputs/labeledInput";
 
 export default function DAGForm() {
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
@@ -180,39 +181,30 @@ export default function DAGForm() {
         e.preventDefault();
         submitDAG();
       }}
-      class="space-y-8 mx-auto text-gray-200 shadow-md rounded-lg"
+      class="mx-auto text-gray-200 shadow-md rounded-lg"
     >
-      <div>
-        <label class="block text-lg font-medium">Name</label>
-        <input
-          type="text"
-          value={name()}
-          onInput={(e) => setName(e.currentTarget.value)}
-          class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+      <div class="mb-2">
+        <LabeledInput
+          label="Name"
+          placeholder="Dag Name"
+          oninput={(e) => setName(e.currentTarget.value)}
         />
       </div>
-      <div>
-        <label class="block text-lg font-medium">Namespace</label>
-        <input
-          type="text"
-          value={namespace()}
-          onInput={(e) => setNamespace(e.currentTarget.value)}
-          class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+      <div class="mb-2">
+        <LabeledInput
+          label="Namespace"
+          placeholder="Kubernetes Namespace"
+          oninput={(e) => setNamespace(e.currentTarget.value)}
         />
       </div>
-      <div>
-        <label class="block text-lg font-medium">
-          Cron Schedule (Optional)
-        </label>
-        <input
-          type="text"
-          value={schedule()}
-          onInput={(e) => setSchedule(e.currentTarget.value)}
-          class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+      <div class="mb-2">
+        <LabeledInput
+          label="Schedule"
+          placeholder="*/5 * * * * (Optional)"
+          oninput={(e) => setSchedule(e.currentTarget.value)}
         />
       </div>
-
-      <h2 class="text-2xl font-semibold">Tasks</h2>
+      <h2 class="text-2xl mt-4 font-semibold">Tasks</h2>
       <For each={tasks}>
         {(task, i) => (
           <div class="p-4 border rounded-lg bg-gray-700 border-gray-600 space-y-4">
@@ -422,12 +414,11 @@ export default function DAGForm() {
       <button
         type="button"
         onClick={addTask}
-        class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        class="mt-2 px-6 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
       >
         Add Task
       </button>
-
-      <h2 class="text-2xl font-semibold">Parameters</h2>
+      <h2 class="text-2xl mt-4 font-semibold">Parameters</h2>
       <div class="rounded-lg space-y-4">
         <For each={parameters}>
           {(param, i) => (
@@ -475,7 +466,7 @@ export default function DAGForm() {
         <button
           type="button"
           onClick={addParameter}
-          class="mt-4 px-4 py-2 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          class="mt-2 px-4 py-2 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
         >
           Add Parameter
         </button>
