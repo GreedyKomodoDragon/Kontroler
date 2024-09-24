@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -508,4 +509,103 @@ func (p *postgresManager) GetDagPageCount(ctx context.Context, limit int) (int, 
 	}
 
 	return pages, nil
+}
+
+func (p *postgresManager) GetDagNames(ctx context.Context, term string, limit int) ([]*string, error) {
+	rows, err := p.pool.Query(ctx, `
+	SELECT name
+	FROM DAGs
+	WHERE name ILIKE $1
+	LIMIT $2;`, "%"+term+"%", limit)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	names := []*string{}
+
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, &name)
+	}
+
+	return names, nil
+}
+
+func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error) {
+	rows, err := p.pool.Query(ctx, `
+	SELECT parameter_id, name, isSecret, defaultValue
+	FROM DAG_Parameters
+	WHERE dag_id IN (
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = $1
+		ORDER BY version DESC
+		LIMIT 1
+  	);`, dagName)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	params := []*Parameter{}
+
+	for rows.Next() {
+		var param Parameter
+		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
+			return nil, err
+		}
+		params = append(params, &param)
+	}
+
+	return params, nil
+}
+
+func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error) {
+	query := `
+		SELECT name, isSecret 
+		FROM DAG_Parameters 
+		WHERE dag_id IN (
+			SELECT dag_id
+			FROM DAGs
+			WHERE name = $1
+			ORDER BY version DESC
+			LIMIT 1
+		) AND name = ANY($2)`
+
+	rows, err := p.pool.Query(ctx, query, dagName, parameterNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make(map[string]bool)
+
+	for rows.Next() {
+		var name string
+		var isSecret bool
+		if err := rows.Scan(&name, &isSecret); err != nil {
+			return nil, err
+		}
+		results[name] = isSecret
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	for _, paramName := range parameterNames {
+		if _, exists := results[paramName]; !exists {
+			return nil, errors.New(fmt.Sprintf("parameter '%s' does not exist", paramName))
+		}
+	}
+
+	return results, nil
 }
