@@ -44,6 +44,8 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	var tasks []map[string]interface{}
 	for _, t := range dagForm.Tasks {
 		paramNames := []string{}
+
+		// TODO: Fix this double for loop at some point
 		for _, param := range t.Parameters {
 			for _, p := range dagForm.Parameters {
 				if p.ID == param {
