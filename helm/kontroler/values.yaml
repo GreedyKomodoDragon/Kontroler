@@ -116,6 +116,8 @@ ui:
   replicaCount: 1
   image: "greedykomodo/kontroler-ui:0.0.1"
   imagePullPolicy: Always
+  env:
+    API_URL: "http://localhost:8080"
   serviceAccount:
     create: true
     annotations: {}

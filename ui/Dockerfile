@@ -28,8 +28,9 @@ WORKDIR /usr/share/nginx/html
 # Copy built files from the previous stage
 COPY --from=builder /app/dist .
 
-# Expose port 3000
-EXPOSE 3000
+COPY entrypoint.sh .
+
+RUN chmod +x entrypoint.sh
 
 # Start NGINX in the foreground and listen on port 8080
-CMD ["nginx", "-g", "daemon off;", "-c", "/etc/nginx/nginx.conf"]
+CMD ["sh", "-c", "./entrypoint.sh"]
