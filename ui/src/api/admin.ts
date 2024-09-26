@@ -1,5 +1,6 @@
 import axios from "axios";
 import { User } from "../types/admin";
+import { getApiUrl } from "./utils";
 
 export async function getUsers({
   queryKey,
@@ -9,7 +10,7 @@ export async function getUsers({
   const page = Number(queryKey[1]);
 
   const result = await axios.get(
-    `http://localhost:8080/api/v1/auth/users/page/${page - 1}`,
+    `${getApiUrl()}/api/v1/auth/users/page/${page - 1}`,
     {
       withCredentials: true,
     }
@@ -20,7 +21,7 @@ export async function getUsers({
 
 export async function getUserPageCount(): Promise<number> {
   const result = await axios.get(
-    "http://localhost:8080/api/v1/auth/users/pages/count",
+    `${getApiUrl()}/api/v1/auth/users/pages/count`,
     {
       withCredentials: true,
     }
@@ -34,7 +35,7 @@ export async function createAccount(
   password: string
 ): Promise<void> {
   await axios.post(
-    `http://localhost:8080/api/v1/auth/create`,
+    `${getApiUrl()}/api/v1/auth/create`,
     {
       username,
       password,
@@ -46,11 +47,7 @@ export async function createAccount(
 }
 
 export async function deleteAccount(username: string): Promise<void> {
-  await axios.delete(
-    `http://localhost:8080/api/v1/auth/users/${username}`,
-
-    {
-      withCredentials: true,
-    }
-  );
+  await axios.delete(`${getApiUrl()}/api/v1/auth/users/${username}`, {
+    withCredentials: true,
+  });
 }

@@ -35,6 +35,9 @@ spec:
             {{- toYaml .Values.ui.securityContext | nindent 12 }}
           image: {{ .Values.ui.image }}
           imagePullPolicy: {{ .Values.ui.imagePullPolicy }}
+          env:
+          - name: API_URL
+            value: {{ .Values.ui.env.API_URL }}
           ports:
             - name: http
               containerPort: {{ .Values.ui.service.port }}

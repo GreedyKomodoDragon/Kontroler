@@ -10,6 +10,7 @@ import {
   TaskRunDetails,
 } from "../types/dag";
 import { DagFormObj } from "../types/dagForm";
+import { getApiUrl } from "./utils";
 
 export async function getDags({
   queryKey,
@@ -17,7 +18,7 @@ export async function getDags({
   queryKey: string[];
 }): Promise<Dag[]> {
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/meta/${queryKey[1]}`,
+    `${getApiUrl()}/api/v1/dag/meta/${queryKey[1]}`,
     {
       withCredentials: true,
     }
@@ -32,7 +33,7 @@ export async function getDagRuns({
   queryKey: string[];
 }): Promise<DagRunMeta[]> {
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/runs/${queryKey[1]}`,
+    `${getApiUrl()}/api/v1/dag/runs/${queryKey[1]}`,
     {
       withCredentials: true,
     }
@@ -43,7 +44,7 @@ export async function getDagRuns({
 
 export async function getDagRunGraph(runId: number): Promise<DagRunGraph> {
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/run/${runId}`,
+    `${getApiUrl()}/api/v1/dag/run/${runId}`,
     {
       withCredentials: true,
     }
@@ -54,7 +55,7 @@ export async function getDagRunGraph(runId: number): Promise<DagRunGraph> {
 
 export async function getDagRunAll(runId: number): Promise<DagRunAll> {
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/run/all/${runId}`,
+    `${getApiUrl()}/api/v1/dag/run/all/${runId}`,
     {
       withCredentials: true,
     }
@@ -71,7 +72,7 @@ export async function getTaskRunDetails(
   }
 
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/run/task/${runId}/${taskId}`,
+    `${getApiUrl()}/api/v1/dag/run/task/${runId}/${taskId}`,
     {
       withCredentials: true,
     }
@@ -87,7 +88,7 @@ export async function getTaskDetails(
   }
 
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/task/${taskId}`,
+    `${getApiUrl()}/api/v1/dag/task/${taskId}`,
     {
       withCredentials: true,
     }
@@ -97,7 +98,7 @@ export async function getTaskDetails(
 
 export async function createDag(dagForm: DagFormObj): Promise<any> {
   const result = await axios.post(
-    `http://localhost:8080/api/v1/dag/create`,
+    `${getApiUrl()}/api/v1/dag/create`,
     dagForm,
     {
       withCredentials: true,
@@ -108,7 +109,7 @@ export async function createDag(dagForm: DagFormObj): Promise<any> {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const result = await axios.get(
-    "http://localhost:8080/api/v1/stats/dashboard ",
+    `${getApiUrl()}/api/v1/stats/dashboard`,
     {
       withCredentials: true,
     }
@@ -118,7 +119,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
 export async function getDagRunPageCount(): Promise<number> {
   const result = await axios.get(
-    "http://localhost:8080/api/v1/dag/run/pages/count",
+    `${getApiUrl()}/api/v1/dag/run/pages/count`,
     {
       withCredentials: true,
     }
@@ -129,7 +130,7 @@ export async function getDagRunPageCount(): Promise<number> {
 
 export async function getDagPageCount(): Promise<number> {
   const result = await axios.get(
-    "http://localhost:8080/api/v1/dag/pages/count",
+    `${getApiUrl()}/api/v1/dag/pages/count`,
     {
       withCredentials: true,
     }
@@ -148,7 +149,7 @@ export async function getDagNames({
   }
 
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/names?term=${queryKey[1]}`,
+    `${getApiUrl()}/api/v1/dag/names?term=${queryKey[1]}`,
     {
       withCredentials: true,
     }
@@ -167,7 +168,7 @@ export async function getDagParameters({
   }
 
   const result = await axios.get(
-    `http://localhost:8080/api/v1/dag/parameters?name=${queryKey[1]}`,
+    `${getApiUrl()}/api/v1/dag/parameters?name=${queryKey[1]}`,
     {
       withCredentials: true,
     }
@@ -178,14 +179,12 @@ export async function getDagParameters({
 
 export async function createDagRun(
   name: string,
-  parameters: {
-    [x: string]: string;
-  },
+  parameters: { [x: string]: string },
   namespace: string,
   runName: string
 ): Promise<void> {
   await axios.post(
-    `http://localhost:8080/api/v1/dag/run/create`,
+    `${getApiUrl()}/api/v1/dag/run/create`,
     {
       name,
       parameters,
