@@ -6,6 +6,7 @@ import {
   onMount,
   JSX,
 } from "solid-js";
+import { getApiUrl } from "../api/utils";
 
 interface AuthContextType {
   isAuthenticated: () => boolean;
