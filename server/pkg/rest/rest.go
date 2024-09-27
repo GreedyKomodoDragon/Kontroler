@@ -9,7 +9,7 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authManager auth.AuthManager, corsUiAddress string) *fiber.App {
+func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authManager auth.AuthManager, corsUiAddress string, auditLogs bool) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
@@ -19,6 +19,10 @@ func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authM
 		AllowCredentials: true,
 		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
 	}))
+
+	if auditLogs {
+		app.Use(AuditLoggerMiddleware())
+	}
 
 	// Middleware for authentication
 	// TODO: Make Authentication toggl-able
