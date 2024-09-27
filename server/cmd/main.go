@@ -9,6 +9,7 @@ import (
 	"kontroler-server/pkg/rest"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,6 +40,8 @@ func main() {
 	if !exists {
 		panic("missing DB_PASSWORD")
 	}
+
+	auditLogs, _ := os.LookupEnv("AUDIT_LOGS")
 
 	pgEndpoint, exists := os.LookupEnv("DB_ENDPOINT")
 	if !exists {
@@ -80,7 +83,7 @@ func main() {
 		panic(err)
 	}
 
-	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress)
+	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true")
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)

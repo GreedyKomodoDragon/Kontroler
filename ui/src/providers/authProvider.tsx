@@ -56,7 +56,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
   ): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${getApiUrl()}:8080/api/v1/auth/login`, {
+      const response = await fetch(`${getApiUrl()}/api/v1/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -84,7 +84,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
     setIsLoading(true);
     let worked = true;
     try {
-      await fetch(`${getApiUrl()}:8080/api/v1/auth/logout`, {
+      await fetch(`${getApiUrl()}/api/v1/auth/logout`, {
         method: "POST",
         credentials: "include",
       });

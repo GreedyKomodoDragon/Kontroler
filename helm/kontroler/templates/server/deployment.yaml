@@ -53,6 +53,8 @@ spec:
             value: {{ .Values.server.uiAddress }}
           - name: DB_ENDPOINT
             value: {{ .Values.db.endpoint }}
+          - name: AUDIT_LOGS
+            value: {{ .Values.server.auditLogs | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.server.service.port }}
