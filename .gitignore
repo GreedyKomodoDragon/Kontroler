@@ -1,0 +1,4 @@
+*.key
+*.crt
+*.srl
+scripts/secret.yaml
