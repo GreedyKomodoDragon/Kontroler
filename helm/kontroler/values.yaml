@@ -68,6 +68,7 @@ server:
   imagePullPolicy: Always
   # Assumes some local port forwarding is being applied
   uiAddress: http://localhost:3000
+  auditLogs: false
   serviceAccount:
     create: true
     annotations: {}
