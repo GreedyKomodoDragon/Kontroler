@@ -56,8 +56,8 @@ Features we are aiming to cover are:
 
 The Server+UI allows you to:
 
-* Create DAGs: Use the interface to visually create and configure DAGs
-* View DAG Runs: Track the status, success, or failure of DAG runs
+* Create + Views DAGs: Use the interface to visually create and configure DAGs
+* Create + Views DAG Runs: Create & Track the status, success, or failure of DAG runs
 
 Planned Features:
 
