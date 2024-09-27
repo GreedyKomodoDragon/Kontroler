@@ -123,6 +123,15 @@ ui:
     create: true
     annotations: {}
     name: "ui-sa"
+  nginx:
+    mtls:
+      enabled: false
+      insecure: false
+      certs:
+        caCertSecretName: ca-secret
+        certSecretName: my-tls-secret
+        keySecretName: my-tls-secret
+    configOverride: ""
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}

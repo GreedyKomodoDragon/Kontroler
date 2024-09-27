@@ -42,6 +42,8 @@ spec:
             - name: http
               containerPort: {{ .Values.ui.service.port }}
               protocol: TCP
+          # TODO: Allow for probes to be used with mtls
+          {{ if not .Values.ui.nginx.mtls.enabled }}
           livenessProbe:
             httpGet:
               path: /
@@ -50,8 +52,39 @@ spec:
             httpGet:
               path: /
               port: http
+          {{ end }}
+          volumeMounts:
+            - name: nginx-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            {{ if .Values.ui.nginx.mtls.enabled }}
+            - name: mtls-ca-cert-volume
+              mountPath: /etc/nginx/ssl/ca.crt
+              subPath: ca.crt
+            - name: mtls-cert-volume
+              mountPath: /etc/nginx/ssl/tls.crt
+              subPath: tls.crt
+            - name: mtls-key-volume
+              mountPath: /etc/nginx/ssl/tls.key
+              subPath: tls.key
+            {{ end }}
           resources:
             {{- toYaml .Values.ui.resources | nindent 12 }}
+      volumes:
+        - name: nginx-config-volume
+          configMap:
+            name: {{ .Values.ui.name }}-nginx-config
+        {{ if .Values.ui.nginx.mtls.enabled }}
+        - name: mtls-ca-cert-volume
+          secret:
+            secretName: {{ .Values.ui.nginx.mtls.certs.caCertSecretName }}
+        - name: mtls-cert-volume
+          secret:
+            secretName: {{ .Values.ui.nginx.mtls.certs.certSecretName }}
+        - name: mtls-key-volume
+          secret:
+            secretName: {{ .Values.ui.nginx.mtls.certs.keySecretName }}
+        {{ end }}
       {{- with .Values.ui.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
