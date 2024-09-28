@@ -62,22 +62,7 @@ func (d *dagscheduler) Run() {
 			// Generate a unique name for each DagRun using UUID
 			name := "dagrun-" + uuid.New().String()
 
-			dagRun := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"apiVersion": "kontroler.greedykomodo/v1alpha1",
-					"kind":       "DagRun",
-					"metadata": map[string]interface{}{
-						"name": name,
-						"labels": map[string]string{
-							"app.kubernetes.io/created-by": "konductor-operator",
-						},
-					},
-					"spec": map[string]interface{}{
-						"dagName":    dagInfo.DagName,
-						"parameters": []map[string]interface{}{},
-					},
-				},
-			}
+			dagRun := d.CreateDagRunObject(dagInfo, name)
 
 			// Create the DagRun
 			if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, dagRun, opts); err != nil {
@@ -92,4 +77,24 @@ func (d *dagscheduler) Run() {
 		tmr.Reset(time.Minute)
 	}
 
+}
+
+// createDagRunObject constructs a DagRun object for the given dagInfo.
+func (d *dagscheduler) CreateDagRunObject(dagInfo *db.DagInfo, name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "kontroler.greedykomodo/v1alpha1",
+			"kind":       "DagRun",
+			"metadata": map[string]interface{}{
+				"name": name,
+				"labels": map[string]string{
+					"app.kubernetes.io/created-by": "konductor-operator",
+				},
+			},
+			"spec": map[string]interface{}{
+				"dagName":    dagInfo.DagName,
+				"parameters": []map[string]interface{}{},
+			},
+		},
+	}
 }
