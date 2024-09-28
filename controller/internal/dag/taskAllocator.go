@@ -19,6 +19,7 @@ import (
 type TaskAllocator interface {
 	AllocateTask(context.Context, db.Task, int, int, string) (types.UID, error)
 	AllocateTaskWithEnv(context.Context, db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements) (types.UID, error)
+	CreateEnvs(task db.Task) *[]v1.EnvVar
 }
 
 type taskAllocator struct {
@@ -32,28 +33,7 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
 }
 
 func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
-	envs := []v1.EnvVar{}
-	for _, param := range task.Parameters {
-		if param.IsSecret {
-			envs = append(envs, v1.EnvVar{
-				Name: param.Name,
-				ValueFrom: &v1.EnvVarSource{
-					SecretKeyRef: &v1.SecretKeySelector{
-						LocalObjectReference: v1.LocalObjectReference{
-							Name: param.Value,
-						},
-						// Current Version will also look into Key "secret"
-						Key: "secret",
-					},
-				},
-			})
-		} else {
-			envs = append(envs, v1.EnvVar{
-				Name:  param.Name,
-				Value: param.Value,
-			})
-		}
-	}
+	envs := t.CreateEnvs(task)
 
 	podSpec := v1.PodSpec{
 		Containers: []v1.Container{
@@ -62,7 +42,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 				Image:   task.Image,
 				Command: task.Command,
 				Args:    task.Args,
-				Env:     envs,
+				Env:     *envs,
 			},
 		},
 		RestartPolicy: v1.RestartPolicyNever,
@@ -174,4 +154,31 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 	}
 
 	return "", fmt.Errorf("failed to create pod due to naming collisions")
+}
+
+func (t *taskAllocator) CreateEnvs(task db.Task) *[]v1.EnvVar {
+	envs := []v1.EnvVar{}
+	for _, param := range task.Parameters {
+		if param.IsSecret {
+			envs = append(envs, v1.EnvVar{
+				Name: param.Name,
+				ValueFrom: &v1.EnvVarSource{
+					SecretKeyRef: &v1.SecretKeySelector{
+						LocalObjectReference: v1.LocalObjectReference{
+							Name: param.Value,
+						},
+						// Current Version will also look into Key "secret"
+						Key: "secret",
+					},
+				},
+			})
+		} else {
+			envs = append(envs, v1.EnvVar{
+				Name:  param.Name,
+				Value: param.Value,
+			})
+		}
+	}
+
+	return &envs
 }
