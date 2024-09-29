@@ -2,3 +2,4 @@
 *.crt
 *.srl
 scripts/secret.yaml
+*.p12

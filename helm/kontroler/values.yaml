@@ -68,7 +68,14 @@ server:
   imagePullPolicy: Always
   # Assumes some local port forwarding is being applied
   uiAddress: http://localhost:3000
-  auditLogs: false
+  auditLogs: true
+  mtls:
+    enabled: false
+    insecure: true
+    certs:
+      caCertSecretName: ca-secret
+      certSecretName: my-tls-secret
+      keySecretName: my-tls-secret
   serviceAccount:
     create: true
     annotations: {}
@@ -118,7 +125,7 @@ ui:
   image: "greedykomodo/kontroler-ui:0.0.1"
   imagePullPolicy: Always
   env:
-    API_URL: "http://localhost:8080"
+    API_URL: "http://localhost:3000"
   serviceAccount:
     create: true
     annotations: {}
@@ -126,12 +133,17 @@ ui:
   nginx:
     mtls:
       enabled: false
-      insecure: false
+      insecure: true
       certs:
         caCertSecretName: ca-secret
         certSecretName: my-tls-secret
         keySecretName: my-tls-secret
     configOverride: ""
+    reverseProxy: 
+      enabled: true
+      caCertSecretName: ca-secret
+      certSecretName: my-tls-secret
+      keySecretName: my-tls-secret
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}

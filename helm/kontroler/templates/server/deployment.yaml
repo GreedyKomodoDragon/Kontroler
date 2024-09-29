@@ -55,6 +55,10 @@ spec:
             value: {{ .Values.db.endpoint }}
           - name: AUDIT_LOGS
             value: {{ .Values.server.auditLogs | quote }}
+          - name: MTLS
+            value: {{ .Values.server.mtls.enabled | quote }}
+          - name: INSECURE
+            value: {{ .Values.server.mtls.insecure | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.server.service.port }}
@@ -69,6 +73,30 @@ spec:
           #     port: http
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts:
+            {{ if .Values.server.mtls.enabled }}
+            - name: mtls-ca-cert-volume
+              mountPath: /ca.crt
+              subPath: ca.crt
+            - name: mtls-cert-volume
+              mountPath: /tls.crt
+              subPath: tls.crt
+            - name: mtls-key-volume
+              mountPath: /tls.key
+              subPath: tls.key
+            {{ end }}
+      volumes:
+        {{ if .Values.server.mtls.enabled }}
+        - name: mtls-ca-cert-volume
+          secret:
+            secretName: {{ .Values.server.mtls.certs.caCertSecretName }}
+        - name: mtls-cert-volume
+          secret:
+            secretName: {{ .Values.server.mtls.certs.certSecretName }}
+        - name: mtls-key-volume
+          secret:
+            secretName: {{ .Values.server.mtls.certs.keySecretName }}
+        {{ end }}
       {{- with .Values.server.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

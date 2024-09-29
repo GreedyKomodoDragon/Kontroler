@@ -9,8 +9,8 @@ spec:
   type: {{ .Values.server.service.type }}
   ports:
     - port: {{ .Values.server.service.port }}
-      targetPort: http
       protocol: TCP
+      targetPort: http
       name: http
   selector:
     {{- include "kontroler.server.selectorLabels" . | nindent 4 }}

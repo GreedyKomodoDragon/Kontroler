@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"kontroler-server/pkg/auth"
 	"kontroler-server/pkg/db"
 	kclient "kontroler-server/pkg/kClient"
 	"kontroler-server/pkg/rest"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -91,12 +93,35 @@ func main() {
 	// syscall.SIGTERM is for kubernetes
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
+	var tlsConfig *tls.Config = nil
+	if os.Getenv("MTLS") == "true" {
+		tlsConfig, err = rest.CreateTLSConfig()
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	// Run Fiber server in a separate goroutine
 	go func() {
 		log.Info().Int("port", 8080).Msg("listening on port")
 
-		if err := app.Listen("127.0.0.1:8080"); err != nil {
-			log.Error().Err(err).Msg("Error starting server")
+		if tlsConfig == nil {
+			log.Info().Msg("Starting server with http")
+			if err := app.Listen(":8080"); err != nil {
+				log.Fatal().Err(err).Msg("Error starting server")
+			}
+		} else {
+			log.Info().Msg("Starting server with tls")
+			ln, err := net.Listen("tcp", ":8080")
+			if err != nil {
+				log.Fatal().Err(err).Msg("Error starting server listener")
+			}
+
+			ln = tls.NewListener(ln, tlsConfig)
+
+			if err := app.Listener(ln); err != nil {
+				log.Fatal().Err(err).Msg("Error starting server with mtls")
+			}
 		}
 	}()
 
