@@ -68,6 +68,32 @@ data:
                 root /usr/share/nginx/html;
             }
 
+            {{ if .Values.ui.nginx.reverseProxy.enabled }}
+            # Only proxy requests starting with /api
+            location /api {
+                # Proxy requests to backend server
+                {{ if .Values.server.mtls.enabled }}
+                proxy_pass https://{{ .Values.server.name }}.{{ .Release.Namespace }}.svc.cluster.local:8080;
+                proxy_ssl_certificate /etc/nginx/client/tls.crt;
+                proxy_ssl_certificate_key /etc/nginx/client/tls.key;
+                proxy_ssl_trusted_certificate /etc/nginx/client/ca.crt;
+                {{- if .Values.ui.nginx.mtls.insecure }}
+                proxy_ssl_verify off;  # Uncomment for testing if SSL issues arise
+                {{ else }}
+                proxy_ssl_verify on;  # Uncomment for testing if SSL issues arise
+                {{ end }}
+                {{ else }} 
+                proxy_pass http://{{ .Values.server.name }}.{{ .Release.Namespace }}.svc.cluster.local:8080;
+                {{ end }}
+
+                # Additional headers for forwarding client info
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+            {{ end }}
+
             # Serve the SPA (SolidJS app)
             location / {
                 root /usr/share/nginx/html;
