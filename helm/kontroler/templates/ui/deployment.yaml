@@ -68,6 +68,17 @@ spec:
               mountPath: /etc/nginx/ssl/tls.key
               subPath: tls.key
             {{ end }}
+            {{ if and .Values.ui.nginx.reverseProxy.enabled .Values.server.mtls.enabled }}
+            - name: mtls-ca-cert-volume-reverse
+              mountPath: /etc/nginx/client/ca.crt
+              subPath: ca.crt
+            - name: mtls-cert-volume-reverse
+              mountPath: /etc/nginx/client/tls.crt
+              subPath: tls.crt
+            - name: mtls-key-volume-reverse
+              mountPath: /etc/nginx/client/tls.key
+              subPath: tls.key
+            {{ end }}
           resources:
             {{- toYaml .Values.ui.resources | nindent 12 }}
       volumes:
@@ -84,6 +95,17 @@ spec:
         - name: mtls-key-volume
           secret:
             secretName: {{ .Values.ui.nginx.mtls.certs.keySecretName }}
+        {{ end }}
+        {{ if and .Values.ui.nginx.reverseProxy.enabled .Values.server.mtls.enabled }}
+        - name: mtls-ca-cert-volume-reverse
+          secret:
+            secretName: {{ .Values.ui.nginx.reverseProxy.caCertSecretName }}
+        - name: mtls-cert-volume-reverse
+          secret:
+            secretName: {{ .Values.ui.nginx.reverseProxy.certSecretName }}
+        - name: mtls-key-volume-reverse
+          secret:
+            secretName: {{ .Values.ui.nginx.reverseProxy.keySecretName }}
         {{ end }}
       {{- with .Values.ui.nodeSelector }}
       nodeSelector:
