@@ -62,6 +62,19 @@ server:
     password:
       secret: postgres-kontroler-password
       key: password
+    ssl:
+      mode: require
+      secret: postgresql-client-tls
+      paths:
+        ca:
+          path: /etc/kontroler/ssl/
+          filename: ca.crt
+        cert:
+          path: /etc/kontroler/ssl/
+          filename: client.crt
+        key:
+          path: /etc/kontroler/ssl/
+          filename: client.key
   jwt:
     secret: jwt-kontroller-key
     key: jwt

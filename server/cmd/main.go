@@ -43,6 +43,11 @@ func main() {
 		panic("missing DB_PASSWORD")
 	}
 
+	sslMode, exists := os.LookupEnv("DB_SSL_MODE")
+	if !exists {
+		sslMode = "disable"
+	}
+
 	auditLogs, _ := os.LookupEnv("AUDIT_LOGS")
 
 	pgEndpoint, exists := os.LookupEnv("DB_ENDPOINT")
@@ -55,9 +60,23 @@ func main() {
 		panic("missing CORS_UI_ADDRESS")
 	}
 
-	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
+	postgresURL := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode)
+	pgConfig, err := pgxpool.ParseConfig(postgresURL)
 	if err != nil {
 		panic(err)
+	}
+
+	pgConfig.ConnConfig.TLSConfig = &tls.Config{}
+	if sslMode != "disable" {
+		if err := db.UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
+			panic(err)
+		}
+
+		if sslMode == "require" {
+			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = true
+		} else if sslMode == "verify-ca" || sslMode == "verify-full" {
+			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = false
+		}
 	}
 
 	ctx := context.Background()
