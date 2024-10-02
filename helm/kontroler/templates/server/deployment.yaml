@@ -44,6 +44,22 @@ spec:
               secretKeyRef:
                 name: {{ .Values.server.db.password.secret }}
                 key:  {{ .Values.server.db.password.key }}
+          {{ if .Values.server.db.ssl.mode }}
+          - name: DB_SSL_MODE
+            value: {{ .Values.server.db.ssl.mode }}
+          {{ end }}
+          {{ if .Values.server.db.ssl.paths.ca.filename }}
+          - name: DB_SSL_CA_CERT
+            value: {{ printf "%s%s" .Values.server.db.ssl.paths.ca.path .Values.server.db.ssl.paths.ca.filename }}
+          {{ end }}
+          {{ if .Values.server.db.ssl.paths.cert.filename }}
+          - name: DB_SSL_CERT
+            value: {{ printf "%s%s" .Values.server.db.ssl.paths.cert.path .Values.server.db.ssl.paths.cert.filename }}
+          {{ end }}
+          {{ if .Values.server.db.ssl.paths.key.filename }}
+          - name: DB_SSL_KEY
+            value: {{ printf "%s%s" .Values.server.db.ssl.paths.key.path .Values.server.db.ssl.paths.key.filename }}
+          {{ end }}
           - name: JWT_KEY
             valueFrom:
               secretKeyRef:
@@ -63,14 +79,6 @@ spec:
             - name: http
               containerPort: {{ .Values.server.service.port }}
               protocol: TCP
-          # livenessProbe:
-          #   httpGet:
-          #     path: /
-          #     port: http
-          # readinessProbe:
-          #   httpGet:
-          #     path: /
-          #     port: http
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
           volumeMounts:
@@ -85,6 +93,21 @@ spec:
               mountPath: /tls.key
               subPath: tls.key
             {{ end }}
+            {{ if .Values.server.db.ssl.paths.ca.filename }}
+            - name: db-ssl-secret-volume
+              mountPath: {{ printf "%s%s" .Values.server.db.ssl.paths.ca.path .Values.server.db.ssl.paths.ca.filename }}
+              subPath: {{ .Values.server.db.ssl.paths.ca.filename }}
+            {{ end }}
+            {{ if .Values.server.db.ssl.paths.cert.filename }}
+            - name: db-ssl-secret-volume
+              mountPath: {{ printf "%s%s" .Values.server.db.ssl.paths.cert.path .Values.server.db.ssl.paths.cert.filename }}
+              subPath: {{ .Values.server.db.ssl.paths.cert.filename }}
+            {{ end }}
+            {{ if .Values.server.db.ssl.paths.key.filename }}
+            - name: db-ssl-secret-volume
+              mountPath: {{ printf "%s%s" .Values.server.db.ssl.paths.key.path .Values.server.db.ssl.paths.key.filename }}
+              subPath: {{ .Values.server.db.ssl.paths.key.filename }}
+            {{ end }}
       volumes:
         {{ if .Values.server.mtls.enabled }}
         - name: mtls-ca-cert-volume
@@ -96,6 +119,24 @@ spec:
         - name: mtls-key-volume
           secret:
             secretName: {{ .Values.server.mtls.certs.keySecretName }}
+        {{ end }}
+        {{ if .Values.server.db.ssl.secret }}
+        - name: db-ssl-secret-volume
+          secret:
+            secretName: {{ .Values.server.db.ssl.secret }}
+            items:
+              {{ if .Values.server.db.ssl.paths.ca.filename }}
+              - key: {{ .Values.server.db.ssl.paths.ca.filename }}
+                path: {{ .Values.server.db.ssl.paths.ca.filename }}
+              {{ end }}
+              {{ if .Values.server.db.ssl.paths.cert.filename }}
+              - key: {{ .Values.server.db.ssl.paths.cert.filename }}
+                path: {{ .Values.server.db.ssl.paths.cert.filename }}
+              {{ end }}
+              {{ if .Values.server.db.ssl.paths.key.filename }}
+              - key: {{ .Values.server.db.ssl.paths.key.filename }}
+                path: {{ .Values.server.db.ssl.paths.key.filename }}
+              {{ end }}
         {{ end }}
       {{- with .Values.server.nodeSelector }}
       nodeSelector:
