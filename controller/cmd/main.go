@@ -170,10 +170,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName))
+	sslMode, exists := os.LookupEnv("DB_SSL_MODE")
+	if !exists {
+		sslMode = "disable"
+	}
+
+	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
 	if err != nil {
 		setupLog.Error(err, "failed to create postgres config")
 		os.Exit(1)
+	}
+
+	pgConfig.ConnConfig.TLSConfig = &tls.Config{}
+	if sslMode != "disable" {
+		if err := db.UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
+			panic(err)
+		}
+
+		if sslMode == "require" {
+			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = true
+		} else if sslMode == "verify-ca" || sslMode == "verify-full" {
+			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = false
+		}
 	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
