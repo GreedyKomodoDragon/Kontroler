@@ -29,6 +29,24 @@ spec:
           secret:
             defaultMode: 420
             secretName: webhook-server-cert
+        {{ if .Values.controller.db.ssl.secret }}
+        - name: db-ssl-secret-volume
+          secret:
+            secretName: {{ .Values.controller.db.ssl.secret }}
+            items:
+              {{ if .Values.controller.db.ssl.paths.ca.filename }}
+              - key: {{ .Values.controller.db.ssl.paths.ca.filename }}
+                path: {{ .Values.controller.db.ssl.paths.ca.filename }}
+              {{ end }}
+              {{ if .Values.controller.db.ssl.paths.cert.filename }}
+              - key: {{ .Values.controller.db.ssl.paths.cert.filename }}
+                path: {{ .Values.controller.db.ssl.paths.cert.filename }}
+              {{ end }}
+              {{ if .Values.controller.db.ssl.paths.key.filename }}
+              - key: {{ .Values.controller.db.ssl.paths.key.filename }}
+                path: {{ .Values.controller.db.ssl.paths.key.filename }}
+              {{ end }}
+        {{ end }}
       containers:
         - args:
             - --health-probe-bind-address=:8081
@@ -48,6 +66,22 @@ spec:
                   key:  {{ .Values.controller.db.password.key }}
             - name: DB_ENDPOINT
               value: {{ .Values.db.endpoint }}
+            {{ if .Values.controller.db.ssl.mode }}
+            - name: DB_SSL_MODE
+              value: {{ .Values.controller.db.ssl.mode }}
+            {{ end }}
+            {{ if .Values.controller.db.ssl.paths.ca.filename }}
+            - name: DB_SSL_CA_CERT
+              value: {{ printf "%s%s" .Values.controller.db.ssl.paths.ca.path .Values.controller.db.ssl.paths.ca.filename }}
+            {{ end }}
+            {{ if .Values.controller.db.ssl.paths.cert.filename }}
+            - name: DB_SSL_CERT
+              value: {{ printf "%s%s" .Values.controller.db.ssl.paths.cert.path .Values.controller.db.ssl.paths.cert.filename }}
+            {{ end }}
+            {{ if .Values.controller.db.ssl.paths.key.filename }}
+            - name: DB_SSL_KEY
+              value: {{ printf "%s%s" .Values.controller.db.ssl.paths.key.path .Values.controller.db.ssl.paths.key.filename }}
+            {{ end }}
           image: {{ .Values.controller.image }}
           imagePullPolicy: Always
           livenessProbe:
@@ -83,5 +117,20 @@ spec:
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
               readOnly: true
+            {{ if .Values.controller.db.ssl.paths.ca.filename }}
+            - name: db-ssl-secret-volume
+              mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.ca.path .Values.controller.db.ssl.paths.ca.filename }}
+              subPath: {{ .Values.controller.db.ssl.paths.ca.filename }}
+            {{ end }}
+            {{ if .Values.controller.db.ssl.paths.cert.filename }}
+            - name: db-ssl-secret-volume
+              mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.cert.path .Values.controller.db.ssl.paths.cert.filename }}
+              subPath: {{ .Values.controller.db.ssl.paths.cert.filename }}
+            {{ end }}
+            {{ if .Values.controller.db.ssl.paths.key.filename }}
+            - name: db-ssl-secret-volume
+              mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.key.path .Values.controller.db.ssl.paths.key.filename }}
+              subPath: {{ .Values.controller.db.ssl.paths.key.filename }}
+            {{ end }}
       serviceAccountName: operator-controller-manager
 {{ end }}
