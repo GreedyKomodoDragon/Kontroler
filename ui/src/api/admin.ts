@@ -51,3 +51,19 @@ export async function deleteAccount(username: string): Promise<void> {
     withCredentials: true,
   });
 }
+
+export async function updatePassword(
+  oldPassword: string,
+  password: string
+): Promise<void> {
+  await axios.post(
+    `${getApiUrl()}/api/v1/auth/password/change`,
+    {
+      oldPassword,
+      password,
+    },
+    {
+      withCredentials: true,
+    }
+  );
+}

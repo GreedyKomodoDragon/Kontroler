@@ -45,13 +45,13 @@ func Authentication(c *fiber.Ctx, authManager auth.AuthManager) error {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	}
 
-	id, err := authManager.IsValidLogin(c.Context(), jwtToken)
+	username, err := authManager.IsValidLogin(c.Context(), jwtToken)
 	if err != nil {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	}
 
 	c.Locals("token", jwtToken)
-	c.Locals("id", id)
+	c.Locals("username", username)
 
 	return c.Next()
 }

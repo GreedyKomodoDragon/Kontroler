@@ -6,7 +6,10 @@ const Header: Component = () => {
   const [state, setState] = createSignal<boolean>(false);
   const auth = useAuth();
 
-  const navigation = [{ title: "Log out", path: "/logout" }];
+  const navigation = [
+    { title: "Profile", path: "/account/profile" },
+    { title: "Log out", path: "/logout" }
+  ];
 
   return (
     <div class="flex items-center h-16 px-4 border-b border-gray-800">

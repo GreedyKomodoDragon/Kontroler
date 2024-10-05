@@ -1,8 +1,13 @@
-export default function Spinner() {
+type SpinnerProps = {
+  width?: number;
+  height?: number;
+};
+
+export default function Spinner(props: SpinnerProps) {
   return (
     <svg
-      width="100"
-      height="100"
+      width={ props.height || 100}
+      height={ props.height || 100}
       viewBox="0 0 60 215"
       style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5"
       xmlns="http://www.w3.org/2000/svg"
@@ -74,7 +79,7 @@ export default function Spinner() {
         cy="93.196"
         rx="6.031"
         ry="6.643"
-        style="fill:#0d79f2;stroke:#000;stroke-width:5.02px"
+        style="fill:white;stroke:#000;stroke-width:5.02px"
         transform="matrix(-.40468 1.51029 -1.37129 -.36743 206.938 -44.818)"
       />
     </svg>
