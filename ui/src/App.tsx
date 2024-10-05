@@ -15,6 +15,7 @@ import Admin from "./pages/admin";
 import CreateAccountPage from "./pages/createAccount";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
 import CreateDagRun from "./pages/createDagRun";
+import UserManagement from "./pages/userManagement";
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -34,7 +35,7 @@ const Layout: Component<{ children: JSX.Element }> = (props) => {
   );
 };
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient();
 
 // Main App component
 const App: Component = () => {
@@ -128,6 +129,16 @@ const App: Component = () => {
               <ProtectedRoute>
                 <Layout>
                   <CreateAccountPage />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/admin/account/managed/:user"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <UserManagement />
                 </Layout>
               </ProtectedRoute>
             )}

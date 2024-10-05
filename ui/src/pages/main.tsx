@@ -107,7 +107,7 @@ const Main: Component = () => {
     });
 
   const [stats, setStats] = createSignal<DashboardStats | undefined>();
-
+  
   getDashboardStats()
     .then((data) => {
       setStats(data);
