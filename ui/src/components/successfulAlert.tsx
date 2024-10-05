@@ -5,7 +5,7 @@ type successAlertProps = {
 
 export default function SuccessfulAlert(props: successAlertProps) {
   return (
-    <div class="max-w-5xl mx-auto px-4 md:px-8">
+    <div class="mx-auto px-4">
       <div class="flex justify-between p-4 rounded-md bg-green-50 border border-green-300">
         <div class="flex items-start gap-3 w-full">
           <div>

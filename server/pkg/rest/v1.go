@@ -311,6 +311,22 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		return c.SendStatus(fiber.StatusCreated)
 	})
 
+	authRouter.Post("/password/change", func(c *fiber.Ctx) error {
+		var req auth.ChangeCredentials
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
+		if err := authManager.ChangePassword(c.Context(), c.Locals("username").(string), req); err != nil {
+			log.Error().Err(err).Msg("Error updating password")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		return c.SendStatus(fiber.StatusCreated)
+	})
+
 	authRouter.Post("/logout", func(c *fiber.Ctx) error {
 		token := c.Locals("token").(string)
 

@@ -17,6 +17,11 @@ type Credentials struct {
 	Password string `json:"password"`
 }
 
+type ChangeCredentials struct {
+	OldPassword string `json:"oldPassword"`
+	Password    string `json:"password"`
+}
+
 type User struct {
 	Username string `json:"username"`
 	Role     string `json:"role"`
@@ -31,6 +36,7 @@ type AuthManager interface {
 	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)
 	GetUserPageCount(ctx context.Context, limit int) (int, error)
 	DeleteUser(ctx context.Context, user string) error
+	ChangePassword(ctx context.Context, username string, changeCredentials ChangeCredentials) error
 }
 
 type authManager struct {
@@ -268,6 +274,32 @@ func (a *authManager) DeleteUser(ctx context.Context, user string) error {
 	DELETE FROM accounts 
 	WHERE username = $1;
 	`, user); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a *authManager) ChangePassword(ctx context.Context, username string, changeCredentials ChangeCredentials) error {
+	var passwordCorrect bool
+	query := `
+		SELECT EXISTS(
+			SELECT 1
+			FROM accounts
+			WHERE username = $1 AND password_hash = crypt($2, password_hash)
+		)`
+	if err := a.pool.QueryRow(ctx, query, username, changeCredentials.OldPassword).Scan(&passwordCorrect); err != nil {
+		return err
+	}
+
+	if !passwordCorrect {
+		return errors.New("incorrect old password")
+	}
+
+	query = `UPDATE accounts
+			SET password_hash = crypt($1, gen_salt('bf')), updated_at = $2
+			WHERE username = $3`
+	if _, err := a.pool.Exec(ctx, query, changeCredentials.Password, time.Now(), username); err != nil {
 		return err
 	}
 
