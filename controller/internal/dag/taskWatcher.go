@@ -25,10 +25,11 @@ const (
 // Purpose of TaskWatcher is to listen for pods to finish and record results/trigger the next pods
 // Will also allocate new pods
 type TaskWatcher interface {
-	StartWatching()
+	StartWatching(stopCh <-chan struct{})
 }
 
 type taskWatcher struct {
+	namespace     string
 	dbManager     db.DBDAGManager
 	informer      cache.SharedIndexInformer
 	clientSet     *kubernetes.Clientset
@@ -37,22 +38,26 @@ type taskWatcher struct {
 	lock          *sync.Mutex
 }
 
-func NewTaskWatcher(clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager) (TaskWatcher, error) {
+func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager) (TaskWatcher, error) {
 	labelSelector := labels.Set(map[string]string{
 		"managed-by":     "kontroler",
 		"kontroler/type": "task",
 	}).AsSelector().String()
 
-	// Create a factory that watches all namespaces
-	// Set resync period to 30 seconds
-	factory := informers.NewSharedInformerFactoryWithOptions(clientSet, 30*time.Second, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-		options.LabelSelector = labelSelector
-	}))
+	factory := informers.NewSharedInformerFactoryWithOptions(
+		clientSet,
+		30*time.Second,
+		informers.WithNamespace(namespace),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = labelSelector
+		}),
+	)
 
 	// Create an informer that watches pods with the specified label selector
 	informer := factory.Core().V1().Pods().Informer()
 
 	watcher := &taskWatcher{
+		namespace:     namespace,
 		dbManager:     dbManager,
 		informer:      informer,
 		clientSet:     clientSet,
@@ -70,9 +75,9 @@ func NewTaskWatcher(clientSet *kubernetes.Clientset, taskAllocator TaskAllocator
 	return watcher, nil
 }
 
-func (t *taskWatcher) StartWatching() {
-	stopCh := make(chan struct{})
-	defer close(stopCh)
+func (t *taskWatcher) StartWatching(stopCh <-chan struct{}) {
+	// stopCh := make(chan struct{})
+	// defer close(stopCh)
 	t.informer.Run(stopCh)
 }
 

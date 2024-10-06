@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -34,6 +36,7 @@ import (
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -103,8 +106,9 @@ func main() {
 	}
 
 	namespaceConfigMap := map[string]cache.Config{}
+	namespacesSlice := strings.Split(namespaces, ",")
 
-	for _, namespace := range strings.Split(namespaces, ",") {
+	for _, namespace := range namespacesSlice {
 		namespaceConfigMap[strings.Trim(namespace, " ")] = cache.Config{}
 	}
 
@@ -231,16 +235,26 @@ func main() {
 	}
 
 	taskAllocator := dag.NewTaskAllocator(clientset)
-	taskWatcher, err := dag.NewTaskWatcher(clientset, taskAllocator, dbDAGManager)
-	if err != nil {
-		setupLog.Error(err, "failed to create task watcher")
-		os.Exit(1)
+	watchers := make([]dag.TaskWatcher, len(namespacesSlice))
+	for i, namespace := range namespacesSlice {
+		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager)
+		if err != nil {
+			setupLog.Error(err, "failed to create task watcher", "namespace", namespace)
+			os.Exit(1)
+		}
+
+		watchers[i] = taskWatcher
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
-
 	go taskScheduler.Run()
-	go taskWatcher.StartWatching()
+
+	closeChannels := make([]chan struct{}, len(namespacesSlice))
+	for i := 0; i < len(namespacesSlice); i++ {
+		closeChan := make(chan struct{})
+		closeChannels[i] = closeChan
+		go watchers[i].StartWatching(closeChan)
+	}
 
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
@@ -276,9 +290,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create a channel to listen for OS signals
+	quit := make(chan os.Signal, 1)
+
+	// syscall.SIGTERM is for kubernetes
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+	// Wait for OS signal to gracefully shutdown the server
+	<-quit
+	log.Log.Info("shutting controller down")
+
+	// Shutdown the server gracefully
+	for i := 0; i < len(closeChannels); i++ {
+		close(closeChannels[i])
+	}
+
+	log.Log.Info("Controller gracefully stopped")
 }
