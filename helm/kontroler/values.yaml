@@ -11,6 +11,11 @@ crds:
   install: true
   retain: false
 
+rbac:
+  namespaces:
+    - "default"
+    - "dev"
+
 # Needs to be a postgres compact. DB
 db:
   name: kontroler

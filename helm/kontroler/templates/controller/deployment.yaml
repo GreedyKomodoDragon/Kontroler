@@ -55,6 +55,8 @@ spec:
           command:
             - /manager
           env:
+            - name: NAMESPACES
+              value: {{ .Values.rbac.namespaces | join "," }}
             - name: DB_NAME
               value: {{ .Values.db.name }}
             - name: DB_USER
