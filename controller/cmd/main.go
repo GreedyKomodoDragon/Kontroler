@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -19,6 +20,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -94,6 +96,18 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
+	namespaces := os.Getenv("NAMESPACES")
+	if namespaces == "" {
+		// if you don't select one it will go to the default namespace
+		namespaces = "default"
+	}
+
+	namespaceConfigMap := map[string]cache.Config{}
+
+	for _, namespace := range strings.Split(namespaces, ",") {
+		namespaceConfigMap[strings.Trim(namespace, " ")] = cache.Config{}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -116,6 +130,9 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
+		Cache: cache.Options{
+			DefaultNamespaces: namespaceConfigMap,
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -224,7 +241,6 @@ func main() {
 
 	go taskScheduler.Run()
 	go taskWatcher.StartWatching()
-	// go podWatcher.StartWatching()
 
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
