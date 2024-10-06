@@ -38,7 +38,6 @@ type taskWatcher struct {
 }
 
 func NewTaskWatcher(clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager) (TaskWatcher, error) {
-	// Define label selector
 	labelSelector := labels.Set(map[string]string{
 		"managed-by":     "kontroler",
 		"kontroler/type": "task",
@@ -331,8 +330,8 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 	}
 
-	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode); err != nil {
-		return fmt.Errorf("failed to mark pods status: %v", pod.Status.Phase)
+	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.ResourceVersion, pod.Namespace); err != nil {
+		return err
 	}
 
 	return nil
