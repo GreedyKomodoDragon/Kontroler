@@ -83,7 +83,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if alreadyExists {
-		log.Log.Info("DagRun with the same name already exists", "dagRun_id", dagRun.Spec.DagName, "dag_name", dagRun.Name)
+		// log.Log.Info("DagRun with the same name already exists", "dagRun_id", dagRun.Spec.DagName, "dag_name", dagRun.Name)
 		return ctrl.Result{}, nil
 	}
 

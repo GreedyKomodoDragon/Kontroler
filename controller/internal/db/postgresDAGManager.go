@@ -121,11 +121,12 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     exitCode INTEGER,
     name VARCHAR(255) NOT NULL,
     status VARCHAR(255) NOT NULL,
+	resourceVersion TEXT NOT NULL,
+	namespace TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (Pod_UID),
     FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id)
 );
-
 `
 
 	if _, err := p.pool.Exec(ctx, initSQL); err != nil {
@@ -496,7 +497,6 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		return nil, err
 	}
 
-	// TODO: Also needs to check for tasks that are already running!!!
 	rows, err := tx.Query(ctx, `
 		WITH CompletedTask AS (
 			SELECT run_id, task_id 
@@ -504,13 +504,10 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 			WHERE task_run_id = $1
 		),
 		DependCount AS (
-			SELECT d.task_id, COUNT(*) as DependCount
+			SELECT d.task_id, COUNT(*) AS DependCount
 			FROM Dependencies d
-			WHERE d.task_id IN (
-				SELECT DISTINCT d.task_id
-				FROM Dependencies d
-				WHERE d.depends_on_task_id IN (SELECT task_id FROM CompletedTask)
-			)
+			JOIN Dependencies dep ON d.task_id = dep.task_id
+			JOIN CompletedTask ct ON dep.depends_on_task_id = ct.task_id
 			GROUP BY d.task_id
 		),
 		RunnableTask as (
@@ -795,7 +792,7 @@ func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int
 	return tx.Commit(ctx)
 }
 
-func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32) error {
+func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, resourceVersion string, namespace string) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -821,12 +818,12 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 
 	// Insert the new status with the current timestamp
 	if _, err = tx.Exec(ctx, `
-        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, updated_at, exitCode)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, resourceVersion, namespace, updated_at, exitCode)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (Pod_UID) 
-        DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
+        DO UPDATE SET status = EXCLUDED.status, resourceVersion = EXCLUDED.resourceVersion, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
         WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
-    `, podUid, taskRunID, name, status, tStamp, exitCode); err != nil {
+    `, podUid, taskRunID, name, status, resourceVersion, namespace, tStamp, exitCode); err != nil {
 		return err
 	}
 
