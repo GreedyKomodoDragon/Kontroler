@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -234,10 +235,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	taskAllocator := dag.NewTaskAllocator(clientset)
+	id, err := dbDAGManager.GetID(context.Background())
+	if err != nil {
+		setupLog.Error(err, "failed to create DAG tables")
+		os.Exit(1)
+	}
+
+	taskAllocator := dag.NewTaskAllocator(clientset, id)
 	watchers := make([]dag.TaskWatcher, len(namespacesSlice))
 	for i, namespace := range namespacesSlice {
-		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager)
+		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager, id)
 		if err != nil {
 			setupLog.Error(err, "failed to create task watcher", "namespace", namespace)
 			os.Exit(1)
@@ -247,13 +254,11 @@ func main() {
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
-	go taskScheduler.Run()
 
 	closeChannels := make([]chan struct{}, len(namespacesSlice))
 	for i := 0; i < len(namespacesSlice); i++ {
 		closeChan := make(chan struct{})
 		closeChannels[i] = closeChan
-		go watchers[i].StartWatching(closeChan)
 	}
 
 	if err = (&controller.DAGReconciler{
@@ -290,6 +295,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	stopCh := ctrl.SetupSignalHandler()
+
+	mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		log.Log.Info("Became the leader, starting the controller.")
+		go taskScheduler.Run()
+
+		for i := 0; i < len(namespacesSlice); i++ {
+			go watchers[i].StartWatching(closeChannels[i])
+		}
+
+		// Watch for context cancellation (graceful shutdown when leadership is lost or signal is caught)
+		<-ctx.Done()
+
+		log.Log.Info("Losing leadership or shutting down, cleaning up...")
+		return nil
+	}))
+
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)
 
@@ -297,7 +319,7 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stopCh); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

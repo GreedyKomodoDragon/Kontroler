@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,15 +35,20 @@ type taskWatcher struct {
 	informer      cache.SharedIndexInformer
 	clientSet     *kubernetes.Clientset
 	taskAllocator TaskAllocator
-	startTime     time.Time
 	lock          *sync.Mutex
 }
 
-func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager) (TaskWatcher, error) {
+func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager, id string) (TaskWatcher, error) {
 	labelSelector := labels.Set(map[string]string{
 		"managed-by":     "kontroler",
 		"kontroler/type": "task",
+		"kontroler/id":   id,
 	}).AsSelector().String()
+
+	resourceVersion, err := dbManager.GetNextResourceVersion(context.Background(), namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		clientSet,
@@ -50,6 +56,9 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 		informers.WithNamespace(namespace),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = labelSelector
+			if resourceVersion != "" && resourceVersion != "0" {
+				options.ResourceVersion = resourceVersion
+			}
 		}),
 	)
 
@@ -62,7 +71,6 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 		informer:      informer,
 		clientSet:     clientSet,
 		taskAllocator: taskAllocator,
-		startTime:     time.Now(), // Track the start time of the watcher
 		lock:          &sync.Mutex{},
 	}
 
@@ -76,8 +84,6 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 }
 
 func (t *taskWatcher) StartWatching(stopCh <-chan struct{}) {
-	// stopCh := make(chan struct{})
-	// defer close(stopCh)
 	t.informer.Run(stopCh)
 }
 
@@ -90,12 +96,7 @@ func (t *taskWatcher) handleAdd(obj interface{}) {
 		return
 	}
 
-	// Filter out pods created before the watcher started
-	if pod.CreationTimestamp.Time.Before(t.startTime) {
-		return
-	}
-
-	t.handleOutcome(pod, "add")
+	t.handleOutcome(pod, "add", eventTime)
 
 	if err := t.writeStatusToDB(pod, eventTime); err != nil {
 		log.Log.Error(err, "failed to writeStatusToDB")
@@ -120,12 +121,7 @@ func (t *taskWatcher) handleUpdate(old, obj interface{}) {
 		return
 	}
 
-	// Filter out pods created before the watcher started
-	if pod.CreationTimestamp.Time.Before(t.startTime) {
-		return
-	}
-
-	t.handleOutcome(pod, "update")
+	t.handleOutcome(pod, "update", eventTime)
 
 	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", "update", "status", pod.Status.Phase)
 
@@ -134,9 +130,9 @@ func (t *taskWatcher) handleUpdate(old, obj interface{}) {
 	}
 }
 
-func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string) {
+func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Time) {
 	ctx := context.Background()
-	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event)
+	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
 	taskRunIdStr, ok := pod.Annotations["kontroler/task-rid"]
 	if !ok {
@@ -211,7 +207,16 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 
 	runId, err := strconv.Atoi(dagRunIdStr)
 	if err != nil {
-		log.Log.Error(err, "failed to get dag run", "dagRun", dagRunIdStr)
+		if strings.Contains(err.Error(), "not found") {
+			log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
+		} else {
+			log.Log.Error(err, "failed to delete pod in successful,", "podUId", pod.UID)
+		}
+		return
+	}
+
+	if err := t.deletePod(ctx, pod); err != nil {
+		log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
 		return
 	}
 
@@ -243,10 +248,6 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 
 		log.Log.Info("allocated task", "newPodUID", newPod, "task.Id", task.Id, "task.Name", task.Name)
 	}
-
-	if err := t.deletePod(ctx, pod); err != nil {
-		log.Log.Error(err, "failed to delete pod in successful", "podUId", pod.UID)
-	}
 }
 
 func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
@@ -259,7 +260,11 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	}
 
 	if err := t.deletePod(ctx, pod); err != nil {
-		log.Log.Error(err, "failed to delete pod in failed", "podUId", pod.UID)
+		if strings.Contains(err.Error(), "not found") {
+			log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
+		} else {
+			log.Log.Error(err, "failed to delete pod in failed,", "podUId", pod.UID)
+		}
 		return
 	}
 

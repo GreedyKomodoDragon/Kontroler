@@ -24,11 +24,13 @@ type TaskAllocator interface {
 
 type taskAllocator struct {
 	clientSet *kubernetes.Clientset
+	id        string
 }
 
-func NewTaskAllocator(clientSet *kubernetes.Clientset) TaskAllocator {
+func NewTaskAllocator(clientSet *kubernetes.Clientset, id string) TaskAllocator {
 	return &taskAllocator{
 		clientSet: clientSet,
+		id:        id,
 	}
 }
 
@@ -69,6 +71,7 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 			Labels: map[string]string{
 				"managed-by":     "kontroler",
 				"kontroler/type": "task",
+				"kontroler/id":   t.id,
 			},
 			Annotations: map[string]string{
 				"kontroler/task-rid":  strconv.Itoa(taskRunId),
@@ -120,6 +123,7 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 			Labels: map[string]string{
 				"managed-by":     "kontroler",
 				"kontroler/type": "task",
+				"kontroler/id":   t.id,
 			},
 			Annotations: map[string]string{
 				"kontroler/task-rid":  strconv.Itoa(taskRunId),

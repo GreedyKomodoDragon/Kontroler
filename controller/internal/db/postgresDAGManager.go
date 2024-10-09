@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
@@ -35,6 +36,10 @@ func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	// Initialize the database schema
 	// TODO: Right-size the columns + select correct types
 	initSQL := `
+CREATE TABLE IF NOT EXISTS IdTable (
+    unique_id UUID DEFAULT gen_random_uuid() PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS DAGs (
     dag_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -903,4 +908,58 @@ func (p *postgresDAGManager) dagNameToDagId(ctx context.Context, dagName string)
 	}
 
 	return dagId, nil
+}
+
+func (p *postgresDAGManager) GetNextResourceVersion(ctx context.Context, namespace string) (string, error) {
+	resourceVersion := ""
+	if err := p.pool.QueryRow(ctx, `
+		WITH LatestUpdate AS (
+			SELECT updated_at
+			FROM Task_Pods
+			WHERE namespace = $1
+			ORDER BY updated_at DESC
+			LIMIT 1
+		)
+		SELECT resourceVersion
+		FROM Task_Pods
+		WHERE namespace = $1
+		AND updated_at >= (SELECT updated_at - INTERVAL '1 minute' FROM LatestUpdate)
+		ORDER BY updated_at DESC
+		LIMIT 1;
+	`, namespace).Scan(&resourceVersion); err != nil {
+		// If the row doesn't exist, or another error occurred, return false
+		if err == pgx.ErrNoRows {
+			return "0", nil
+		}
+
+		return "", err
+	}
+
+	num, err := strconv.Atoi(resourceVersion)
+	if err != nil {
+		return "", err
+	}
+
+	num++
+
+	return strconv.Itoa(num), nil
+}
+
+func (p *postgresDAGManager) GetID(ctx context.Context) (string, error) {
+	var uniqueID string
+
+	err := p.pool.QueryRow(ctx, "SELECT unique_id FROM IdTable LIMIT 1").Scan(&uniqueID)
+	if err == nil {
+		return uniqueID, nil
+	}
+
+	if err == pgx.ErrNoRows {
+		err = p.pool.QueryRow(ctx, "INSERT INTO IdTable (unique_id) VALUES (gen_random_uuid()) RETURNING unique_id").Scan(&uniqueID)
+		if err != nil {
+			return "", fmt.Errorf("failed to insert new unique_id: %w", err)
+		}
+		return uniqueID, nil
+	}
+
+	return "", fmt.Errorf("failed to query IdTable: %w", err)
 }

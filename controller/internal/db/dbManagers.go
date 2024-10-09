@@ -33,6 +33,7 @@ type ConditionalRetry struct {
 type DBDAGManager interface {
 	// InitaliseDatabase will ensure all create requires components such as tables in a relational database are within the database
 	InitaliseDatabase(ctx context.Context) error
+	GetID(ctx context.Context) (string, error)
 	// Gets all dags to start, then updates to the next time it should be executed
 	GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error)
 	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
@@ -57,4 +58,5 @@ type DBDAGManager interface {
 	// Soft deletes the dag in database
 	SoftDeleteDAG(ctx context.Context, name string, namespace string) error
 	FindExistingDAGRun(ctx context.Context, name string) (bool, error)
+	GetNextResourceVersion(ctx context.Context, namespace string) (string, error)
 }

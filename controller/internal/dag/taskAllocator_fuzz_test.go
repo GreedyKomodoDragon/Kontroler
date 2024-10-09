@@ -26,7 +26,7 @@ func FuzzCreateEnvs(f *testing.F) {
 		}
 
 		// Create a taskAllocator instance
-		ta := dag.NewTaskAllocator(nil)
+		ta := dag.NewTaskAllocator(nil, "random")
 
 		// Run CreateEnvs function
 		envs := ta.CreateEnvs(task)
