@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
@@ -126,7 +125,6 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     exitCode INTEGER,
     name VARCHAR(255) NOT NULL,
     status VARCHAR(255) NOT NULL,
-	resourceVersion TEXT NOT NULL,
 	namespace TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (Pod_UID),
@@ -797,7 +795,7 @@ func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int
 	return tx.Commit(ctx)
 }
 
-func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, resourceVersion string, namespace string) error {
+func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -823,12 +821,12 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 
 	// Insert the new status with the current timestamp
 	if _, err = tx.Exec(ctx, `
-        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, resourceVersion, namespace, updated_at, exitCode)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (Pod_UID) 
-        DO UPDATE SET status = EXCLUDED.status, resourceVersion = EXCLUDED.resourceVersion, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
+        DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
         WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
-    `, podUid, taskRunID, name, status, resourceVersion, namespace, tStamp, exitCode); err != nil {
+    `, podUid, taskRunID, name, status, namespace, tStamp, exitCode); err != nil {
 		return err
 	}
 
@@ -908,41 +906,6 @@ func (p *postgresDAGManager) dagNameToDagId(ctx context.Context, dagName string)
 	}
 
 	return dagId, nil
-}
-
-func (p *postgresDAGManager) GetNextResourceVersion(ctx context.Context, namespace string) (string, error) {
-	resourceVersion := ""
-	if err := p.pool.QueryRow(ctx, `
-		WITH LatestUpdate AS (
-			SELECT updated_at
-			FROM Task_Pods
-			WHERE namespace = $1
-			ORDER BY updated_at DESC
-			LIMIT 1
-		)
-		SELECT resourceVersion
-		FROM Task_Pods
-		WHERE namespace = $1
-		AND updated_at >= (SELECT updated_at - INTERVAL '1 minute' FROM LatestUpdate)
-		ORDER BY updated_at DESC
-		LIMIT 1;
-	`, namespace).Scan(&resourceVersion); err != nil {
-		// If the row doesn't exist, or another error occurred, return false
-		if err == pgx.ErrNoRows {
-			return "0", nil
-		}
-
-		return "", err
-	}
-
-	num, err := strconv.Atoi(resourceVersion)
-	if err != nil {
-		return "", err
-	}
-
-	num++
-
-	return strconv.Itoa(num), nil
 }
 
 func (p *postgresDAGManager) GetID(ctx context.Context) (string, error) {

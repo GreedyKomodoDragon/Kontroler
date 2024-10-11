@@ -45,20 +45,12 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 		"kontroler/id":   id,
 	}).AsSelector().String()
 
-	resourceVersion, err := dbManager.GetNextResourceVersion(context.Background(), namespace)
-	if err != nil {
-		return nil, err
-	}
-
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		clientSet,
 		30*time.Second,
 		informers.WithNamespace(namespace),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = labelSelector
-			if resourceVersion != "" && resourceVersion != "0" {
-				options.ResourceVersion = resourceVersion
-			}
 		}),
 	)
 
@@ -340,7 +332,7 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 	}
 
-	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.ResourceVersion, pod.Namespace); err != nil {
+	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace); err != nil {
 		return err
 	}
 
