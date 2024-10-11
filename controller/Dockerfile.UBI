@@ -1,0 +1,44 @@
+# Build the manager binary
+FROM golang:1.22 AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+# Copy the go source
+COPY cmd/main.go cmd/main.go
+COPY api/ api/
+COPY internal/ internal/
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
+
+# Verify the binary is built
+RUN ls -la /workspace/manager
+
+# Use Micro UBI as the minimal base image
+FROM registry.access.redhat.com/ubi8-micro@sha256:cf8d8796a2c07577b4adc8b598aa648b200cc6b4b5f78d2e13539711ea64f275
+
+# Create a directory for the application
+WORKDIR /app
+
+# Copy the binary from the builder stage
+COPY --from=builder /workspace/manager /app/manager
+
+# Verify the binary is copied correctly
+RUN ls -la /app/manager
+
+# Ensure the binary is executable
+RUN chmod +x /app/manager
+
+# Set file permissions for a non-root user (use UID 1001)
+RUN chown -R 1001:1001 /app
+
+# Switch to the non-root user (UID 1001)
+USER 1001
+
+# Set the correct entrypoint (use the path to the binary inside /app)
+ENTRYPOINT ["/app/manager"]
