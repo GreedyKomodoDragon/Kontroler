@@ -12,6 +12,10 @@ spec:
       protocol: TCP
       targetPort: http
       name: http
+    - port: 2112
+      protocol: TCP
+      targetPort: metrics
+      name: metrics
   selector:
     {{- include "kontroler.server.selectorLabels" . | nindent 4 }}
 {{ end }}
