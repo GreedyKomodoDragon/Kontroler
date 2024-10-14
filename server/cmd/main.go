@@ -9,6 +9,7 @@ import (
 	kclient "kontroler-server/pkg/kClient"
 	"kontroler-server/pkg/rest"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -105,6 +107,14 @@ func main() {
 	}
 
 	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true")
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		log.Info().Msg("Prometheus metrics endpoint is available at :2112/metrics")
+		if err := http.ListenAndServe(":2112", nil); err != nil {
+			log.Fatal().Err(err).Msg("Error starting metrics server")
+		}
+	}()
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)

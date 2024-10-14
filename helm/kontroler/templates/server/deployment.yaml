@@ -79,6 +79,9 @@ spec:
             - name: http
               containerPort: {{ .Values.server.service.port }}
               protocol: TCP
+            - name: metrics
+              containerPort: 2112
+              protocol: TCP
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
           volumeMounts:
