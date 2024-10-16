@@ -303,6 +303,14 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			})
 		}
 
+		// Validate username and password
+		if err := ValidateCredentials(req); err != nil {
+			log.Error().Err(err).Msg("Error checking ValidateCredentials")
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"message": err.Error(),
+			})
+		}
+
 		if err := authManager.CreateAccount(c.Context(), &req); err != nil {
 			log.Error().Err(err).Msg("Error creating account")
 			return c.SendStatus(fiber.StatusInternalServerError)

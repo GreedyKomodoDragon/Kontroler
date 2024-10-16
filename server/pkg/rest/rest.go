@@ -7,6 +7,7 @@ import (
 	"kontroler-server/pkg/auth"
 	"kontroler-server/pkg/db"
 	"os"
+	"unicode"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -69,4 +70,40 @@ func CreateTLSConfig() (*tls.Config, error) {
 	// In secure mode (mTLS), client certificates are required
 	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 	return tlsConfig, nil
+}
+
+func ValidateCredentials(req auth.Credentials) error {
+	if len(req.Username) < 3 || len(req.Username) > 100 {
+		return fmt.Errorf("username must be between 3 and 100 characters long")
+	}
+
+	if !unicode.IsLetter(rune(req.Username[0])) {
+		return fmt.Errorf("username must start with a letter")
+	}
+
+	for _, r := range req.Username {
+		if !(unicode.IsLetter(r) || unicode.IsNumber(r)) {
+			return fmt.Errorf("username must use only letter or number characters")
+		}
+	}
+
+	if len(req.Password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters long")
+	}
+
+	hasLetter := false
+	for _, r := range req.Password {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+		}
+		if !(unicode.IsLetter(r) || unicode.IsNumber(r)) {
+			return fmt.Errorf("password must use only letter or number characters")
+		}
+	}
+
+	if !hasLetter {
+		return fmt.Errorf("password must contain at least one letter")
+	}
+
+	return nil
 }
