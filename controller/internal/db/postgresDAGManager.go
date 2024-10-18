@@ -64,14 +64,15 @@ CREATE TABLE IF NOT EXISTS DAG_Parameters (
 CREATE TABLE IF NOT EXISTS Tasks (
 	task_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    command TEXT[] NOT NULL,
-    args TEXT[] NOT NULL,
+    command TEXT[],
+    args TEXT[],
     image VARCHAR(255) NOT NULL,
 	parameters TEXT[],
 	backoffLimit BIGINT NOT NULL,
 	isConditional BOOL NOT NULL,
 	podTemplate JSONB,
-	retryCodes INTEGER[]
+	retryCodes INTEGER[],
+	script TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Dependencies (
@@ -284,11 +285,11 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	// Insert the task
 	var taskId int
 	if err := tx.QueryRow(ctx, `
-	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate) 
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script) 
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
 	RETURNING task_id`,
 		task.Name, task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
-		task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue).Scan(&taskId); err != nil {
+		task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script).Scan(&taskId); err != nil {
 		return err
 	}
 
@@ -362,7 +363,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id
+	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
 	FROM Tasks t
 	LEFT JOIN Dependencies d ON t.task_id = d.task_id
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
@@ -388,7 +389,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		var parameters []string
 		var podTemplateJSON *string
 		var dagId int
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &task.Script); err != nil {
 			return nil, err
 		}
 
