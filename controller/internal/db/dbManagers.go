@@ -17,6 +17,7 @@ type Task struct {
 	Args        []string
 	Parameters  []Parameter
 	PodTemplate *v1alpha1.PodTemplateSpec
+	Script      string
 }
 
 type Parameter struct {

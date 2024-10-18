@@ -68,9 +68,11 @@ func (p PodTemplateSpec) Serialize() (string, error) {
 
 // TaskSpec defines the structure of a task in the DAG
 type TaskSpec struct {
-	Name        string      `json:"name"`
-	Command     []string    `json:"command"`
-	Args        []string    `json:"args"`
+	Name string `json:"name"`
+	// +optional
+	Command []string `json:"command,omitempty"`
+	// +optional
+	Args        []string    `json:"args,omitempty"`
 	Image       string      `json:"image"`
 	RunAfter    []string    `json:"runAfter,omitempty"`
 	Backoff     Backoff     `json:"backoff"`
@@ -79,6 +81,8 @@ type TaskSpec struct {
 	Parameters []string `json:"parameters,omitempty"`
 	// +optional
 	PodTemplate *PodTemplateSpec `json:"podTemplate,omitempty"`
+	// +optional
+	Script string `json:"script,omitempty"`
 }
 
 // Backoff defines the backoff strategy for a task
@@ -165,9 +169,12 @@ func (dag *DAG) checkFieldsFilled() error {
 		if task.Name == "" {
 			return errors.New("task name must be specified")
 		}
-		if len(task.Command) == 0 {
-			return errors.New("task command must be specified")
+
+		// Either have a script or command
+		if len(task.Script) == 0 && len(task.Command) == 0 {
+			return errors.New("must provide a script or a command")
 		}
+
 		if task.Image == "" {
 			return errors.New("task image must be specified")
 		}
@@ -175,8 +182,10 @@ func (dag *DAG) checkFieldsFilled() error {
 		if _, exists := taskNames[task.Name]; exists {
 			return errors.New("duplicate task name: " + task.Name)
 		}
+
 		taskNames[task.Name] = true
 	}
+
 	return nil
 }
 

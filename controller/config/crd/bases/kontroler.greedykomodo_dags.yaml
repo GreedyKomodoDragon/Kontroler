@@ -3104,10 +3104,10 @@ spec:
                       items:
                         type: string
                       type: array
+                    script:
+                      type: string
                   required:
-                  - args
                   - backoff
-                  - command
                   - conditional
                   - image
                   - name
