@@ -197,7 +197,7 @@ func main() {
 		sslMode = "disable"
 	}
 
-	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
+	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
 	if err != nil {
 		setupLog.Error(err, "failed to create postgres config")
 		os.Exit(1)
