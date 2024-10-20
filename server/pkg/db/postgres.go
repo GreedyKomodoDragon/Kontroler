@@ -25,6 +25,7 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 	rows, err := p.pool.Query(ctx, `
 		SELECT dag_id, name, version, schedule, active, nexttime
 		FROM DAGs
+		WHERE active = TRUE
 		ORDER BY dag_id DESC
 		LIMIT $1 OFFSET $2
 		`, limit, offset)
@@ -285,10 +286,11 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
 	var taskDetails TaskDetails
 	var podTemplateJSON json.RawMessage
+	var parameters []string
 
 	// Query for the task details from the Tasks table
 	queryTask := `
-			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes
+			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes, script, parameters
 			FROM Tasks
 			WHERE task_id = $1
 		`
@@ -303,6 +305,8 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 		&taskDetails.IsConditional,
 		&podTemplateJSON,
 		&taskDetails.RetryCodes,
+		&taskDetails.Script,
+		&parameters,
 	); err != nil {
 		return nil, fmt.Errorf("failed to query task details: %w", err)
 	}
@@ -314,10 +318,12 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 	queryParameters := `
 			SELECT parameter_id, name, isSecret, defaultValue
 			FROM DAG_Parameters
-			WHERE dag_id = $1
+			WHERE dag_id in (SELECT dag_id
+							 FROM DAG_Tasks
+							 WHERE task_id = $1)
+				  AND name = ANY($2);
 		`
-
-	rows, err := p.pool.Query(ctx, queryParameters, taskDetails.ID)
+	rows, err := p.pool.Query(ctx, queryParameters, taskDetails.ID, parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query parameters: %w", err)
 	}

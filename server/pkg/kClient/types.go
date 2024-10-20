@@ -76,6 +76,7 @@ type TaskSpec struct {
 	Name         string   `json:"name"`
 	Command      []string `json:"command,omitempty"`
 	Args         []string `json:"args,omitempty"`
+	Script       string   `json:"script,omitempty"`
 	Image        string   `json:"image"`
 	RunAfter     []string `json:"runAfter,omitempty"`
 	BackoffLimit int      `json:"backoffLimit"`
