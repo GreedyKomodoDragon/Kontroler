@@ -5,23 +5,9 @@ import (
 	"time"
 )
 
-type TaskSpec struct {
-	Name     string   `json:"name"`
-	Command  []string `json:"command"`
-	Args     []string `json:"args"`
-	Image    string   `json:"image"`
-	RunAfter []string `json:"runAfter,omitempty"`
-	Backoff  Backoff  `json:"backoff"`
-}
-
 // Backoff defines the backoff strategy for a task
 type Backoff struct {
 	Limit int `json:"limit"`
-}
-
-type DAG struct {
-	Schedule string     `json:"schedule"`
-	Tasks    []TaskSpec `json:"tasks"`
 }
 
 type DAGMetaData struct {
@@ -87,14 +73,15 @@ type Parameter struct {
 type TaskDetails struct {
 	ID            int         `json:"id"`
 	Name          string      `json:"name"`
-	Command       []string    `json:"command"`
-	Args          []string    `json:"args"`
+	Command       []string    `json:"command,omitempty"`
+	Args          []string    `json:"args,omitempty"`
 	Image         string      `json:"image"`
 	Parameters    []Parameter `json:"parameters"`
 	BackOffLimit  int         `json:"backOffLimit"`
 	IsConditional bool        `json:"isConditional"`
 	PodTemplate   string      `json:"podTemplate"`
 	RetryCodes    []int       `json:"retryCodes"`
+	Script        string      `json:"script,omitempty"`
 }
 
 type DashboardStats struct {

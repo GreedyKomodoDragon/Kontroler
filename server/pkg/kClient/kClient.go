@@ -56,10 +56,8 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		}
 
 		task := map[string]interface{}{
-			"name":    t.Name,
-			"command": t.Command,
-			"args":    t.Args,
-			"image":   t.Image,
+			"name":  t.Name,
+			"image": t.Image,
 			"backoff": map[string]interface{}{
 				"limit": t.BackoffLimit,
 			},
@@ -68,6 +66,14 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 				"enabled":    len(t.RunAfter) != 0,
 				"retryCodes": t.RetryCodes,
 			},
+		}
+
+		// Only send over the command and args if no script has been provided
+		if t.Script == "" {
+			task["command"] = t.Command
+			task["args"] = t.Args
+		} else {
+			task["script"] = t.Script
 		}
 
 		if len(t.RunAfter) > 0 {
