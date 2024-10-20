@@ -59,14 +59,15 @@ export type Parameter = {
 export type TaskDetails = {
   id: number;
   name: string;
-  command: string[];
-  args: string[];
+  command?: string[];
+  args?: string[];
   image: string;
   parameters: Parameter[];
   backOffLimit: number;
   isConditional: boolean;
   podTemplate: string;
   retryCodes: number[];
+  script?: string;
 };
 
 export type DashboardStats = {

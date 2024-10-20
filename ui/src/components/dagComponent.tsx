@@ -2,7 +2,8 @@ import { createEffect, createSignal } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
 import DagDiagram from "./dagDiagram";
 import { getTaskDetails } from "../api/dags";
-import yaml from "js-yaml";
+import ShellScriptViewer from "./code/shellScriptViewer";
+import JsonToYamlViewer from "./code/JsonToYamlViewer";
 
 interface Props {
   dag: Dag;
@@ -56,12 +57,24 @@ const DagComponent = ({ dag }: Props) => {
           <p class="my-2">
             <strong>Name:</strong> {taskDetails()?.name}
           </p>
-          <p class="my-2">
-            <strong>Command:</strong> {taskDetails()?.command.join(" ")}
-          </p>
-          <p class="my-2">
-            <strong>Args:</strong> {taskDetails()?.args.join(" ")}
-          </p>
+          {taskDetails()?.command && (
+            <p class="my-2">
+              <strong>Command:</strong> {taskDetails()?.command!.join(" ")}
+            </p>
+          )}
+          {taskDetails()?.args && (
+            <p class="my-2">
+              <strong>Args:</strong> {taskDetails()?.args!.join(" ")}
+            </p>
+          )}
+          {taskDetails()?.script && (
+            <>
+              <p class="my-2">
+                <strong>Script:</strong>
+              </p>
+              <ShellScriptViewer script={taskDetails()?.script!} />
+            </>
+          )}
           <p>
             <strong>Image:</strong> {taskDetails()?.image}
           </p>
@@ -70,7 +83,7 @@ const DagComponent = ({ dag }: Props) => {
           </p>
           <ul class="ml-4 list-disc">
             {taskDetails()?.parameters &&
-              taskDetails()?.parameters.map((param, index) => (
+              taskDetails()!.parameters.map((param, index) => (
                 <li>
                   {param.name} - Default{param.isSecret && " Secret"}:{" "}
                   {param.defaultValue ? param.defaultValue : "N/A"}
@@ -87,20 +100,14 @@ const DagComponent = ({ dag }: Props) => {
           <p class="my-2">
             <strong>Retry Codes:</strong> {taskDetails()?.retryCodes}
           </p>
-          <p class="my-2">
-            <strong>Pod Template:</strong>
-          </p>
-          <pre class="bg-gray-600 p-2 rounded">
-            {(() => {
-              try {
-                return yaml.dump(
-                  JSON.parse(taskDetails()?.podTemplate || "{}")
-                );
-              } catch (e) {
-                return "Invalid JSON";
-              }
-            })()}
-          </pre>
+          {taskDetails()?.podTemplate && (
+            <>
+              <p class="my-2">
+                <strong>Pod Template:</strong>
+              </p>
+              <JsonToYamlViewer json={taskDetails()?.podTemplate!} />
+            </>
+          )}
         </div>
       )}
     </div>
