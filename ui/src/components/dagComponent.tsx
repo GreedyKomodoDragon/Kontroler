@@ -44,12 +44,10 @@ const DagComponent = ({ dag }: Props) => {
         </p>
       </div>
       {open() && (
-        <>
           <DagDiagram
             connections={dag.connections}
             setSelectedTask={setSelectedTask}
           />
-        </>
       )}
       {open() && selectedTask() !== -1 && taskDetails() && (
         <div class="mt-4 p-4 bg-gray-700 rounded-md">
