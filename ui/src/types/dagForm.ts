@@ -15,6 +15,7 @@ export type TaskSpec = {
   retryCodes?: number[];
   parameters?: string[];
   podTemplate?: string;
+  script?: string;
 };
 
 export type DagFormObj = {

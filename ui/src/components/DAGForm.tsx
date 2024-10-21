@@ -36,6 +36,7 @@ export default function DAGForm() {
         retryCodes: [],
         parameters: [],
         podTemplate: "",
+        script: "",
       },
     ]);
   };
@@ -242,7 +243,6 @@ export default function DAGForm() {
                 class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               />
             </div>
-
             <div>
               <label class="block text-lg font-medium">Args</label>
               <input
@@ -262,7 +262,15 @@ export default function DAGForm() {
                 class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               />
             </div>
-
+            <div>
+              <label class="block text-lg font-medium">Script</label>
+              <textarea
+                onInput={(e) => {
+                  setTasks(i(), "script", e.currentTarget.value);
+                }}
+                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+              />
+            </div>
             <div>
               <label class="block text-lg font-medium">Image</label>
               <input
