@@ -62,20 +62,22 @@ export function validateDagFormObj(dagFormObj: DagFormObj): string[] {
   const taskNames = dagFormObj.tasks.map((task) => task.name);
 
   dagFormObj.tasks.forEach((task) => {
-    if (!task.command || task.command.length === 0) {
-      errors.push(`Task "${task.name}" is missing a command. Must be an array of strings`);
+    if (!task.script || task.script === "") {
+      if (!task.command || task.command.length === 0) {
+        errors.push(`Task "${task.name}" is missing a command. Must be an array of strings, or provide a script valid`);
+      }
+  
+      if (task.args === undefined) {
+        errors.push(`Task "${task.args}": args is invalid, must be a array of strings, or provide a script valid`);
+      }
     }
-
-    if (task.args === undefined) {
-      errors.push(`Task "${task.name}": args is invalid, must be a array of strings`);
-    }
-
+    
     if (task.retryCodes === undefined) {
-      errors.push(`Task "${task.name}": retry codes is invalid, must be a array of numbers`);
+      errors.push(`Task "${task.retryCodes}": retry codes is invalid, must be a array of numbers`);
     }
 
     if (!task.image) {
-      errors.push(`Task "${task.name}" is missing an image.`);
+      errors.push(`Task "${task.image}" is missing an image.`);
     }
 
     if (task.runAfter) {
