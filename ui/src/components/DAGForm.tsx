@@ -7,6 +7,7 @@ import { createDag } from "../api/dags";
 import SuccessfulAlert from "./successfulAlert";
 import { DeleteTaskButton } from "./deleteTaskButton";
 import LabeledInput from "./inputs/labeledInput";
+import { ParameterAssignment } from "./createForm/parameterAssignment";
 
 export default function DAGForm() {
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
@@ -371,51 +372,14 @@ export default function DAGForm() {
                 </For>
               </div>
             </div>
-
-            <div>
-              <label class="block text-lg font-medium">
-                Assigned Parameters
-              </label>
-              <div class="flex space-x-2 items-center">
-                <select
-                  onChange={(e) => {
-                    setSelectedParameterForTask(i(), e.currentTarget.value);
-                  }}
-                  value={selectedParameters()[i()] || ""}
-                  class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-                >
-                  <option value="">Select a parameter</option>
-                  <For each={parameters}>
-                    {(param) => (
-                      <option value={param.id}>
-                        {param.name ||
-                          `Parameter ${parameters.indexOf(param) + 1}`}
-                      </option>
-                    )}
-                  </For>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => addParameterToTask(i())}
-                  class="px-3 py-1 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                >
-                  Add
-                </button>
-              </div>
-
-              <div class="mt-2">
-                <For each={task.parameters}>
-                  {(param) => (
-                    <span class="inline-block bg-blue-600 text-gray-200 text-lg px-2 py-1 mt-2 rounded-full mr-2">
-                      {
-                        parameters.find((parameter) => (parameter.id = param))
-                          ?.name
-                      }
-                    </span>
-                  )}
-                </For>
-              </div>
-            </div>
+            <ParameterAssignment
+              taskIndex={i()}
+              tasks={tasks}
+              parameters={parameters}
+              selectedParameters={selectedParameters()}
+              setSelectedParameterForTask={setSelectedParameterForTask}
+              addParameterToTask={addParameterToTask}
+            />
           </div>
         )}
       </For>
