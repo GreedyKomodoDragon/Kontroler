@@ -10,6 +10,7 @@ import (
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,10 +18,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
-)
-
-const (
-	ALL_NAMESPACES string = ""
 )
 
 // Purpose of TaskWatcher is to listen for pods to finish and record results/trigger the next pods
@@ -36,9 +33,10 @@ type taskWatcher struct {
 	clientSet     *kubernetes.Clientset
 	taskAllocator TaskAllocator
 	lock          *sync.Mutex
+	logStore      object.LogStore
 }
 
-func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager, id string) (TaskWatcher, error) {
+func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager, id string, logStore object.LogStore) (TaskWatcher, error) {
 	labelSelector := labels.Set(map[string]string{
 		"managed-by":     "kontroler",
 		"kontroler/type": "task",
@@ -64,6 +62,7 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 		clientSet:     clientSet,
 		taskAllocator: taskAllocator,
 		lock:          &sync.Mutex{},
+		logStore:      logStore,
 	}
 
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -207,6 +206,11 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 		return
 	}
 
+	// Attempt to get logs, but we don't stop if we can't get them
+	if err := t.logStore.UploadLogs(ctx, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
+		log.Log.Error(err, "failed to uploadLogs")
+	}
+
 	if err := t.deletePod(ctx, pod); err != nil {
 		log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
 		return
@@ -249,6 +253,11 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	if !ok {
 		log.Log.Error(fmt.Errorf("find to find annotation"), "found pod missing kontroler/dagRun-id", "pod", pod.Name)
 		return
+	}
+
+	// Attempt to get logs, but we don't stop if we can't get them
+	if err := t.logStore.UploadLogs(ctx, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
+		log.Log.Error(err, "failed to uploadLogs")
 	}
 
 	if err := t.deletePod(ctx, pod); err != nil {
