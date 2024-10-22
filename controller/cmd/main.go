@@ -37,6 +37,7 @@ import (
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 	//+kubebuilder:scaffold:imports
 )
@@ -241,10 +242,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	logStore, err := object.NewLogStore()
+	if err != nil {
+		setupLog.Error(err, "failed to connect to object store")
+		os.Exit(1)
+	}
+
 	taskAllocator := dag.NewTaskAllocator(clientset, id)
 	watchers := make([]dag.TaskWatcher, len(namespacesSlice))
 	for i, namespace := range namespacesSlice {
-		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager, id)
+		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager, id, logStore)
 		if err != nil {
 			setupLog.Error(err, "failed to create task watcher", "namespace", namespace)
 			os.Exit(1)
