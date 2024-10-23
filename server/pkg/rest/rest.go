@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"kontroler-server/pkg/auth"
 	"kontroler-server/pkg/db"
+	"kontroler-server/pkg/logs"
 	"os"
 	"unicode"
 
@@ -14,7 +15,7 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authManager auth.AuthManager, corsUiAddress string, auditLogs bool) *fiber.App {
+func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authManager auth.AuthManager, corsUiAddress string, auditLogs bool, logFetcher logs.LogFetcher) *fiber.App {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 	})
@@ -35,7 +36,7 @@ func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authM
 		return Authentication(c, authManager)
 	})
 
-	addV1(app, dbManager, kClient, authManager)
+	addV1(app, dbManager, kClient, authManager, logFetcher)
 
 	return app
 }
