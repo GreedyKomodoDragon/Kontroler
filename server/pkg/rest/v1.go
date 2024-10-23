@@ -5,6 +5,7 @@ import (
 	"kontroler-server/pkg/auth"
 	"kontroler-server/pkg/db"
 	kclient "kontroler-server/pkg/kClient"
+	"kontroler-server/pkg/logs"
 	"strconv"
 	"time"
 
@@ -13,13 +14,18 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, authManager auth.AuthManager) {
+func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, authManager auth.AuthManager, logFetcher logs.LogFetcher) {
 
 	router := app.Group("/api/v1")
 
 	addDags(router, dbManager, kubClient)
 	addStats(router, dbManager)
 	addAccountAuth(router, authManager)
+
+	// check if a bucket has been selected/log fetching enabled
+	if logFetcher != nil {
+		addLogs(router, logFetcher)
+	}
 }
 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
@@ -412,5 +418,18 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		}
 
 		return c.SendStatus(fiber.StatusOK)
+	})
+}
+
+func addLogs(router fiber.Router, logFetcher logs.LogFetcher) {
+	logRouter := router.Group("/logs")
+
+	logRouter.Get("/pod/:pod", func(c *fiber.Ctx) error {
+		podName := c.Params("pod")
+		if podName == "" {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		return logs.ServeLogWithRange(c, podName, logFetcher)
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"kontroler-server/pkg/auth"
 	"kontroler-server/pkg/db"
 	kclient "kontroler-server/pkg/kClient"
+	"kontroler-server/pkg/logs"
 	"kontroler-server/pkg/rest"
 	"net"
 	"net/http"
@@ -106,7 +107,12 @@ func main() {
 		panic(err)
 	}
 
-	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true")
+	logFetcher, err := logs.NewLogFetcher(os.Getenv("S3_BUCKETNAME"))
+	if err != nil {
+		panic(err)
+	}
+
+	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
