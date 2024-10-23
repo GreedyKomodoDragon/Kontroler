@@ -23,9 +23,9 @@ export default function LogHighlighter(props: LogHighlighterProps) {
 
   return (
     <pre ref={codeElement} class="p-4 rounded-md overflow-auto">
-      {props.logs.split("\n").map((log) => (
+      {props.logs.split("\n").map((log, i) => (
         <>
-          <code class={getLogClass(log)}>{log}</code>
+          <code class={getLogClass(log)}>{i}: {log}</code>
           <br/>
         </>
       ))}
