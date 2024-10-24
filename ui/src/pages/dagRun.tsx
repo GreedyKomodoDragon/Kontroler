@@ -4,7 +4,6 @@ import { getDagRunAll, getTaskRunDetails } from "../api/dags";
 import DagDiagram from "../components/dagDiagram";
 import { A, useParams } from "@solidjs/router";
 import LoadingIcon from "../components/loadingIcon";
-import { getLogs } from "../api/logs";
 
 const DagRun: Component = () => {
   const params = useParams();
@@ -80,7 +79,7 @@ const DagRun: Component = () => {
                         </p>
                         <p class="mt-4">
                           <A
-                            href={`/logs/pod/${pod.name}`}
+                            href={`/logs/run/${dataRunMeta() && dataRunMeta()?.id}/pod/${pod.name}`}
                             class="rounded-md bg-sky-700 p-2"
                           >
                             See Logs

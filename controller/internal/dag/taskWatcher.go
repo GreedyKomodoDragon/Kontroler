@@ -207,7 +207,7 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 	}
 
 	// Attempt to get logs, but we don't stop if we can't get them
-	if err := t.logStore.UploadLogs(ctx, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
+	if err := t.logStore.UploadLogs(ctx, runId, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
 		log.Log.Error(err, "failed to uploadLogs")
 	}
 
@@ -255,8 +255,14 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 		return
 	}
 
+	dagRunId, err := strconv.Atoi(dagRunStr)
+	if err != nil {
+		log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
+		return
+	}
+
 	// Attempt to get logs, but we don't stop if we can't get them
-	if err := t.logStore.UploadLogs(ctx, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
+	if err := t.logStore.UploadLogs(ctx, dagRunId, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
 		log.Log.Error(err, "failed to uploadLogs")
 	}
 
@@ -269,7 +275,7 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 		return
 	}
 
-	ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+	ok, err = t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 	if err != nil {
 		log.Log.Error(err, "failed to determine if pod should be re-ran", "pod", pod.Name)
 		return
@@ -282,12 +288,6 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 			log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
 		}
 
-		return
-	}
-
-	dagRunId, err := strconv.Atoi(dagRunStr)
-	if err != nil {
-		log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
 		return
 	}
 

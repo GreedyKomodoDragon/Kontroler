@@ -424,12 +424,22 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 func addLogs(router fiber.Router, logFetcher logs.LogFetcher) {
 	logRouter := router.Group("/logs")
 
-	logRouter.Get("/pod/:pod", func(c *fiber.Ctx) error {
+	logRouter.Get("/run/:run/pod/:pod", func(c *fiber.Ctx) error {
 		podName := c.Params("pod")
 		if podName == "" {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		return logs.ServeLogWithRange(c, podName, logFetcher)
+		runStr := c.Params("run")
+		if runStr == "" {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		runId, err := strconv.Atoi(runStr)
+		if err != nil {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		return logs.ServeLogWithRange(c, runId, podName, logFetcher)
 	})
 }
