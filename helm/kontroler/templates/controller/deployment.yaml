@@ -82,6 +82,7 @@ spec:
             - name: DB_SSL_KEY
               value: {{ printf "%s%s" .Values.controller.db.ssl.paths.key.path .Values.controller.db.ssl.paths.key.filename }}
             {{ end }}
+            {{ include "kontroler.s3.envs" . | indent 12 }}
           image: {{ .Values.controller.image }}
           imagePullPolicy: Always
           livenessProbe:
