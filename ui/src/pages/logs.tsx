@@ -9,7 +9,7 @@ export default function Logs() {
   const params = useParams();
 
   const logs = createQuery(() => ({
-    queryKey: ["logs", params.pod],
+    queryKey: ["logs", params.run, params.pod],
     queryFn: getLogs,
     staleTime: 5 * 60 * 1000, // 5 minutes
   }));

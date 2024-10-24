@@ -21,7 +21,7 @@ const (
 )
 
 type LogStore interface {
-	UploadLogs(ctx context.Context, podName string, req *rest.Request) error
+	UploadLogs(ctx context.Context, dagrunId int, podName string, req *rest.Request) error
 }
 
 type s3LogStore struct {
@@ -64,14 +64,14 @@ func NewLogStore() (LogStore, error) {
 	}, nil
 }
 
-func (s *s3LogStore) UploadLogs(ctx context.Context, podName string, req *rest.Request) error {
+func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, podName string, req *rest.Request) error {
 	logStream, err := req.Stream(context.TODO())
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %v", err)
 	}
 	defer logStream.Close()
 
-	objectKey := fmt.Sprintf("%s-log.txt", podName)
+	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, podName)
 	reader := bufio.NewReader(logStream)
 
 	createOutput, err := s.client.CreateMultipartUpload(context.TODO(), &s3.CreateMultipartUploadInput{

@@ -11,7 +11,7 @@ export async function getLogs({
     }
   
     const result = await axios.get(
-      `${getApiUrl()}/api/v1/logs/pod/${queryKey[1]}`,
+      `${getApiUrl()}/api/v1/logs/run/${queryKey[1]}/pod/${queryKey[2]}`,
       {
         withCredentials: true,
       }
