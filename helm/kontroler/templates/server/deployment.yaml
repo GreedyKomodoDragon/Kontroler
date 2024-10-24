@@ -75,6 +75,7 @@ spec:
             value: {{ .Values.server.mtls.enabled | quote }}
           - name: INSECURE
             value: {{ .Values.server.mtls.insecure | quote }}
+          {{ include "kontroler.s3.envs" . | indent 10 }}
           ports:
             - name: http
               containerPort: {{ .Values.server.service.port }}
