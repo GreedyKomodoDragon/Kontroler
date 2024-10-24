@@ -100,3 +100,31 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
+
+{{/*
+S3 LogStore
+*/}}
+{{- define "kontroler.s3.envs" -}}
+{{ if and .Values.logStorage.enabled (eq .Values.logStorage.type "s3")}}
+{{ if .Values.logStorage.s3.useCred }}
+- name: AWS_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.logStorage.s3.secret.name }}
+      key:  {{ .Values.logStorage.s3.secret.idKey }}
+- name: AWS_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.logStorage.s3.secret.name }}
+      key:  {{ .Values.logStorage.s3.secret.accessKey }}
+{{ end }}
+- name: S3_BUCKETNAME
+  value: kontroler
+{{ if not (empty .Values.logStorage.s3.endpoint) }}
+- name: S3_ENDPOINT
+  value: {{ .Values.logStorage.s3.endpoint }}
+{{ end }}
+- name: AWS_REGION
+  value: {{ .Values.logStorage.s3.region }}
+{{ end }}
+{{- end }}

@@ -16,10 +16,29 @@ rbac:
     - "default"
     - "dev"
 
-# Needs to be a postgres compact. DB
+# Needs to be a postgres compat. DB
 db:
   name: kontroler
   endpoint: my-release-postgresql.default.svc.cluster.local:5432
+
+logStorage:
+  enabled: true
+  type: s3
+  s3:
+    bucketName: kontroler
+    region: eu-west-2
+    # If false, it will tell the services to check the implicit roles e.g. IAM role
+    useCred: true
+    # Contains both access key and access id
+    secret:
+      # name of the secret
+      name: s3-creds
+      # the key for the AWS_ACCESS_KEY_ID
+      idKey: AWS_ACCESS_KEY_ID
+      # the key for the AWS_SECRET_ACCESS_KEY
+      accessKey: AWS_SECRET_ACCESS_KEY
+    # Optional: Endpoint of the S3 Service
+    endpoint: http://minio.default.svc.cluster.local:9000
 
 certManager:
   enabled: true
