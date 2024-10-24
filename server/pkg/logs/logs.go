@@ -9,8 +9,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func ServeLogWithRange(c *fiber.Ctx, podName string, logFetcher LogFetcher) error {
-	logFileKey := fmt.Sprintf("%s-log.txt", podName)
+func ServeLogWithRange(c *fiber.Ctx, dagRunId int, podName string, logFetcher LogFetcher) error {
+	logFileKey := fmt.Sprintf("/%v/%s-log.txt", dagRunId, podName)
 
 	exists, fileSize, err := logFetcher.LogFileExists(&logFileKey)
 	if err != nil {

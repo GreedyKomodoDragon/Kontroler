@@ -145,7 +145,7 @@ const App: Component = () => {
             )}
           />
            <Route
-            path="/logs/pod/:pod"
+            path="/logs/run/:run/pod/:pod"
             component={() => (
               <ProtectedRoute>
                 <Layout>
