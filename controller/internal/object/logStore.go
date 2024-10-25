@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
-	"k8s.io/client-go/rest"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -21,12 +23,17 @@ const (
 )
 
 type LogStore interface {
-	UploadLogs(ctx context.Context, dagrunId int, podName string, req *rest.Request) error
+	IsFetching(dagRunId int, pod *v1.Pod) bool
+	MarkAsFetching(dagRunId int, pod *v1.Pod) error
+	UnlistFetching(dagRunId int, pod *v1.Pod)
+	UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error
 }
 
 type s3LogStore struct {
 	client     *s3.Client
 	bucketName *string
+	fetching   map[string]bool
+	lock       *sync.RWMutex
 }
 
 func NewLogStore() (LogStore, error) {
@@ -61,17 +68,23 @@ func NewLogStore() (LogStore, error) {
 	return &s3LogStore{
 		client:     client,
 		bucketName: &bucketName,
+		lock:       &sync.RWMutex{},
+		fetching:   map[string]bool{},
 	}, nil
 }
 
-func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, podName string, req *rest.Request) error {
+func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
+	defer removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection")
+
+	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{})
+
 	logStream, err := req.Stream(context.TODO())
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %v", err)
 	}
 	defer logStream.Close()
 
-	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, podName)
+	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.Name)
 	reader := bufio.NewReader(logStream)
 
 	createOutput, err := s.client.CreateMultipartUpload(context.TODO(), &s3.CreateMultipartUploadInput{
@@ -151,4 +164,31 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, podName strin
 
 	log.Log.Info("Logs successfully uploaded to S3 bucket", "bucket", *s.bucketName, "key", objectKey)
 	return nil
+}
+
+func (s *s3LogStore) IsFetching(dagRunId int, pod *v1.Pod) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	_, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]
+	return ok
+}
+
+func (s *s3LogStore) MarkAsFetching(dagRunId int, pod *v1.Pod) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if _, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]; ok {
+		return fmt.Errorf("already fetching")
+	}
+
+	s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)] = true
+	return nil
+}
+
+func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
 }

@@ -126,6 +126,7 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 				"kontroler/task-rid":  strconv.Itoa(taskRunId),
 				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
 			},
+			Finalizers: []string{"kontroler/logcollection"},
 		},
 		Spec: podSpec,
 	}

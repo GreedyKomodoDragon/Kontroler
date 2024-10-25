@@ -7,6 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -24,4 +26,25 @@ func loadS3Config() (aws.Config, error) {
 
 	log.Log.Info("Using default S3 credentials provider chain (IRSA, Instance Profile, etc.).")
 	return config.LoadDefaultConfig(context.TODO())
+}
+
+func removeFinalizer(clientset *kubernetes.Clientset, podName, namespace, finalizer string) error {
+	// Fetch the Pod
+	pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, v1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Check if the finalizer exists, and remove it
+	var finalizers []string
+	for _, f := range pod.ObjectMeta.Finalizers {
+		if f != finalizer {
+			finalizers = append(finalizers, f)
+		}
+	}
+	pod.ObjectMeta.Finalizers = finalizers
+
+	// Update the Pod to save the changes
+	_, err = clientset.CoreV1().Pods(namespace).Update(context.TODO(), pod, v1.UpdateOptions{})
+	return err
 }

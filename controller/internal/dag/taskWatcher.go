@@ -137,6 +137,40 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 		return
 	}
 
+	if pod.Status.Phase != v1.PodPending {
+		// Attempt to get logs, but we don't stop if we can't get them
+		go func() {
+			dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
+			if !ok {
+				log.Log.Error(fmt.Errorf("find to find annotation"), "found pod missing kontroler/dagRun-id", "pod", pod.Name)
+				return
+			}
+
+			runId, err := strconv.Atoi(dagRunStr)
+			if err != nil {
+				log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
+				return
+			}
+
+			if ok := t.logStore.IsFetching(runId, pod); ok {
+				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name, "event", event)
+				return
+			}
+
+			if err := t.logStore.MarkAsFetching(runId, pod); err != nil {
+				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name, "event", event)
+				return
+			}
+
+			defer t.logStore.UnlistFetching(runId, pod)
+
+			log.Log.Info("started collecting logs", "pod", pod.Name)
+			if err := t.logStore.UploadLogs(context.Background(), runId, t.clientSet, pod); err != nil {
+				log.Log.Error(err, "failed to uploadLogs")
+			}
+		}()
+	}
+
 	// Ensure container status exists
 	if len(pod.Status.ContainerStatuses) == 0 {
 		log.Log.Info("no container status available", "podUID", pod.UID, "name", pod.Name, "event", event)
@@ -145,17 +179,6 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 
 	containerStatus := pod.Status.ContainerStatuses[0]
 	state := containerStatus.State
-
-	// Check if container is still running or waiting
-	if state.Running != nil {
-		log.Log.Info("pod is still running", "podUID", pod.UID, "name", pod.Name, "event", event, "startedAt", state.Running.StartedAt)
-		return
-	}
-
-	if state.Waiting != nil {
-		log.Log.Info("pod is waiting", "podUID", pod.UID, "name", pod.Name, "event", event, "reason", state.Waiting.Reason, "message", state.Waiting.Message)
-		return
-	}
 
 	// Check if the container has terminated
 	if state.Terminated == nil {
@@ -206,11 +229,6 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 		return
 	}
 
-	// Attempt to get logs, but we don't stop if we can't get them
-	if err := t.logStore.UploadLogs(ctx, runId, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
-		log.Log.Error(err, "failed to uploadLogs")
-	}
-
 	if err := t.deletePod(ctx, pod); err != nil {
 		log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
 		return
@@ -259,11 +277,6 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	if err != nil {
 		log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
 		return
-	}
-
-	// Attempt to get logs, but we don't stop if we can't get them
-	if err := t.logStore.UploadLogs(ctx, dagRunId, pod.Name, t.clientSet.CoreV1().Pods(t.namespace).GetLogs(pod.Name, &v1.PodLogOptions{})); err != nil {
-		log.Log.Error(err, "failed to uploadLogs")
 	}
 
 	if err := t.deletePod(ctx, pod); err != nil {
