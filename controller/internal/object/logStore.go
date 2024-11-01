@@ -40,8 +40,9 @@ func NewLogStore() (LogStore, error) {
 	s3Endpoint := os.Getenv("S3_ENDPOINT")
 	bucketName := os.Getenv("S3_BUCKETNAME")
 
+	// If there is no bucket we do not send logs
 	if bucketName == "" {
-		return nil, fmt.Errorf("S3_BUCKETNAME must be set to a non-empty value")
+		return nil, nil
 	}
 
 	s3Config, err := loadS3Config()
@@ -105,7 +106,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	for {
 		n, readErr := reader.Read(buf)
 		if n > 0 {
-			uploadPartOutput, err := s.client.UploadPart(context.TODO(), &s3.UploadPartInput{
+			uploadPartOutput, err := s.client.UploadPart(ctx, &s3.UploadPartInput{
 				Bucket:     s.bucketName,
 				Key:        aws.String(objectKey),
 				PartNumber: aws.Int32(partNumber),
@@ -113,7 +114,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 				Body:       bytes.NewReader(buf[:n]),
 			})
 			if err != nil {
-				_, _errAbort := s.client.AbortMultipartUpload(context.TODO(), &s3.AbortMultipartUploadInput{
+				_, _errAbort := s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
 					Bucket:   s.bucketName,
 					Key:      aws.String(objectKey),
 					UploadId: uploadID,
@@ -151,7 +152,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		return nil
 	}
 
-	if _, err = s.client.CompleteMultipartUpload(context.TODO(), &s3.CompleteMultipartUploadInput{
+	if _, err = s.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
 		Bucket:   s.bucketName,
 		Key:      aws.String(objectKey),
 		UploadId: uploadID,
