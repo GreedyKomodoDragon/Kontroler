@@ -25,7 +25,7 @@ export default function Logs() {
         <Spinner />
       </Show>
       <Show when={logs.isSuccess}>
-        <LogHighlighter logs={logs.data!} />
+        <LogHighlighter logs={logs.data!.trimEnd()} />
       </Show>
     </div>
   );
