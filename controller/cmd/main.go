@@ -111,7 +111,7 @@ func main() {
 	namespacesSlice := strings.Split(namespaces, ",")
 
 	for _, namespace := range namespacesSlice {
-		namespaceConfigMap[strings.Trim(namespace, " ")] = cache.Config{}
+		namespaceConfigMap[strings.TrimSpace(namespace)] = cache.Config{}
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -246,6 +246,10 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "failed to connect to object store")
 		os.Exit(1)
+	}
+
+	if logStore == nil {
+		setupLog.Info("log collection not enabled for s3")
 	}
 
 	taskAllocator := dag.NewTaskAllocator(clientset, id)

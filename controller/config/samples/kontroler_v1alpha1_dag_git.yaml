@@ -1,0 +1,42 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag-git
+  name: dag-git3
+spec:
+  parameters:
+    - name: HTTPSURL
+      defaultValue: https://github.com/lapce/lapce.git
+  task:
+    - name: "gitclone"
+      script: |
+        git clone $HTTPSURL
+        ls
+        cd lapce
+        ls
+      image: "alpine/git:v2.45.2"
+      backoff:
+        limit: 2
+      parameters:
+        - HTTPSURL
+      conditional:
+        enabled: true
+        retryCodes: [1]
+      # podTemplate:
+      #   resources:
+      #     requests:
+      #       memory: "64Mi"
+      #       cpu: "250m"
+      #     limits:
+      #       memory: "128Mi"
+      #       cpu: "791m"
+        # volumes:
+        #   - name: example-pvc
+        #     persistentVolumeClaim:
+        #       claimName: example-claim  # The name of the PVC
+        # volumeMounts:
+        #   - name: example-pvc
+        #     mountPath: /data  # Path inside the container where the PVC is mounted
+        # imagePullSecrets:
+        #   - name: my-registry-secret
