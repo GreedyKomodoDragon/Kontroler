@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -19,7 +20,7 @@ import (
 )
 
 const (
-	partSize int = 5 * 1024 * 1024
+	minPartSize int = 5 * 1024 * 1024
 )
 
 type LogStore interface {
@@ -77,7 +78,9 @@ func NewLogStore() (LogStore, error) {
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
 	defer removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection")
 
-	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{})
+	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
+		Follow: true,
+	})
 
 	logStream, err := req.Stream(context.TODO())
 	if err != nil {
@@ -86,9 +89,10 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	defer logStream.Close()
 
 	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.Name)
+	buffer := bytes.NewBuffer(nil)
 	reader := bufio.NewReader(logStream)
 
-	createOutput, err := s.client.CreateMultipartUpload(context.TODO(), &s3.CreateMultipartUploadInput{
+	createOutput, err := s.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
 		Bucket: s.bucketName,
 		Key:    aws.String(objectKey),
 	})
@@ -99,59 +103,63 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	uploadID := createOutput.UploadId
 	var completedParts []types.CompletedPart
 	var partNumber int32 = 1
+	hasUploadedParts := false
 
-	buf := make([]byte, partSize)
-
-	// Upload in chunks
 	for {
-		n, readErr := reader.Read(buf)
+		chunk := make([]byte, 1024*1024) // 1 MB read buffer
+		n, readErr := reader.Read(chunk)
 		if n > 0 {
-			uploadPartOutput, err := s.client.UploadPart(ctx, &s3.UploadPartInput{
-				Bucket:     s.bucketName,
-				Key:        aws.String(objectKey),
-				PartNumber: aws.Int32(partNumber),
-				UploadId:   uploadID,
-				Body:       bytes.NewReader(buf[:n]),
-			})
-			if err != nil {
-				_, _errAbort := s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
-					Bucket:   s.bucketName,
-					Key:      aws.String(objectKey),
-					UploadId: uploadID,
-				})
-				return fmt.Errorf("error uploading part %d: %v, abort err: %v", partNumber, err, _errAbort)
+			buffer.Write(chunk[:n])
+		}
+
+		// Check if buffer has enough data to upload a part
+		if buffer.Len() >= minPartSize {
+			hasUploadedParts = true
+			if err := s.uploadPart(ctx, buffer, uploadID, &completedParts, partNumber, objectKey); err != nil {
+				return err
 			}
-
-			// Record the completed part
-			completedParts = append(completedParts, types.CompletedPart{
-				ETag:       uploadPartOutput.ETag,
-				PartNumber: aws.Int32(partNumber),
-			})
-
 			partNumber++
 		}
 
-		// Check if we reached the end of the stream
 		if readErr == io.EOF {
 			break
-		} else if readErr != nil {
+		}
+		if readErr != nil {
 			return fmt.Errorf("error reading logs: %v", readErr)
 		}
+
+		time.Sleep(time.Second)
 	}
 
-	// Gracefully abort if nothing has been uploaded
-	if len(completedParts) == 0 {
-		if _, err := s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+	// If no parts were uploaded (logs < 5 MB), abort multipart and use PutObject for small data
+	if !hasUploadedParts {
+		_, _ = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
 			Bucket:   s.bucketName,
 			Key:      aws.String(objectKey),
 			UploadId: uploadID,
-		}); err != nil {
-			return fmt.Errorf("no parts uploaded, abort error: %v", err)
-		}
+		})
 
+		// Upload the log data as a single object instead of using a multi-part upload
+		_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: s.bucketName,
+			Key:    aws.String(objectKey),
+			Body:   bytes.NewReader(buffer.Bytes()),
+		})
+		if err != nil {
+			return fmt.Errorf("error uploading small log file: %v", err)
+		}
+		log.Log.Info("Logs successfully uploaded to S3 bucket with PutObject", "bucket", *s.bucketName, "key", objectKey)
 		return nil
 	}
 
+	// Upload remaining data as the final part if multipart was used
+	if buffer.Len() > 0 {
+		if err := s.uploadPart(ctx, buffer, uploadID, &completedParts, partNumber, objectKey); err != nil {
+			return err
+		}
+	}
+
+	// Complete multipart upload
 	if _, err = s.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
 		Bucket:   s.bucketName,
 		Key:      aws.String(objectKey),
@@ -163,7 +171,34 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		return fmt.Errorf("error completing multipart upload: %v", err)
 	}
 
-	log.Log.Info("Logs successfully uploaded to S3 bucket", "bucket", *s.bucketName, "key", objectKey)
+	log.Log.Info("Logs successfully uploaded to S3 bucket with multipart upload", "bucket", *s.bucketName, "key", objectKey)
+	return nil
+}
+
+// Helper function to upload a buffered part
+func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploadID *string, completedParts *[]types.CompletedPart, partNumber int32, objectKey string) error {
+	uploadPartOutput, err := s.client.UploadPart(ctx, &s3.UploadPartInput{
+		Bucket:     s.bucketName,
+		Key:        aws.String(objectKey),
+		PartNumber: aws.Int32(partNumber),
+		UploadId:   uploadID,
+		Body:       bytes.NewReader(buffer.Bytes()),
+	})
+	if err != nil {
+		_, _ = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+			Bucket:   s.bucketName,
+			Key:      aws.String(objectKey),
+			UploadId: uploadID,
+		})
+		return fmt.Errorf("error uploading part %d: %v", partNumber, err)
+	}
+
+	// Record the completed part and reset buffer
+	*completedParts = append(*completedParts, types.CompletedPart{
+		ETag:       uploadPartOutput.ETag,
+		PartNumber: aws.Int32(partNumber),
+	})
+	buffer.Reset() // Clear buffer after each successful upload
 	return nil
 }
 

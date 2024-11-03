@@ -10,14 +10,15 @@ import (
 )
 
 type Task struct {
-	Id          int
-	Name        string
-	Image       string
-	Command     []string
-	Args        []string
-	Parameters  []Parameter
-	PodTemplate *v1alpha1.PodTemplateSpec
-	Script      string
+	Id                  int
+	Name                string
+	Image               string
+	Command             []string
+	Args                []string
+	Parameters          []Parameter
+	PodTemplate         *v1alpha1.PodTemplateSpec
+	Script              string
+	ScriptInjectorImage string
 }
 
 type Parameter struct {

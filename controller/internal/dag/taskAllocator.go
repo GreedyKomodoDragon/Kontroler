@@ -57,13 +57,21 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 			},
 		})
 
+		scriptInjectorImage := task.ScriptInjectorImage
+		if scriptInjectorImage == "" {
+			// TODO: Make this default a env variable
+
+			// use micro image by default
+			// ubi9/ubi-micro:9.4-15
+			scriptInjectorImage = "registry.access.redhat.com/ubi9/ubi-micro@sha256:7f376b75faf8ea546f28f8529c37d24adcde33dca4103f4897ae19a43d58192b"
+		}
+
 		podSpec.InitContainers = []v1.Container{
 			{
-				Name: "script-copier",
-				// TODO: Make this UBI and configurable
-				Image: "busybox",
+				Name:  "script-copier",
+				Image: scriptInjectorImage,
 				Command: []string{
-					"sh", "-c", fmt.Sprintf(`printf %s > /shared/scripts/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
+					"bash", "-c", fmt.Sprintf(`printf %s > /shared/scripts/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
 						chmod +x /shared/scripts/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`, shellescape.Quote(task.Script)),
 				},
 				VolumeMounts: []v1.VolumeMount{

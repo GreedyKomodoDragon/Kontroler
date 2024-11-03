@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS Tasks (
 	isConditional BOOL NOT NULL,
 	podTemplate JSONB,
 	retryCodes INTEGER[],
-	script TEXT NOT NULL
+	script TEXT NOT NULL,
+	scriptInjectorImage TEXT
 );
 
 CREATE TABLE IF NOT EXISTS Dependencies (
@@ -285,11 +286,11 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	// Insert the task
 	var taskId int
 	if err := tx.QueryRow(ctx, `
-	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script) 
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage) 
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
 	RETURNING task_id`,
 		task.Name, task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
-		task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script).Scan(&taskId); err != nil {
+		task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage).Scan(&taskId); err != nil {
 		return err
 	}
 
@@ -523,7 +524,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 			GROUP BY d.task_id, dc.DependCount
 			HAVING COUNT(*) = dc.DependCount
 		)
-		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters
+		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
 		FROM Tasks t
 		WHERE 
 			t.task_id in (SELECT task_id FROM RunnableTask) 
@@ -541,7 +542,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	for rows.Next() {
 		var task Task
 		var params []string
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, task.ScriptInjectorImage); err != nil {
 			return nil, err
 		}
 

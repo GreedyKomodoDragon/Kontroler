@@ -83,6 +83,9 @@ type TaskSpec struct {
 	PodTemplate *PodTemplateSpec `json:"podTemplate,omitempty"`
 	// +optional
 	Script string `json:"script,omitempty"`
+	// Used to select the image that is used to push to script into the pod
+	// +optional
+	ScriptInjectorImage string `json:"scriptInjectorImage,omitempty"`
 }
 
 // Backoff defines the backoff strategy for a task

@@ -137,7 +137,16 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 		return
 	}
 
-	if pod.Status.Phase != v1.PodPending && t.logStore != nil {
+	// Check container readiness before starting log collection
+	readyForLogCollection := false
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Running != nil || containerStatus.State.Terminated != nil {
+			readyForLogCollection = true
+			break
+		}
+	}
+
+	if t.logStore != nil && readyForLogCollection {
 		// Attempt to get logs, but we don't stop if we can't get them
 		go func() {
 			dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
