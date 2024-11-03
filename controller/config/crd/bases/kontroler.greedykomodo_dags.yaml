@@ -3106,6 +3106,10 @@ spec:
                       type: array
                     script:
                       type: string
+                    scriptInjectorImage:
+                      description: Used to select the image that is used to push to
+                        script into the pod
+                      type: string
                   required:
                   - backoff
                   - conditional

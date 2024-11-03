@@ -46,5 +46,9 @@ func removeFinalizer(clientset *kubernetes.Clientset, podName, namespace, finali
 
 	// Update the Pod to save the changes
 	_, err = clientset.CoreV1().Pods(namespace).Update(context.TODO(), pod, v1.UpdateOptions{})
+	if err != nil {
+		log.Log.Error(err, "finaliser not removed")
+	}
+
 	return err
 }
