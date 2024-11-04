@@ -59,25 +59,24 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 
 		scriptInjectorImage := task.ScriptInjectorImage
 		if scriptInjectorImage == "" {
-			// TODO: Make this default a env variable
-
-			// use micro image by default
-			// ubi9/ubi-micro:9.4-15
-			scriptInjectorImage = "registry.access.redhat.com/ubi9/ubi-micro@sha256:7f376b75faf8ea546f28f8529c37d24adcde33dca4103f4897ae19a43d58192b"
+			// Kontroler has tests and uses UBI images/recommends as base for best experience with kontroler
+			scriptInjectorImage = "registry.access.redhat.com/ubi9/ubi-micro:latest"
 		}
 
+		// We only support bash, so any container you need to use e.g. scriptInjectorImage or task.Image
+		// Needs to have bash installed. ubuntu + UBI8 both *should* work
 		podSpec.InitContainers = []v1.Container{
 			{
 				Name:  "script-copier",
 				Image: scriptInjectorImage,
 				Command: []string{
-					"bash", "-c", fmt.Sprintf(`printf %s > /shared/scripts/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
-						chmod +x /shared/scripts/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`, shellescape.Quote(task.Script)),
+					"bash", "-c", fmt.Sprintf(`printf %s > /tmp/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
+						chmod 555 /tmp/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`, shellescape.Quote(task.Script)),
 				},
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      "shared-scripts",
-						MountPath: "/shared/scripts",
+						MountPath: "/tmp",
 					},
 				},
 			},
@@ -85,16 +84,14 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 
 		podSpec.Containers = []v1.Container{
 			{
-				Name:  task.Name,
-				Image: task.Image,
-				Command: []string{
-					"sh", "-c", "[ -x /bin/bash ] && /bin/bash /shared/scripts/my-script.sh || /bin/sh /shared/scripts/my-script.sh",
-				},
-				Env: envs,
+				Name:    task.Name,
+				Image:   task.Image,
+				Command: []string{"bash", "-c", "/tmp/my-script.sh"},
+				Env:     envs,
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      "shared-scripts",
-						MountPath: "/shared/scripts",
+						MountPath: "/tmp",
 						ReadOnly:  true,
 					},
 				},

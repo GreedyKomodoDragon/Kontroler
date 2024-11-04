@@ -128,6 +128,8 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 			return fmt.Errorf("error reading logs: %v", readErr)
 		}
 
+		// Wait to avoid burning CPU
+		// Waiting also helps avoids the stream closing in the case when there are no logs being generated for a bit
 		time.Sleep(time.Second)
 	}
 
