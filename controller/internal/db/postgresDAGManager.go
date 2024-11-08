@@ -542,7 +542,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	for rows.Next() {
 		var task Task
 		var params []string
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, task.ScriptInjectorImage); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage); err != nil {
 			return nil, err
 		}
 
