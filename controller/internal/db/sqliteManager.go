@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
@@ -285,22 +284,22 @@ func (s *sqliteDAGManager) insertTask(tx *sql.Tx, dagID int, task *v1alpha1.Task
 	// SQLite has no slice/array type so we need to convert it to a JSON string
 	commandJson, err := json.Marshal(task.Command)
 	if err != nil {
-		log.Fatalf("Failed to serialize parameters to JSON: %v", err)
+		return err
 	}
 
 	argsJson, err := json.Marshal(task.Args)
 	if err != nil {
-		log.Fatalf("Failed to serialize parameters to JSON: %v", err)
+		return err
 	}
 
 	paramsJson, err := json.Marshal(task.Parameters)
 	if err != nil {
-		log.Fatalf("Failed to serialize parameters to JSON: %v", err)
+		return err
 	}
 
 	retryCodesJson, err := json.Marshal(task.Conditional.RetryCodes)
 	if err != nil {
-		log.Fatalf("Failed to serialize parameters to JSON: %v", err)
+		return err
 	}
 
 	// Insert the task
@@ -453,11 +452,29 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 
 	tasks := []Task{}
 	for rows.Next() {
-		var task Task
-		var parameters []string
+		task := Task{}
 		var podTemplateJSON *string
 		var dagId int
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &task.Script); err != nil {
+
+		// Needed as stored as TEXT and not []TEXT
+		var commandJSON string
+		var argsJSON string
+		var paramJSON string
+
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramJSON, &podTemplateJSON, &dagId, &task.Script); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(commandJSON), &task.Command); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(argsJSON), &task.Args); err != nil {
+			return nil, err
+		}
+
+		parameters := []string{}
+		if err := json.Unmarshal([]byte(paramJSON), &parameters); err != nil {
 			return nil, err
 		}
 
@@ -470,7 +487,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 			if err := s.db.QueryRow(`
 			SELECT isSecret, defaultValue
 			FROM DAG_Parameters
-			WHERE dag_id = $1 and name = $2;
+			WHERE dag_id = ? and name = ?;
 			`, dagId, parameter).Scan(&param.IsSecret, &param.Value); err != nil {
 				return nil, err
 			}
@@ -495,7 +512,17 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 }
 
 func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error) {
-	return 0, nil
+	var taskRunId int
+
+	if err := s.db.QueryRow(`
+	INSERT INTO Task_Runs (run_id, task_id, status, attempts) 
+	VALUES (?, ?, 'running', 1) 
+	RETURNING task_run_id`,
+		runId, taskId).Scan(&taskRunId); err != nil {
+		return 0, err
+	}
+
+	return taskRunId, nil
 }
 
 func (s *sqliteDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
@@ -503,7 +530,155 @@ func (s *sqliteDAGManager) IncrementAttempts(ctx context.Context, taskRunId int)
 }
 
 func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error) {
-	return nil, nil
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var taskId int
+	var runId int
+	err = tx.QueryRow("UPDATE Task_Runs SET status = 'success' WHERE task_run_id = ? RETURNING task_id, run_id", taskRunId).Scan(&taskId, &runId)
+	if err != nil && err != pgx.ErrNoRows {
+		return nil, err
+	}
+
+	if _, err := tx.Exec(`
+			UPDATE DAG_Runs 
+			SET successfulCount = successfulCount + 1
+			WHERE run_id = ?;`, runId); err != nil {
+		return nil, err
+	}
+
+	var status string
+	err = tx.QueryRow(`
+		UPDATE DAG_Runs
+		SET status = 'success'
+		FROM DAGs
+		WHERE DAG_Runs.dag_id = DAGs.dag_id
+		AND DAGs.taskCount = DAG_Runs.successfulCount
+		AND DAG_Runs.run_id = ?
+		RETURNING DAG_Runs.status;
+	`, runId).Scan(&status)
+
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	if status == "success" {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+
+		return []Task{}, nil
+	}
+
+	var dagId int
+	err = tx.QueryRow(`
+		SELECT dag_id
+		FROM dag_runs
+		WHERE run_id = ?
+	`, runId).Scan(&dagId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := tx.Query(`
+		WITH CompletedTask AS (
+			SELECT run_id, task_id 
+			FROM Task_Runs 
+			WHERE task_run_id = ?
+		),
+		DependCount AS (
+			SELECT d.task_id, COUNT(*) AS DependCount
+			FROM Dependencies d
+			JOIN Dependencies dep ON d.task_id = dep.task_id
+			JOIN CompletedTask ct ON dep.depends_on_task_id = ct.task_id
+			GROUP BY d.task_id
+		),
+		RunnableTask as (
+			SELECT d.task_id
+			FROM Dependencies d
+			LEFT JOIN Task_Runs tr ON tr.task_id = d.depends_on_task_id
+			LEFT JOIN DependCount dc ON d.task_id = dc.task_id
+			WHERE tr.status = 'success' AND task_run_id = ?
+			GROUP BY d.task_id, dc.DependCount
+			HAVING COUNT(*) = dc.DependCount
+		)
+		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
+		FROM Tasks t
+		WHERE 
+			t.task_id in (SELECT task_id FROM RunnableTask) 
+			AND t.task_id not in (select task_id FROM task_runs WHERE run_id = ?)
+    `, taskRunId, taskRunId, runId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	tasks := []Task{}
+	parameters := [][]string{}
+	for rows.Next() {
+		var task Task
+
+		var commandJSON string
+		var argsJSON string
+		var paramsJson string
+
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJson, &task.ScriptInjectorImage); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(commandJSON), &task.Command); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(argsJSON), &task.Args); err != nil {
+			return nil, err
+		}
+
+		params := []string{}
+		if err := json.Unmarshal([]byte(paramsJson), &params); err != nil {
+			return nil, err
+		}
+
+		parameters = append(parameters, params)
+		tasks = append(tasks, task)
+	}
+
+	for i := 0; i < len(tasks); i++ {
+		tasks[i].Parameters = []Parameter{}
+		for _, parameter := range parameters[i] {
+			param := Parameter{
+				Name: parameter,
+			}
+
+			err := tx.QueryRow(`
+			SELECT isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE dag_id = ? and name = ?;
+			`, dagId, parameter).Scan(&param.IsSecret, &param.Value)
+
+			if err == sql.ErrNoRows {
+				continue
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			tasks[i].Parameters = append(tasks[i].Parameters, param)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
 }
 
 func (s *sqliteDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {

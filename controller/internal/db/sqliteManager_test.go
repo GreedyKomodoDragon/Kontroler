@@ -184,166 +184,158 @@ func Test_Sqlite_DAGManager_CreateDAGRun(t *testing.T) {
 	assert.NotEqual(t, 0, runID)
 }
 
-// func Test_Sqlite_DAGManager_GetStartingTasks(t *testing.T) {
-// 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+func Test_Sqlite_DAGManager_GetStartingTasks(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
-// 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// 	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
-// 	require.NoError(t, err)
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
 
-// 	err = dm.InitaliseDatabase(context.Background())
-// 	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
 
-// 	dag := &v1alpha1.DAG{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name: "test_dag",
-// 		},
-// 		Spec: v1alpha1.DAGSpec{
-// 			Schedule: "*/5 * * * *",
-// 			Task: []v1alpha1.TaskSpec{
-// 				{
-// 					Name:    "task1",
-// 					Command: []string{"echo"},
-// 					Args:    []string{"Hello, World!"},
-// 					Image:   "alpine:latest",
-// 				},
-// 				{
-// 					Name:     "task2",
-// 					Command:  []string{"echo"},
-// 					Args:     []string{"Goodbye, World!"},
-// 					Image:    "alpine:latest",
-// 					RunAfter: []string{"task1"},
-// 				},
-// 			},
-// 		},
-// 	}
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo"},
+					Args:    []string{"Hello, World!"},
+					Image:   "alpine:latest",
+				},
+				{
+					Name:     "task2",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
 
-// 	err = dm.InsertDAG(context.Background(), dag, "default")
-// 	require.NoError(t, err)
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
 
-// 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
-// 	require.NoError(t, err)
-// 	require.NotEmpty(t, tasks)
-// 	require.Len(t, tasks, 1)
-// 	require.Equal(t, tasks[0].Name, "task1")
-// }
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 1)
+	require.Equal(t, tasks[0].Name, "task1")
+}
 
-// func Test_Sqlite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
-// 	pool, err := utils.SetupContainer(context.Background())
-// 	if err != nil {
-// 		t.Fatalf("Could not set up QL container: %v", err)
-// 	}
-// 	defer pool.Close()
-// 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+func Test_Sqlite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// 	dm, err := db.NewDAGManager(context.Background(), pool, &parser)
-// 	require.NoError(t, err)
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
 
-// 	err = dm.InitaliseDatabase(context.Background())
-// 	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
 
-// 	dag := &v1alpha1.DAG{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name: "test_dag",
-// 		},
-// 		Spec: v1alpha1.DAGSpec{
-// 			Schedule: "*/5 * * * *",
-// 			Task: []v1alpha1.TaskSpec{
-// 				{
-// 					Name:    "task1",
-// 					Command: []string{"echo", "Hello"},
-// 					Args:    []string{"arg1", "arg2"},
-// 					Image:   "busybox",
-// 				},
-// 				{
-// 					Name:     "task2",
-// 					Command:  []string{"echo"},
-// 					Args:     []string{"Goodbye, World!"},
-// 					Image:    "alpine:latest",
-// 					RunAfter: []string{"task1"},
-// 				},
-// 			},
-// 		},
-// 	}
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task2",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
 
-// 	err = dm.InsertDAG(context.Background(), dag, "default")
-// 	require.NoError(t, err)
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
 
-// 	dagRun := &v1alpha1.DagRunSpec{
-// 		DagName: "test_dag",
-// 	}
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
 
-// 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
-// 	require.NoError(t, err)
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
 
-// 	err = dm.MarkDAGRunOutcome(context.Background(), runID, "success")
-// 	assert.NoError(t, err)
-// }
+	err = dm.MarkDAGRunOutcome(context.Background(), runID, "success")
+	assert.NoError(t, err)
+}
 
-// func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
-// 	pool, err := utils.SetupContainer(context.Background())
-// 	if err != nil {
-// 		t.Fatalf("Could not set up QL container: %v", err)
-// 	}
-// 	defer pool.Close()
-// 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// 	dm, err := db.NewDAGManager(context.Background(), pool, &parser)
-// 	require.NoError(t, err)
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
 
-// 	err = dm.InitaliseDatabase(context.Background())
-// 	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
 
-// 	dag := &v1alpha1.DAG{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name: "test_dag",
-// 		},
-// 		Spec: v1alpha1.DAGSpec{
-// 			Schedule: "*/5 * * * *",
-// 			Task: []v1alpha1.TaskSpec{
-// 				{
-// 					Name:    "task1",
-// 					Command: []string{"echo", "Hello"},
-// 					Args:    []string{"arg1", "arg2"},
-// 					Image:   "busybox",
-// 				},
-// 				{
-// 					Name:     "task2",
-// 					Command:  []string{"echo"},
-// 					Args:     []string{"Goodbye, World!"},
-// 					Image:    "alpine:latest",
-// 					RunAfter: []string{"task1"},
-// 				},
-// 			},
-// 		},
-// 	}
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task2",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
 
-// 	err = dm.InsertDAG(context.Background(), dag, "default")
-// 	require.NoError(t, err)
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
 
-// 	dagRun := &v1alpha1.DagRunSpec{
-// 		DagName: "test_dag",
-// 	}
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
 
-// 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
-// 	require.NoError(t, err)
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
 
-// 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
-// 	assert.NoError(t, err)
-// 	assert.NotEmpty(t, tasks)
-// 	assert.Len(t, tasks, 1)
-// 	assert.Equal(t, tasks[0].Name, "task1")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, tasks)
+	assert.Len(t, tasks, 1)
+	assert.Equal(t, tasks[0].Name, "task1")
 
-// 	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
-// 	require.NoError(t, err)
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
 
-// 	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
-// 	require.NoError(t, err)
-// 	require.NotEmpty(t, tasks)
-// 	require.Len(t, tasks, 1)
-// 	require.Equal(t, tasks[0].Name, "task2")
-// }
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 1)
+	require.Equal(t, tasks[0].Name, "task2")
+}
 
 // func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
 // 	pool, err := utils.SetupContainer(context.Background())
