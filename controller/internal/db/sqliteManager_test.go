@@ -337,117 +337,189 @@ func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	require.Equal(t, tasks[0].Name, "task2")
 }
 
-// func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
-// 	pool, err := utils.SetupContainer(context.Background())
-// 	if err != nil {
-// 		t.Fatalf("Could not set up QL container: %v", err)
-// 	}
-// 	defer pool.Close()
-// 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// 	dm, err := db.NewDAGManager(context.Background(), pool, &parser)
-// 	require.NoError(t, err)
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
 
-// 	err = dm.InitaliseDatabase(context.Background())
-// 	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
 
-// 	dag := &v1alpha1.DAG{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name: "test_dag",
-// 		},
-// 		Spec: v1alpha1.DAGSpec{
-// 			Schedule: "*/5 * * * *",
-// 			Task: []v1alpha1.TaskSpec{
-// 				{
-// 					Name:    "task1",
-// 					Command: []string{"echo", "Hello"},
-// 					Args:    []string{"arg1", "arg2"},
-// 					Image:   "busybox",
-// 				},
-// 				{
-// 					Name:    "task2",
-// 					Command: []string{"echo", "Hello"},
-// 					Args:    []string{"arg1", "arg2"},
-// 					Image:   "busybox",
-// 				},
-// 				{
-// 					Name:     "task3",
-// 					Command:  []string{"echo"},
-// 					Args:     []string{"Goodbye, World!"},
-// 					Image:    "alpine:latest",
-// 					RunAfter: []string{"task1", "task2"},
-// 				},
-// 			},
-// 		},
-// 	}
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:    "task2",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task3",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1", "task2"},
+				},
+			},
+		},
+	}
 
-// 	err = dm.InsertDAG(context.Background(), dag, "default")
-// 	require.NoError(t, err)
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
 
-// 	dagRun := &v1alpha1.DagRunSpec{
-// 		DagName: "test_dag",
-// 	}
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
 
-// 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
-// 	require.NoError(t, err)
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
 
-// 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
-// 	require.NoError(t, err)
-// 	require.NotEmpty(t, tasks)
-// 	require.Len(t, tasks, 2)
-// 	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 2)
+	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
 
-// 	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
-// 	require.NoError(t, err)
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
 
-// 	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
-// 	require.NoError(t, err)
-// 	require.Empty(t, tasks)
-// }
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
+	require.NoError(t, err)
+	require.Empty(t, tasks)
+}
 
-// func Test_Sqlite_DAGManager_MarkTaskAsStarted(t *testing.T) {
-// 	pool, err := utils.SetupContainer(context.Background())
-// 	if err != nil {
-// 		t.Fatalf("Could not set up QL container: %v", err)
-// 	}
-// 	defer pool.Close()
+func Test_Sqlite_DAGManager_MarkTaskAsStarted(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-// 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
 
-// 	dm, err := db.NewDAGManager(context.Background(), pool, &parser)
-// 	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
 
-// 	err = dm.InitaliseDatabase(context.Background())
-// 	require.NoError(t, err)
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+			},
+		},
+	}
 
-// 	dag := &v1alpha1.DAG{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name: "test_dag",
-// 		},
-// 		Spec: v1alpha1.DAGSpec{
-// 			Schedule: "*/5 * * * *",
-// 			Task: []v1alpha1.TaskSpec{
-// 				{
-// 					Name:    "task1",
-// 					Command: []string{"echo", "Hello"},
-// 					Args:    []string{"arg1", "arg2"},
-// 					Image:   "busybox",
-// 				},
-// 			},
-// 		},
-// 	}
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
 
-// 	err = dm.InsertDAG(context.Background(), dag, "default")
-// 	require.NoError(t, err)
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
 
-// 	dagRun := &v1alpha1.DagRunSpec{
-// 		DagName: "test_dag",
-// 	}
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
 
-// 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
-// 	require.NoError(t, err)
+	taskID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, taskID)
+}
 
-// 	taskID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
-// 	assert.NoError(t, err)
-// 	assert.NotEqual(t, 0, taskID)
-// }
+func Test_SQLite_DAGManager_GetID(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetID_ReturnsExistingID(t, dm)
+
+	dbConn, err := sql.Open("sqlite3", dbPath)
+	require.Nil(t, err, "failed to open SQLite database in test", "error", err)
+
+	// Clean up the table to ensure no rows are present
+	_, err = dbConn.Exec("DELETE FROM IdTable")
+	require.NoError(t, err)
+
+	testDAGManagerGetID_InsertsAndReturnsNewID(t, dm)
+}
+
+func Test_SQLite_DAGManager_IncrementAttempts(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerIncrementAttempts_IncrementAttempts(t, dm)
+
+	// Clean up the table to ensure no rows are present
+	attempts := 0
+	dbConn, err := sql.Open("sqlite3", dbPath)
+	require.Nil(t, err, "failed to open SQLite database in test", "error", err)
+
+	err = dbConn.QueryRow("SELECT attempts FROM Task_Runs where task_run_id = 1;").Scan(&attempts)
+	require.NoError(t, err)
+	require.Equal(t, 2, attempts)
+
+	testDAGManagerIncrementAttempts_MultipleIncrements(t, dm)
+
+	// Clean up the table to ensure no rows are present
+	attempts = 0
+	err = dbConn.QueryRow("SELECT attempts FROM Task_Runs where task_run_id = 2;").Scan(&attempts)
+	require.NoError(t, err)
+	require.Equal(t, 3, attempts)
+}
+
+func Test_SQLite_DAGManager_GetDagParameters(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetParameters_Empty(t, dm)
+	testDAGManagerGetParameters_HasValues(t, dm)
+}
+
+func Test_SQLite_DAGManager_ShouldRerun(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerShouldRerun_MatchingExitCode(t, dm)
+	testDAGManagerShouldRerun_MisMatchCode(t, dm)
+	testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t, dm)
+}

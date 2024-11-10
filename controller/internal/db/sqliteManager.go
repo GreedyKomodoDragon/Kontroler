@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	cron "github.com/robfig/cron/v3"
 	v1 "k8s.io/api/core/v1"
@@ -168,7 +169,25 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
 }
 
 func (s *sqliteDAGManager) GetID(ctx context.Context) (string, error) {
-	return "", nil
+	var uniqueID string
+
+	// Try to get an existing unique_id
+	err := s.db.QueryRow("SELECT unique_id FROM IdTable LIMIT 1").Scan(&uniqueID)
+	if err == nil {
+		return uniqueID, nil
+	}
+
+	if err == sql.ErrNoRows {
+		newUUID := uuid.New().String()
+
+		_, err = s.db.Exec("INSERT INTO IdTable (unique_id) VALUES (?)", newUUID)
+		if err != nil {
+			return "", fmt.Errorf("failed to insert new unique_id: %w", err)
+		}
+		return newUUID, nil
+	}
+
+	return "", fmt.Errorf("failed to query IdTable: %w", err)
 }
 
 func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
@@ -526,7 +545,22 @@ func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId 
 }
 
 func (s *sqliteDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
-	return nil
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+	UPDATE Task_Runs 
+	SET attempts = attempts + 1
+	WHERE task_run_id = ?
+	`, taskRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error) {
@@ -682,19 +716,85 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 }
 
 func (s *sqliteDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {
-	return nil
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("UPDATE DAG_Runs SET status = ? WHERE run_id = ?;", outcome, dagRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string) (map[string]*Parameter, error) {
-	return nil, nil
+	rows, err := s.db.Query(`
+	SELECT name, isSecret, defaultValue
+	FROM DAG_Parameters
+	WHERE dag_id IN (
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = ?
+		ORDER BY version DESC
+		LIMIT 1
+  	);
+	`, dagName)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	parameters := map[string]*Parameter{}
+	for rows.Next() {
+		var parameter Parameter
+		if err := rows.Scan(&parameter.Name, &parameter.IsSecret, &parameter.Value); err != nil {
+			return nil, err
+		}
+
+		parameters[parameter.Name] = &parameter
+	}
+
+	return parameters, nil
 }
 
 func (s *sqliteDAGManager) DagExists(ctx context.Context, dagName string) (bool, error) {
-	return false, nil
+	dagId := -1
+	if err := s.db.QueryRow(`
+		SELECT dag_id
+		FROM DAGs
+		WHERE name = ?
+	`, dagName).Scan(&dagId); err != nil && err != sql.ErrNoRows {
+		return false, err
+	}
+
+	return dagId != -1, nil
 }
 
-func (s *sqliteDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error) {
-	return false, nil
+func (s *sqliteDAGManager) ShouldRerun(ctx context.Context, taskRunID int, exitCode int32) (bool, error) {
+	// Simplified query using EXISTS to check if any row matches the criteria
+	query := `
+	SELECT EXISTS (
+		SELECT 1
+		FROM tasks t
+		INNER JOIN Task_Runs r ON t.task_id = r.task_id
+		LEFT JOIN json_each(t.retryCodes) AS retryCode ON retryCode.value = ?
+		WHERE r.task_run_id = ? 
+			AND (t.isConditional = 0 OR retryCode.value IS NOT NULL)
+	);
+	`
+
+	var exists bool
+	err := s.db.QueryRowContext(ctx, query, exitCode, taskRunID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	return exists, nil
 }
 
 func (s *sqliteDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {

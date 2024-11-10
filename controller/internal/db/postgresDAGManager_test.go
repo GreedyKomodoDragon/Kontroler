@@ -456,3 +456,123 @@ func TestPostgresDAGManager_MarkTaskAsStarted(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, taskID)
 }
+
+func TestPostgresDAGManager_GetID(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetID_ReturnsExistingID(t, dm)
+
+	// Clean up the table to ensure no rows are present
+	_, err = pool.Exec(context.Background(), "DELETE FROM IdTable")
+	require.NoError(t, err)
+
+	testDAGManagerGetID_InsertsAndReturnsNewID(t, dm)
+
+	// Test case: Handle error if database query fails
+	t.Run("HandlesQueryError", func(t *testing.T) {
+		// Intentionally close the pool to simulate a database error
+		pool.Close()
+
+		uniqueID, err := dm.GetID(context.Background())
+		assert.Error(t, err)
+		assert.Empty(t, uniqueID)
+	})
+}
+
+func TestPostgresDAGManager_IncrementAttempts(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerIncrementAttempts_IncrementAttempts(t, dm)
+
+	// Clean up the table to ensure no rows are present
+	attempts := 0
+	err = pool.QueryRow(context.Background(), "SELECT attempts FROM Task_Runs where task_run_id = 1;").Scan(&attempts)
+	require.NoError(t, err)
+	require.Equal(t, 2, attempts)
+
+	testDAGManagerIncrementAttempts_MultipleIncrements(t, dm)
+
+	// Clean up the table to ensure no rows are present
+	attempts = 0
+	err = pool.QueryRow(context.Background(), "SELECT attempts FROM Task_Runs where task_run_id = 2;").Scan(&attempts)
+	require.NoError(t, err)
+	require.Equal(t, 3, attempts)
+}
+
+func TestPostgresDAGManager_GetDagParameters(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetParameters_Empty(t, dm)
+	testDAGManagerGetParameters_HasValues(t, dm)
+}
+
+func TestPostgresDAGManager_DagExists(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerDagExists(t, dm)
+}
+
+func TestPostgresDAGManager_ShouldRerun(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerShouldRerun_MatchingExitCode(t, dm)
+	testDAGManagerShouldRerun_MisMatchCode(t, dm)
+	testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t, dm)
+}

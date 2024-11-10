@@ -439,11 +439,7 @@ func (p *postgresDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int
 		return err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error) {
@@ -602,8 +598,6 @@ func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId in
 	`, taskRunId); err != nil {
 		return err
 	}
-
-	// TODO: Mark pod as failed
 
 	return tx.Commit(ctx)
 }
