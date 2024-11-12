@@ -55,8 +55,23 @@ spec:
           env:
             - name: NAMESPACES
               value: {{ .Values.rbac.namespaces | join "," }}
+            - name: DB_TYPE
+              value: {{ .Values.db.type }}
+            {{ if eq .Values.db.type "sqlite" }}
+            - name: SQLITE_PATH
+              value: {{ .Values.db.sqlite.path }}
+            - name: SQLITE_JOURNAL_MODE
+              value: {{ .Values.db.sqlite.journalMode }}
+            - name: SQLITE_SYNCHRONOUS
+              value: {{ .Values.db.sqlite.synchronous }}
+            - name: SQLITE_CACHE_SIZE
+              value: {{ .Values.db.sqlite.cacheSize | quote }}
+            - name: SQLITE_TEMP_STORE
+              value: {{ .Values.db.sqlite.tempStore }}
+            {{ end }}
+            {{ if eq .Values.db.type "postgresql" }}
             - name: DB_NAME
-              value: {{ .Values.db.name }}
+              value: {{ .Values.postgresql.db.name }}
             - name: DB_USER
               value: {{ .Values.controller.db.user }}
             - name: DB_PASSWORD
@@ -81,6 +96,7 @@ spec:
             {{ if .Values.controller.db.ssl.paths.key.filename }}
             - name: DB_SSL_KEY
               value: {{ printf "%s%s" .Values.controller.db.ssl.paths.key.path .Values.controller.db.ssl.paths.key.filename }}
+            {{ end }}
             {{ end }}
             {{ include "kontroler.s3.envs" . | indent 12 }}
           image: {{ .Values.controller.image }}

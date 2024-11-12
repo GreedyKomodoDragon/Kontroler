@@ -16,10 +16,19 @@ rbac:
     - "default"
     - "dev"
 
-# Needs to be a postgres compat. DB
 db:
-  name: kontroler
-  endpoint: my-release-postgresql.default.svc.cluster.local:5432
+  # sqlite or postgresql
+  type: sqlite
+  sqlite:
+    path: "/tmp/database.db"
+    journalMode: "WAL"
+    synchronous: "NORMAL"
+    # for KB, negative to use memory size in KB
+    cacheSize: -2000
+    tempStore: "MEMORY"
+  postgresql:
+    name: kontroler
+    endpoint: my-release-postgresql.default.svc.cluster.local:5432
 
 logStorage:
   enabled: true

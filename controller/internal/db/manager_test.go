@@ -3,12 +3,16 @@ package db_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Test case: Retrieve existing unique_id if present in IdTable
@@ -424,4 +428,278 @@ func testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t *testing.T, dm db.DB
 		require.False(t, ok)
 	})
 
+}
+
+func testDAGManagerMarkTaskAsFailed_Normal(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful Path", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_Normal",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{3},
+						},
+						Backoff: v1alpha1.Backoff{
+							Limit: 1,
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dagRun := &v1alpha1.DagRunSpec{
+			DagName: "test_dag_Normal",
+		}
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
+		require.NoError(t, err)
+
+		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
+		assert.NoError(t, err)
+		assert.NotEqual(t, 0, taskRunID)
+
+		err = dm.MarkTaskAsFailed(context.Background(), taskRunID)
+		require.NoError(t, err)
+	})
+
+}
+
+func testDAGManagerMarkPodStatus_Insert(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful Path", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_Normal",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{3},
+						},
+						Backoff: v1alpha1.Backoff{
+							Limit: 1,
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dagRun := &v1alpha1.DagRunSpec{
+			DagName: "test_dag_Normal",
+		}
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
+		require.NoError(t, err)
+
+		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
+		assert.NoError(t, err)
+		assert.NotEqual(t, 0, taskRunID)
+
+		err = dm.MarkPodStatus(context.Background(), types.UID(uuid.New().String()), "pod-one", 1, v1.PodPending, time.Now(), nil, "default")
+		require.NoError(t, err)
+	})
+
+}
+
+func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful Path Twice", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_Normal_twice",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{3},
+						},
+						Backoff: v1alpha1.Backoff{
+							Limit: 1,
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dagRun := &v1alpha1.DagRunSpec{
+			DagName: "test_dag_Normal_twice",
+		}
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal_twice", dagRun, map[string]v1alpha1.ParameterSpec{})
+		require.NoError(t, err)
+
+		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 2)
+		assert.NoError(t, err)
+		assert.NotEqual(t, 0, taskRunID)
+
+		uid := types.UID(uuid.New().String())
+		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodPending, time.Now(), nil, "default")
+		require.NoError(t, err)
+
+		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodSucceeded, time.Now().Add(time.Hour), nil, "default")
+		require.NoError(t, err)
+	})
+
+}
+
+func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_Normal",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{3},
+						},
+						Backoff: v1alpha1.Backoff{
+							Limit: 1,
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		require.NoError(t, err)
+	})
+}
+
+func testDAGManagerSoftDeleteDAG_Does_Not_Exist(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Does not exist", func(t *testing.T) {
+		err := dm.SoftDeleteDAG(context.Background(), "random name", "default")
+		require.Error(t, err)
+	})
+
+}
+
+func testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful Noop", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_Noop",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{3},
+						},
+						Backoff: v1alpha1.Backoff{
+							Limit: 1,
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		require.NoError(t, err)
+
+		err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		require.NoError(t, err)
+	})
+}
+
+func testDAGManagerFindExistingDAGRun_Exists(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful Path Exists", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_exists",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{3},
+						},
+						Backoff: v1alpha1.Backoff{
+							Limit: 1,
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dagRun := &v1alpha1.DagRunSpec{
+			DagName: "test_dag_exists",
+		}
+
+		dagrunName := "test_dag_exists_run"
+		_, err = dm.CreateDAGRun(context.Background(), dagrunName, dagRun, map[string]v1alpha1.ParameterSpec{})
+		require.NoError(t, err)
+
+		ok, err := dm.FindExistingDAGRun(context.Background(), dagrunName)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+	})
+}
+
+func testDAGManagerFindExistingDAGRun_Not_Exists(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful Path Not Exists", func(t *testing.T) {
+		dagrunName := "test_dag_exists_run"
+
+		ok, err := dm.FindExistingDAGRun(context.Background(), dagrunName)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+	})
 }

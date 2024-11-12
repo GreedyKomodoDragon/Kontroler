@@ -629,7 +629,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 
 	defer tx.Rollback(ctx)
 
-	// Maybe able to cut this down
+	// TDOD: Maybe able to cut this down
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, name, schedule, namespace
         FROM DAGs
@@ -873,16 +873,18 @@ func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name st
 }
 
 func (p *postgresDAGManager) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {
-	var count int
+	var exists bool
 	if err := p.pool.QueryRow(ctx, `
-	SELECT COUNT(*)
-	FROM DAG_Runs
-	WHERE name = $1;
-	`, name).Scan(&count); err != nil && err != pgx.ErrNoRows {
+		SELECT EXISTS (
+			SELECT 1
+			FROM DAG_Runs
+			WHERE name = $1
+		);
+	`, name).Scan(&exists); err != nil && err != pgx.ErrNoRows {
 		return false, err
 	}
 
-	return count > 0, nil
+	return exists, nil
 }
 
 func (p *postgresDAGManager) dagNameToDagId(ctx context.Context, dagName string) (int, error) {
