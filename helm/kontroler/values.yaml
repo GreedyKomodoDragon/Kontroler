@@ -20,12 +20,22 @@ db:
   # sqlite or postgresql
   type: sqlite
   sqlite:
-    path: "/tmp/database.db"
+    path: /data
+    fileName: database.db
     journalMode: "WAL"
     synchronous: "NORMAL"
     # for KB, negative to use memory size in KB
     cacheSize: -2000
     tempStore: "MEMORY"
+    pvc:
+      existing: ""
+      # Currently only supports the array format
+      accessModes: ["ReadWriteMany"]
+      size: 2Gi
+      # If empty it will omit and use the default storageclass in the cluster
+      storageClassName: ""
+      selector:
+      retain: true
   postgresql:
     name: kontroler
     endpoint: my-release-postgresql.default.svc.cluster.local:5432
@@ -93,7 +103,13 @@ controller:
     # readOnlyRootFilesystem: true
     # runAsNonRoot: true
     # runAsUser: 1000
-  resources: {}
+  resources:
+    limits:
+      cpu: 500m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
   nodeSelector: {}
   tolerations: {}
   affinity: {}
