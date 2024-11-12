@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -169,65 +169,46 @@ func main() {
 	// cronParser
 	specParser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dbName := os.Getenv("DB_NAME")
-	if dbName == "" {
-		setupLog.Error(err, "DB_NAME is not set")
-		os.Exit(1)
-	}
+	var dbDAGManager db.DBDAGManager
 
-	dbUser := os.Getenv("DB_USER")
-	if dbUser == "" {
-		setupLog.Error(err, "DB_USER is not set")
-		os.Exit(1)
-	}
-
-	pgEndpoint := os.Getenv("DB_ENDPOINT")
-	if dbUser == "" {
-		setupLog.Error(err, "DB_ENDPOINT is not set")
-		os.Exit(1)
-	}
-
-	dbPassword := os.Getenv("DB_PASSWORD")
-	if dbUser == "" {
-		setupLog.Error(err, "DB_PASSWORD is not set")
-		os.Exit(1)
-	}
-
-	sslMode, exists := os.LookupEnv("DB_SSL_MODE")
-	if !exists {
-		sslMode = "disable"
-	}
-
-	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
-	if err != nil {
-		setupLog.Error(err, "failed to create postgres config")
-		os.Exit(1)
-	}
-
-	pgConfig.ConnConfig.TLSConfig = &tls.Config{}
-	if sslMode != "disable" {
-		if err := db.UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
-			panic(err)
+	switch os.Getenv("DB_TYPE") {
+	case "postgresql":
+		pgConfig, err := db.ConfigurePostgres()
+		if err != nil {
+			setupLog.Error(err, "failed to create postgres config")
+			os.Exit(1)
 		}
 
-		if sslMode == "require" {
-			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = true
-		} else if sslMode == "verify-ca" || sslMode == "verify-full" {
-			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = false
+		pool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
+		if err != nil {
+			setupLog.Error(err, "failed to create postgres pool")
+			os.Exit(1)
 		}
-	}
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
-	if err != nil {
-		setupLog.Error(err, "failed to create postgres pool")
-		os.Exit(1)
-	}
+		defer pool.Close()
 
-	defer pool.Close()
+		dbDAGManager, err = db.NewPostgresDAGManager(context.Background(), pool, &specParser)
+		if err != nil {
+			setupLog.Error(err, "failed to create postgres DAG manager")
+			os.Exit(1)
+		}
+	case "sqlite":
+		config, err := db.ConfigureSqlite()
+		if err != nil {
+			setupLog.Error(err, "failed to create sqlite config")
+			os.Exit(1)
+		}
 
-	dbDAGManager, err := db.NewPostgresDAGManager(context.Background(), pool, &specParser)
-	if err != nil {
-		setupLog.Error(err, "failed to create postgres DAG manager")
+		var dbConn *sql.DB
+		dbDAGManager, dbConn, err = db.NewSqliteManager(context.Background(), &specParser, config)
+		if err != nil {
+			setupLog.Error(err, "failed to create sqlite DAG manager")
+			os.Exit(1)
+		}
+
+		defer dbConn.Close()
+	default:
+		setupLog.Error(err, "unsupported DAG manager provided, 'postgresql' or 'sqlite'")
 		os.Exit(1)
 	}
 
