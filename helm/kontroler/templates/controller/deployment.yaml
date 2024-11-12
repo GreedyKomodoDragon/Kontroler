@@ -25,6 +25,15 @@ spec:
       securityContext:
         runAsNonRoot: true
       volumes:
+        {{ if eq .Values.db.type "sqlite" }}
+        - name: sqlite-db-volume
+          persistentVolumeClaim:
+          {{ if empty .Values.db.sqlite.pvc.existing }}
+            claimName: {{ .Release.Name }}
+          {{ else }}
+            claimName: {{ .Values.db.sqlite.pvc.existing }}
+          {{ end }}
+        {{ end }}
         - name: cert
           secret:
             defaultMode: 420
@@ -59,7 +68,7 @@ spec:
               value: {{ .Values.db.type }}
             {{ if eq .Values.db.type "sqlite" }}
             - name: SQLITE_PATH
-              value: {{ .Values.db.sqlite.path }}
+              value: {{ include "kontroler.sqlite.fullpath" . }}
             - name: SQLITE_JOURNAL_MODE
               value: {{ .Values.db.sqlite.journalMode }}
             - name: SQLITE_SYNCHRONOUS
@@ -119,18 +128,17 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            limits:
-              cpu: 500m
-              memory: 128Mi
-            requests:
-              cpu: 10m
-              memory: 64Mi
+            {{- toYaml .Values.controller.resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
           volumeMounts:
+            {{ if eq .Values.db.type "sqlite" }}
+            - name: sqlite-db-volume
+              mountPath: {{ .Values.db.sqlite.path }}
+            {{ end }}
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
               readOnly: true
