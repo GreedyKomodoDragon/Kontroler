@@ -1,0 +1,22 @@
+{{ if and (eq .Values.db.type "sqlite") (empty .Values.db.sqlite.pvc.existing) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}
+  annotations:
+    {{ if .Values.db.sqlite.pvc.retain }}
+    helm.sh/resource-policy: "keep"
+    {{ end }}
+spec:
+  accessModes: {{ .Values.db.sqlite.pvc.accessModes }}
+  resources:
+    requests:
+      storage: {{ .Values.db.sqlite.pvc.size }}
+  {{ if not (empty .Values.db.sqlite.pvc.storageClassName) }}
+  storageClassName: {{ .Values.db.sqlite.pvc.storageClassName }}
+  {{ end }}
+  {{ if not (empty .Values.db.sqlite.pvc.selector) }}
+  selector:
+    {{- toYaml .Values.db.sqlite.pvc.selector | nindent 4 }}
+  {{ end }}
+{{ end }}

@@ -128,3 +128,8 @@ S3 LogStore
   value: {{ .Values.logStorage.s3.region }}
 {{ end }}
 {{- end }}
+
+{{- define "kontroler.sqlite.fullpath" -}}
+{{ printf "%s/%s" .Values.db.sqlite.path .Values.db.sqlite.fileName }}
+{{- end }}
+
