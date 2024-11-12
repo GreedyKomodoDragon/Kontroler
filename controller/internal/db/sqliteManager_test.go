@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,7 +30,9 @@ func Test_Sqlite_UpsertDAG(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	manager, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	manager, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +68,6 @@ func Test_Sqlite_UpsertDAG(t *testing.T) {
 	// Test inserting a new DAG
 	err = manager.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err, "Failed to insert new DAG")
-
-	dbConn, err := sql.Open("sqlite3", dbPath)
-	require.Nil(t, err, "failed to open SQLite database in test", "error", err)
 
 	// Verify the DAG was inserted
 	var dagID int
@@ -117,7 +116,9 @@ func Test_Sqlite_DAGManager_InsertDAG(t *testing.T) {
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -149,7 +150,9 @@ func Test_Sqlite_DAGManager_CreateDAGRun(t *testing.T) {
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -189,7 +192,9 @@ func Test_Sqlite_DAGManager_GetStartingTasks(t *testing.T) {
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -233,7 +238,9 @@ func Test_Sqlite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -281,7 +288,9 @@ func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -341,7 +350,9 @@ func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -405,7 +416,9 @@ func Test_Sqlite_DAGManager_MarkTaskAsStarted(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -447,16 +460,17 @@ func Test_SQLite_DAGManager_GetID(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
+
+	defer dbConn.Close()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
 	testDAGManagerGetID_ReturnsExistingID(t, dm)
-
-	dbConn, err := sql.Open("sqlite3", dbPath)
-	require.Nil(t, err, "failed to open SQLite database in test", "error", err)
 
 	// Clean up the table to ensure no rows are present
 	_, err = dbConn.Exec("DELETE FROM IdTable")
@@ -469,8 +483,12 @@ func Test_SQLite_DAGManager_IncrementAttempts(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
+
+	defer dbConn.Close()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -479,8 +497,6 @@ func Test_SQLite_DAGManager_IncrementAttempts(t *testing.T) {
 
 	// Clean up the table to ensure no rows are present
 	attempts := 0
-	dbConn, err := sql.Open("sqlite3", dbPath)
-	require.Nil(t, err, "failed to open SQLite database in test", "error", err)
 
 	err = dbConn.QueryRow("SELECT attempts FROM Task_Runs where task_run_id = 1;").Scan(&attempts)
 	require.NoError(t, err)
@@ -499,7 +515,9 @@ func Test_SQLite_DAGManager_GetDagParameters(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -513,7 +531,9 @@ func Test_SQLite_DAGManager_ShouldRerun(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	dm, err := db.NewSqliteManager(context.Background(), dbPath, &parser)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
 	require.NoError(t, err)
 
 	err = dm.InitaliseDatabase(context.Background())
@@ -522,4 +542,115 @@ func Test_SQLite_DAGManager_ShouldRerun(t *testing.T) {
 	testDAGManagerShouldRerun_MatchingExitCode(t, dm)
 	testDAGManagerShouldRerun_MisMatchCode(t, dm)
 	testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t, dm)
+}
+
+func Test_SQLite_DAGManager_MarkTaskAsFailed(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerMarkTaskAsFailed_Normal(t, dm)
+
+	outcome := ""
+	err = dbConn.QueryRow("SELECT status FROM Task_Runs where task_run_id = 1;").Scan(&outcome)
+	require.NoError(t, err)
+	require.Equal(t, "failed", outcome)
+
+	outcome = ""
+	failedCount := 0
+	err = dbConn.QueryRow(`
+	SELECT failedCount, status 
+	FROM DAG_Runs 
+	WHERE run_id in (
+		SELECT run_id
+		FROM Task_Runs
+		WHERE task_run_id = 1
+	);`).Scan(&failedCount, &outcome)
+
+	require.NoError(t, err)
+	require.Equal(t, "failed", outcome)
+	require.Equal(t, 1, failedCount)
+}
+
+func Test_SQLite_DAGManager_MarkPodStatus(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerMarkPodStatus_Insert(t, dm)
+
+	status := ""
+	err = dbConn.QueryRow(`
+	SELECT status 
+	FROM Task_Pods 
+	WHERE name = ?;`, "pod-one").Scan(&status)
+
+	require.NoError(t, err)
+	require.Equal(t, string(v1.PodPending), status)
+
+	testDAGManagerMarkPodStatus_Insert_Multiple(t, dm)
+
+	status = ""
+	err = dbConn.QueryRow(`
+	SELECT status 
+	FROM Task_Pods 
+	WHERE name = ?;`, "pod-two").Scan(&status)
+
+	require.NoError(t, err)
+	require.Equal(t, string(v1.PodSucceeded), status)
+}
+
+func Test_SQLite_DAGManager_SoftDeleteDag(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_Exists(t, dm)
+	testDAGManagerSoftDeleteDAG_Does_Not_Exist(t, dm)
+	testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t, dm)
+}
+
+func Test_SQLite_DAGManager_FindExistingDAGRun(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerFindExistingDAGRun_Exists(t, dm)
+	testDAGManagerFindExistingDAGRun_Not_Exists(t, dm)
 }

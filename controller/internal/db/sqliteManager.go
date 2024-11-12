@@ -14,7 +14,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // sqliteDAGManager manages the SQLite database connection and interactions.
@@ -23,26 +23,66 @@ type sqliteDAGManager struct {
 	parser *cron.Parser
 }
 
-func NewSqliteManager(ctx context.Context, dbPath string, parser *cron.Parser) (DBDAGManager, error) {
+// SQLiteConfig holds the configurable SQLite settings
+type SQLiteConfig struct {
+	DBPath      string
+	JournalMode string // e.g., "WAL"
+	Synchronous string // e.g., "NORMAL" or "FULL"
+	CacheSize   int    // e.g., -2000 (for KB, negative to use memory size in KB)
+	TempStore   string // e.g., "MEMORY"
+}
+
+// NewSqliteManager creates a new SQLite manager with configurable settings
+func NewSqliteManager(ctx context.Context, parser *cron.Parser, config *SQLiteConfig) (DBDAGManager, *sql.DB, error) {
 	if parser == nil {
-		return nil, fmt.Errorf("missing parser")
+		return nil, nil, fmt.Errorf("missing parser")
 	}
 
 	// Open a connection to the SQLite database file.
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", config.DBPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open SQLite database: %w", err)
+		return nil, nil, fmt.Errorf("failed to open SQLite database: %w", err)
+	}
+
+	// Apply the configurable settings if provided
+	if config.JournalMode != "" {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s;", config.JournalMode)); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("failed to set journal mode: %w", err)
+		}
+	}
+
+	if config.Synchronous != "" {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA synchronous=%s;", config.Synchronous)); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("failed to set synchronous mode: %w", err)
+		}
+	}
+
+	if config.CacheSize != 0 {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA cache_size=%d;", config.CacheSize)); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("failed to set cache size: %w", err)
+		}
+	}
+
+	if config.TempStore != "" {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA temp_store=%s;", config.TempStore)); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("failed to set temp store: %w", err)
+		}
 	}
 
 	// Check the connection to ensure the database is accessible.
 	if err := db.PingContext(ctx); err != nil {
-		return nil, fmt.Errorf("failed to connect to SQLite database: %w", err)
+		db.Close()
+		return nil, nil, fmt.Errorf("failed to connect to SQLite database: %w", err)
 	}
 
 	return &sqliteDAGManager{
 		db:     db,
 		parser: parser,
-	}, nil
+	}, db, nil
 }
 
 func (s *sqliteDAGManager) InitaliseDatabase(ctx context.Context) error {
@@ -172,7 +212,7 @@ func (s *sqliteDAGManager) GetID(ctx context.Context) (string, error) {
 	var uniqueID string
 
 	// Try to get an existing unique_id
-	err := s.db.QueryRow("SELECT unique_id FROM IdTable LIMIT 1").Scan(&uniqueID)
+	err := s.db.QueryRowContext(ctx, "SELECT unique_id FROM IdTable LIMIT 1").Scan(&uniqueID)
 	if err == nil {
 		return uniqueID, nil
 	}
@@ -191,7 +231,71 @@ func (s *sqliteDAGManager) GetID(ctx context.Context) (string, error) {
 }
 
 func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
-	return nil, nil
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`
+        SELECT dag_id, name, schedule, namespace
+        FROM DAGs
+        WHERE nexttime <= datetime('now') AND schedule != '' AND active = 1;
+    `)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Collect DAG info and schedules
+	namespaces := []*DagInfo{}
+	schedules := []string{}
+	dagIds := []int{}
+	for rows.Next() {
+		var dagId int
+		var name, schedule, namespace string
+		if err := rows.Scan(&dagId, &name, &schedule, &namespace); err != nil {
+			return nil, err
+		}
+
+		namespaces = append(namespaces, &DagInfo{
+			DagName:   name,
+			Namespace: namespace,
+		})
+		schedules = append(schedules, schedule)
+		dagIds = append(dagIds, dagId)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i, schedule := range schedules {
+		// Parse the cron expression
+		sched, err := s.parser.Parse(schedule)
+		if err != nil {
+			return nil, err
+		}
+
+		// Calculate the next occurrence
+		nextTime := sched.Next(time.Now())
+
+		// Update the nextTime for each DAG
+		_, err = tx.Exec(`
+			UPDATE DAGs 
+			SET nexttime = ? 
+			WHERE dag_id = ?;
+		`, nextTime, dagIds[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return namespaces, nil
 }
 
 func (s *sqliteDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
@@ -205,7 +309,7 @@ func (s *sqliteDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, nam
 	var version int
 	var hash string
 
-	err = tx.QueryRow(`
+	err = tx.QueryRowContext(ctx, `
 	SELECT dag_id, version, hash
 	FROM DAGs
 	WHERE name = ? AND namespace = ?
@@ -229,7 +333,7 @@ func (s *sqliteDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, nam
 	}
 
 	// DAG does not exist, insert it
-	if err := s.insertDAG(tx, dag, version, namespace, hashValue); err != nil {
+	if err := s.insertDAG(ctx, tx, dag, version, namespace, hashValue); err != nil {
 		return err
 	}
 
@@ -247,7 +351,7 @@ func (s *sqliteDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, nam
 }
 
 // insertDAG inserts a new DAG object into the database.
-func (s *sqliteDAGManager) insertDAG(tx *sql.Tx, dag *v1alpha1.DAG, version int, namespace string, hash string) error {
+func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alpha1.DAG, version int, namespace string, hash string) error {
 
 	// Parse the cron expression
 	var nextTime *time.Time
@@ -265,7 +369,7 @@ func (s *sqliteDAGManager) insertDAG(tx *sql.Tx, dag *v1alpha1.DAG, version int,
 	}
 
 	var dagID int
-	if err := tx.QueryRow(`
+	if err := tx.QueryRowContext(ctx, `
 	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount) 
 	VALUES (?, ?, ?, ?, ?, TRUE, ?, ?)
 	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
@@ -274,7 +378,7 @@ func (s *sqliteDAGManager) insertDAG(tx *sql.Tx, dag *v1alpha1.DAG, version int,
 
 	// Insert tasks and map them to the DAG
 	for _, task := range dag.Spec.Task {
-		if err := s.insertTask(tx, dagID, &task); err != nil {
+		if err := s.insertTask(ctx, tx, dagID, &task); err != nil {
 			return err
 		}
 	}
@@ -289,7 +393,7 @@ func (s *sqliteDAGManager) insertDAG(tx *sql.Tx, dag *v1alpha1.DAG, version int,
 	return nil
 }
 
-func (s *sqliteDAGManager) insertTask(tx *sql.Tx, dagID int, task *v1alpha1.TaskSpec) error {
+func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int, task *v1alpha1.TaskSpec) error {
 	var jsonValue *string
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
@@ -323,7 +427,7 @@ func (s *sqliteDAGManager) insertTask(tx *sql.Tx, dagID int, task *v1alpha1.Task
 
 	// Insert the task
 	var taskId int
-	if err := tx.QueryRow(`
+	if err := tx.QueryRowContext(ctx, `
 	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage) 
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
 	RETURNING task_id`,
@@ -342,7 +446,7 @@ func (s *sqliteDAGManager) insertTask(tx *sql.Tx, dagID int, task *v1alpha1.Task
 	// Insert task dependencies
 	for _, dependency := range task.RunAfter {
 		var depId int
-		err := tx.QueryRow(`
+		err := tx.QueryRowContext(ctx, `
 		SELECT task_id FROM tasks
 		WHERE task_id in (SELECT task_id FROM DAG_Tasks WHERE dag_id = ?)
 			AND name = ?`, dagID, dependency).Scan(&depId)
@@ -389,7 +493,7 @@ func (s *sqliteDAGManager) setInactive(tx *sql.Tx, name string, namespace string
 }
 
 func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
-	dagId, err := s.dagNameToDagId(dag.DagName)
+	dagId, err := s.dagNameToDagId(ctx, dag.DagName)
 	if err != nil {
 		return 0, err
 	}
@@ -403,7 +507,7 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 
 	// Map the task to the DAG
 	var dagRunID int
-	if err := tx.QueryRow(`
+	if err := tx.QueryRowContext(ctx, `
 	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
 	VALUES (?, ?, 'running', 0, 0, datetime('now')) 
 	RETURNING run_id`, dagId, name).Scan(&dagRunID); err != nil {
@@ -428,9 +532,9 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 	return dagRunID, nil
 }
 
-func (s *sqliteDAGManager) dagNameToDagId(dagName string) (int, error) {
+func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (int, error) {
 	dagId := -1
-	if err := s.db.QueryRow(`
+	if err := s.db.QueryRowContext(ctx, `
 		SELECT dag_id
 		FROM DAGs
 		WHERE name = ?
@@ -503,7 +607,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 				Name: parameter,
 			}
 
-			if err := s.db.QueryRow(`
+			if err := s.db.QueryRowContext(ctx, `
 			SELECT isSecret, defaultValue
 			FROM DAG_Parameters
 			WHERE dag_id = ? and name = ?;
@@ -533,7 +637,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error) {
 	var taskRunId int
 
-	if err := s.db.QueryRow(`
+	if err := s.db.QueryRowContext(ctx, `
 	INSERT INTO Task_Runs (run_id, task_id, status, attempts) 
 	VALUES (?, ?, 'running', 1) 
 	RETURNING task_run_id`,
@@ -572,7 +676,7 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 
 	var taskId int
 	var runId int
-	err = tx.QueryRow("UPDATE Task_Runs SET status = 'success' WHERE task_run_id = ? RETURNING task_id, run_id", taskRunId).Scan(&taskId, &runId)
+	err = tx.QueryRowContext(ctx, "UPDATE Task_Runs SET status = 'success' WHERE task_run_id = ? RETURNING task_id, run_id", taskRunId).Scan(&taskId, &runId)
 	if err != nil && err != pgx.ErrNoRows {
 		return nil, err
 	}
@@ -585,7 +689,7 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 	}
 
 	var status string
-	err = tx.QueryRow(`
+	err = tx.QueryRowContext(ctx, `
 		UPDATE DAG_Runs
 		SET status = 'success'
 		FROM DAGs
@@ -608,7 +712,7 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 	}
 
 	var dagId int
-	err = tx.QueryRow(`
+	err = tx.QueryRowContext(ctx, `
 		SELECT dag_id
 		FROM dag_runs
 		WHERE run_id = ?
@@ -690,7 +794,7 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 				Name: parameter,
 			}
 
-			err := tx.QueryRow(`
+			err := tx.QueryRowContext(ctx, `
 			SELECT isSecret, defaultValue
 			FROM DAG_Parameters
 			WHERE dag_id = ? and name = ?;
@@ -764,7 +868,7 @@ func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string)
 
 func (s *sqliteDAGManager) DagExists(ctx context.Context, dagName string) (bool, error) {
 	dagId := -1
-	if err := s.db.QueryRow(`
+	if err := s.db.QueryRowContext(ctx, `
 		SELECT dag_id
 		FROM DAGs
 		WHERE name = ?
@@ -798,17 +902,125 @@ func (s *sqliteDAGManager) ShouldRerun(ctx context.Context, taskRunID int, exitC
 }
 
 func (s *sqliteDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {
-	return nil
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		UPDATE Task_Runs 
+		SET status = 'failed' 
+		WHERE task_run_id = ? ;
+	`, taskRunId); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`
+	    UPDATE DAG_Runs
+	    SET
+	        failedCount = failedCount + 1,
+	        status = 'failed'
+	    WHERE run_id in (
+			SELECT run_id
+			FROM Task_Runs
+			WHERE task_run_id = ?
+		);`, taskRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error {
-	return nil
+	// Begin a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Check for existing record and retrieve the current status and timestamp
+	var currentTimestamp time.Time
+	err = tx.QueryRowContext(ctx, `
+        SELECT updated_at FROM Task_Pods WHERE Pod_UID = ? AND task_run_id = ?
+    `, podUid, taskRunID).Scan(&currentTimestamp)
+
+	if err != nil && err != sql.ErrNoRows {
+		// Return if any error other than "no rows" occurs
+		return err
+	}
+
+	// Decide whether to insert or update
+	if err == sql.ErrNoRows {
+		// No existing row, perform an INSERT
+		_, err = tx.ExecContext(ctx, `
+            INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, podUid, taskRunID, name, status, namespace, tStamp, exitCode)
+		if err != nil {
+			return err
+		}
+	} else if currentTimestamp.Before(tStamp) {
+		// Existing row has an older timestamp, perform an UPDATE
+		_, err = tx.ExecContext(ctx, `
+            UPDATE Task_Pods 
+            SET status = ?, updated_at = ?, exitCode = ?
+            WHERE Pod_UID = ? AND task_run_id = ?
+        `, status, tStamp, exitCode, podUid, taskRunID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Commit the transaction
+	return tx.Commit()
 }
 
 func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) error {
+	// Check if the DAG already exists
+	// Begin transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// Rollback transaction if not committed
+	defer tx.Rollback()
+
+	var version int
+	if err := tx.QueryRowContext(ctx, `
+	SELECT version
+	FROM DAGs
+	WHERE name = ? AND namespace = ?
+	ORDER BY version DESC;`, name, namespace).Scan(&version); err != nil {
+		return err
+	}
+
+	if err := s.setInactive(tx, name, namespace, version); err != nil {
+		return err
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (s *sqliteDAGManager) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {
-	return false, nil
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+    SELECT EXISTS (
+        SELECT 1
+        FROM DAG_Runs
+        WHERE name = ?
+    );
+	`, name).Scan(&exists); err != nil && err != sql.ErrNoRows {
+		return false, err
+	}
+
+	return exists, nil
 }

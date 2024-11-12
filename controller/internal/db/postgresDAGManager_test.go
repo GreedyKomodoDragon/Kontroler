@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -575,4 +576,115 @@ func TestPostgresDAGManager_ShouldRerun(t *testing.T) {
 	testDAGManagerShouldRerun_MatchingExitCode(t, dm)
 	testDAGManagerShouldRerun_MisMatchCode(t, dm)
 	testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t, dm)
+}
+
+func TestPostgresDAGManager_MarkTaskAsFailed(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerMarkTaskAsFailed_Normal(t, dm)
+
+	outcome := ""
+	err = pool.QueryRow(context.Background(), "SELECT status FROM Task_Runs where task_run_id = 1;").Scan(&outcome)
+	require.NoError(t, err)
+	require.Equal(t, "failed", outcome)
+
+	outcome = ""
+	failedCount := 0
+	err = pool.QueryRow(context.Background(), `
+	SELECT failedCount, status 
+	FROM DAG_Runs 
+	WHERE run_id in (
+		SELECT run_id
+		FROM Task_Runs
+		WHERE task_run_id = 1
+	);`).Scan(&failedCount, &outcome)
+
+	require.NoError(t, err)
+	require.Equal(t, "failed", outcome)
+	require.Equal(t, 1, failedCount)
+}
+
+func TestPostgresDAGManager_MarkPodStatus(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerMarkPodStatus_Insert(t, dm)
+
+	status := ""
+	err = pool.QueryRow(context.Background(), `
+	SELECT status 
+	FROM Task_Pods 
+	WHERE name = $1;`, "pod-one").Scan(&status)
+
+	require.NoError(t, err)
+	require.Equal(t, string(v1.PodPending), status)
+
+	testDAGManagerMarkPodStatus_Insert_Multiple(t, dm)
+
+	status = ""
+	err = pool.QueryRow(context.Background(), `
+	SELECT status 
+	FROM Task_Pods 
+	WHERE name = $1;`, "pod-two").Scan(&status)
+
+	require.NoError(t, err)
+	require.Equal(t, string(v1.PodSucceeded), status)
+}
+
+func TestPostgresDAGManager_SoftDeleteDag(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_Exists(t, dm)
+	testDAGManagerSoftDeleteDAG_Does_Not_Exist(t, dm)
+	testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t, dm)
+}
+
+func TestPostgresDAGManager_FindExistingDAGRun(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerFindExistingDAGRun_Exists(t, dm)
+	testDAGManagerFindExistingDAGRun_Not_Exists(t, dm)
 }
