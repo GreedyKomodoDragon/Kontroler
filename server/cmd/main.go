@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
+	"database/sql"
 	"kontroler-server/pkg/auth"
 	"kontroler-server/pkg/db"
 	kclient "kontroler-server/pkg/kClient"
@@ -26,14 +26,11 @@ import (
 func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	dbName, exists := os.LookupEnv("DB_NAME")
-	if !exists {
-		panic("missing DB_NAME")
-	}
+	auditLogs, _ := os.LookupEnv("AUDIT_LOGS")
 
-	dbUser, exists := os.LookupEnv("DB_USER")
+	corsUiAddress, exists := os.LookupEnv("CORS_UI_ADDRESS")
 	if !exists {
-		panic("missing DB_USER")
+		panic("missing CORS_UI_ADDRESS")
 	}
 
 	jwtKey, exists := os.LookupEnv("JWT_KEY")
@@ -41,78 +38,83 @@ func main() {
 		panic("missing JWT_KEY")
 	}
 
-	dbPassword, exists := os.LookupEnv("DB_PASSWORD")
-	if !exists {
-		panic("missing DB_PASSWORD")
-	}
-
-	sslMode, exists := os.LookupEnv("DB_SSL_MODE")
-	if !exists {
-		sslMode = "disable"
-	}
-
-	auditLogs, _ := os.LookupEnv("AUDIT_LOGS")
-
-	pgEndpoint, exists := os.LookupEnv("DB_ENDPOINT")
-	if !exists {
-		panic("missing DB_ENDPOINT")
-	}
-
-	corsUiAddress, exists := os.LookupEnv("CORS_UI_ADDRESS")
-	if !exists {
-		panic("missing CORS_UI_ADDRESS")
-	}
-
-	postgresURL := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode)
-	pgConfig, err := pgxpool.ParseConfig(postgresURL)
-	if err != nil {
-		panic(err)
-	}
-
-	pgConfig.ConnConfig.TLSConfig = &tls.Config{}
-	if sslMode != "disable" {
-		if err := db.UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
-			panic(err)
-		}
-
-		if sslMode == "require" {
-			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = true
-		} else if sslMode == "verify-ca" || sslMode == "verify-full" {
-			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = false
-		}
-	}
+	var dbDAGManager db.DbManager
+	var authManager auth.AuthManager
 
 	ctx := context.Background()
-	pool, err := pgxpool.NewWithConfig(ctx, pgConfig)
-	if err != nil {
-		panic(err)
+
+	switch os.Getenv("DB_TYPE") {
+	case "postgresql":
+		pgConfig, err := db.ConfigurePostgres()
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create postgres config")
+		}
+
+		pool, err := pgxpool.NewWithConfig(ctx, pgConfig)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create postgres pool")
+		}
+
+		defer pool.Close()
+
+		dbDAGManager, err = db.NewPostgresManager(ctx, pool)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create postgres DAG manager")
+		}
+
+		authManager, err = auth.NewAuthPostgresManager(ctx, pool, jwtKey)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create postgres auth manager")
+		}
+
+	case "sqlite":
+
+		config, err := db.ConfigureSqlite()
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create sqlite config")
+		}
+
+		dbDAGManager, err = db.NewSQLiteReadOnlyManager(ctx, config)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create sqlite DAG manager")
+		}
+
+		configAuth, err := auth.ConfigureAuthSqlite()
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create sqlite config")
+		}
+
+		dbSqlite, err := sql.Open("sqlite", configAuth.DBPath)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to open SQLite database")
+		}
+
+		authManager, err = auth.NewAuthSQLiteManager(ctx, dbSqlite, configAuth, jwtKey)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to create auth manager")
+		}
+
+	default:
+		log.Fatal().Msg("unsupported DAG manager provided, 'postgresql' or 'sqlite'")
 	}
 
-	dbManager, err := db.NewPostgresManager(ctx, pool)
-	if err != nil {
-		panic(err)
-	}
-
-	authManager, err := auth.NewAuthManager(ctx, pool, jwtKey)
-	if err != nil {
-		panic(err)
-	}
+	defer dbDAGManager.Close()
 
 	if err := authManager.InitialiseDatabase(ctx); err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
 	}
 
 	kubClient, err := kclient.NewClient()
 	if err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("failed to create a kubernetes client")
 	}
 
 	logFetcher, err := logs.NewLogFetcher(os.Getenv("S3_BUCKETNAME"))
 	if err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("failed to create a log fetcher")
 	}
 
-	app := rest.NewFiberHttpServer(dbManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
+	app := rest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
@@ -132,7 +134,7 @@ func main() {
 	if os.Getenv("MTLS") == "true" {
 		tlsConfig, err = rest.CreateTLSConfig()
 		if err != nil {
-			panic(err)
+			log.Fatal().Err(err).Msg("failed to create rest tls configuration")
 		}
 	}
 

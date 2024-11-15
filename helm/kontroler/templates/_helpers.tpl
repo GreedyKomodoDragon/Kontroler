@@ -133,3 +133,8 @@ S3 LogStore
 {{ printf "%s/%s" .Values.db.sqlite.path .Values.db.sqlite.fileName }}
 {{- end }}
 
+
+{{- define "kontroler.sqlite.authFullpath" -}}
+{{ printf "%s/%s" .Values.db.sqlite.path .Values.db.sqlite.authFileName }}
+{{- end }}
+

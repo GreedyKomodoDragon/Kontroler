@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -285,7 +284,7 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
 	var taskDetails TaskDetails
-	var podTemplateJSON json.RawMessage
+	var podTemplateJSON string
 	var parameters []string
 
 	// Query for the task details from the Tasks table
