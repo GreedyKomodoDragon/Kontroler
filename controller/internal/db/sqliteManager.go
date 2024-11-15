@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS DAG_Parameters (
 CREATE TABLE IF NOT EXISTS Tasks (
     task_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(255) NOT NULL,
-    command TEXT,  -- SQLite doesn’t support arrays; store as TEXT or use JSON format
+    command TEXT,  -- SQLite does not support arrays; store as TEXT
     args TEXT,
     image VARCHAR(255) NOT NULL,
     parameters TEXT,

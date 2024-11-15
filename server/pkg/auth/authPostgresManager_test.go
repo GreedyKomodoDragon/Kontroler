@@ -1,0 +1,222 @@
+package auth_test
+
+import (
+	"context"
+	"fmt"
+	"kontroler-server/pkg/auth"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+func setupPostgresContainer(t *testing.T) *pgxpool.Pool {
+	ctx := context.Background()
+
+	// Request a PostgreSQL container
+	req := testcontainers.ContainerRequest{
+		Image:        "postgres:13",
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_PASSWORD": "password",
+			"POSTGRES_DB":       "testdb",
+		},
+		WaitingFor: wait.ForListeningPort("5432/tcp"),
+	}
+	postgresC, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		t.Fatalf("failed to start container: %v", err)
+	}
+
+	host, err := postgresC.Host(ctx)
+	if err != nil {
+		t.Fatalf("failed to get container host: %v", err)
+	}
+
+	port, err := postgresC.MappedPort(ctx, "5432")
+	if err != nil {
+		t.Fatalf("failed to get container port: %v", err)
+	}
+
+	databaseURL := fmt.Sprintf("postgres://postgres:password@%s:%s/testdb", host, port.Port())
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	// Check if we can acquire a connection
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("failed to acquire connection: %v", err)
+	}
+	defer conn.Release()
+
+	return pool
+}
+
+func Test_Postgres_AuthManager(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	// Initialize authManager
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	test_Setup_AuthManager(t, authManager)
+}
+
+func Test_Postgres_CreateAccount(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	credentials := &auth.Credentials{
+		Username: "testuser",
+		Password: "testpassword",
+	}
+
+	test_CreateAccount_Valid(t, authManager, credentials)
+
+	// Verify the account was created
+	var passwordHash string
+	err = pool.QueryRow(context.Background(), `SELECT password_hash FROM accounts WHERE username = $1`, credentials.Username).Scan(&passwordHash)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, passwordHash)
+
+	credentials = &auth.Credentials{
+		Username: "randomUser",
+		Password: "testpassword",
+	}
+
+	test_CreateAccount_UsernameAlreadyExists(t, authManager, credentials)
+
+	var count int
+	err = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM accounts WHERE username = $1`, credentials.Username).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "Expected exactly one account with the username")
+}
+
+func Test_Postgres_Login(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	err = authManager.InitialiseDatabase(context.Background())
+	require.NoError(t, err)
+
+	credentials := &auth.Credentials{
+		Username: "testuser",
+		Password: "testpassword",
+	}
+
+	test_valid_login(t, authManager, credentials)
+
+	credentials = &auth.Credentials{
+		Username: "ailsjdilasd",
+		Password: "laksjdhlas",
+	}
+
+	test_invalid_login(t, authManager, credentials)
+}
+
+func Test_Postgres_IsValidLogin(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	err = authManager.InitialiseDatabase(context.Background())
+	require.NoError(t, err)
+
+	credentials := &auth.Credentials{
+		Username: "testuser",
+		Password: "testpassword",
+	}
+
+	test_is_valid_login(t, authManager, credentials)
+}
+
+func Test_Postgres_RevokeToken(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	err = authManager.InitialiseDatabase(context.Background())
+	require.NoError(t, err)
+
+	credentials := &auth.Credentials{
+		Username: "testuser",
+		Password: "testpassword",
+	}
+
+	test_revoke_token(t, authManager, credentials)
+}
+
+func Test_Postgres_TokenExpiration(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	err = authManager.InitialiseDatabase(context.Background())
+	require.NoError(t, err)
+
+	credentials := &auth.Credentials{
+		Username: "testuser",
+		Password: "testpassword",
+	}
+
+	// Create the account and login to get a token
+	err = authManager.CreateAccount(context.Background(), credentials)
+	require.NoError(t, err)
+
+	token, err := authManager.Login(context.Background(), credentials)
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+
+	// Simulate token expiration
+	_, err = pool.Exec(context.Background(), `
+		UPDATE tokens 
+		SET expires_at = NOW() - INTERVAL '1 day'
+		WHERE token = $1
+	`, token)
+	require.NoError(t, err)
+
+	// Validate the expired token
+	id, err := authManager.IsValidLogin(context.Background(), token)
+	assert.Error(t, err, "expected token to be invalid due to expiration")
+	require.Empty(t, id)
+}
+
+func Test_Postgres_ChangePassword(t *testing.T) {
+	pool := setupPostgresContainer(t)
+	defer pool.Close()
+
+	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
+	require.NoError(t, err)
+
+	err = authManager.InitialiseDatabase(context.Background())
+	require.NoError(t, err)
+
+	credentials := &auth.Credentials{
+		Username: "testuser",
+		Password: "testpassword",
+	}
+
+	test_change_password(t, authManager, credentials)
+}

@@ -22,6 +22,7 @@ db:
   sqlite:
     path: /data
     fileName: database.db
+    authFileName: auth.db
     journalMode: "WAL"
     synchronous: "NORMAL"
     # for KB, negative to use memory size in KB
@@ -164,7 +165,13 @@ server:
     # readOnlyRootFilesystem: true
     # runAsNonRoot: true
     # runAsUser: 1000
-  resources: {}
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 10m
+      memory: 128Mi
   autoscaling:
     enabled: false
     minReplicas: 1

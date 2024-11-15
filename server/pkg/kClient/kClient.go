@@ -26,6 +26,12 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		"app.kubernetes.io/created-by": "server",
 	}
 
+	// Create a map to quickly lookup parameter names by ID
+	paramNameByID := make(map[string]string)
+	for _, p := range dagForm.Parameters {
+		paramNameByID[p.ID] = p.Name
+	}
+
 	// Convert DagParameterSpec to Parameters
 	var parameters []map[string]interface{}
 	for _, p := range dagForm.Parameters {
@@ -45,13 +51,9 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	for _, t := range dagForm.Tasks {
 		paramNames := []string{}
 
-		// TODO: Fix this double for loop at some point
-		for _, param := range t.Parameters {
-			for _, p := range dagForm.Parameters {
-				if p.ID == param {
-					paramNames = append(paramNames, p.Name)
-					break
-				}
+		for _, paramID := range t.Parameters {
+			if paramName, exists := paramNameByID[paramID]; exists {
+				paramNames = append(paramNames, paramName)
 			}
 		}
 
