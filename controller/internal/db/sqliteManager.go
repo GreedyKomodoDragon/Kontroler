@@ -880,25 +880,53 @@ func (s *sqliteDAGManager) DagExists(ctx context.Context, dagName string) (bool,
 }
 
 func (s *sqliteDAGManager) ShouldRerun(ctx context.Context, taskRunID int, exitCode int32) (bool, error) {
-	// Simplified query using EXISTS to check if any row matches the criteria
+	// Due to the SQLite Driver not supporting JSON we need to check in the go code
+	// Using non CGO driver but may have to convert over at some point
+
 	query := `
-	SELECT EXISTS (
-		SELECT 1
-		FROM tasks t
-		INNER JOIN Task_Runs r ON t.task_id = r.task_id
-		LEFT JOIN json_each(t.retryCodes) AS retryCode ON retryCode.value = ?
-		WHERE r.task_run_id = ? 
-			AND (t.isConditional = 0 OR retryCode.value IS NOT NULL)
-	);
+	SELECT t.backoffLimit, t.isConditional, t.retryCodes, r.attempts
+	FROM tasks t
+	INNER JOIN Task_Runs r ON t.task_id = r.task_id
+	WHERE r.task_run_id = ?;
 	`
 
-	var exists bool
-	err := s.db.QueryRowContext(ctx, query, exitCode, taskRunID).Scan(&exists)
+	row := s.db.QueryRowContext(ctx, query, taskRunID)
+
+	var backoffLimit int
+	var isConditional bool
+	var retryCodes string
+	var attempts int
+
+	// Scan the result into variables
+	err := row.Scan(&backoffLimit, &isConditional, &retryCodes, &attempts)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			// No matching rows, rerun is not needed
+			return false, nil
+		}
 		return false, fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	return exists, nil
+	// Perform the check in Go
+	if attempts > backoffLimit {
+		return false, nil
+	}
+
+	if isConditional {
+		var codes []int32
+		if err := json.Unmarshal([]byte(retryCodes), &codes); err != nil {
+			return false, fmt.Errorf("failed to parse retry codes: %w", err)
+		}
+
+		for _, code := range codes {
+			if code == exitCode {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (s *sqliteDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {
@@ -1023,4 +1051,19 @@ func (s *sqliteDAGManager) FindExistingDAGRun(ctx context.Context, name string) 
 	}
 
 	return exists, nil
+}
+
+func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+	var script *string
+	var injectorImage *string
+
+	if err := s.db.QueryRowContext(ctx, `
+	SELECT t.script, t.scriptInjectorImage
+	FROM Tasks t
+	WHERE t.task_id = ?;
+	`, taskId).Scan(&script, &injectorImage); err != nil {
+		return nil, nil, err
+	}
+
+	return script, injectorImage, nil
 }

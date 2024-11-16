@@ -736,27 +736,24 @@ func (p *postgresDAGManager) DagExists(ctx context.Context, dagName string) (boo
 }
 
 func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error) {
-	// Query to check if rerun is needed based on join and conditions
 	query := `
-	SELECT t.backoffLimit, r.attempts
-	FROM tasks t
-	INNER JOIN Task_Runs r ON t.task_id = r.task_id
-	WHERE r.task_run_id = $1 AND r.attempts <= t.backoffLimit AND (t.isConditional = FALSE or $2 = ANY(t.retryCodes));
-    `
+    SELECT EXISTS (
+        SELECT 1
+        FROM tasks t
+        INNER JOIN Task_Runs r ON t.task_id = r.task_id
+        WHERE r.task_run_id = $1
+          AND r.attempts <= t.backoffLimit
+          AND (t.isConditional = FALSE OR $2 = ANY(t.retryCodes))
+    )
+	`
 
-	rows, err := p.pool.Query(ctx, query, taskRunid, exitCode)
+	var rerunNeeded bool
+	err := p.pool.QueryRow(ctx, query, taskRunid, exitCode).Scan(&rerunNeeded)
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
 
-	if !rows.Next() {
-		// No rows returned, so rerun is not needed
-		return false, nil
-	}
-
-	// At least one row returned, so rerun may be needed
-	return true, nil
+	return rerunNeeded, nil
 }
 
 func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {
@@ -923,4 +920,19 @@ func (p *postgresDAGManager) GetID(ctx context.Context) (string, error) {
 	}
 
 	return "", fmt.Errorf("failed to query IdTable: %w", err)
+}
+
+func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+	var script *string
+	var injectorImage *string
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT t.script, t.scriptInjectorImage
+	FROM Tasks t
+	WHERE t.task_id = $1;
+	`, taskId).Scan(&script, &injectorImage); err != nil {
+		return nil, nil, err
+	}
+
+	return script, injectorImage, nil
 }
