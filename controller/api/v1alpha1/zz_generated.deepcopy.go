@@ -331,6 +331,11 @@ func (in *PodTemplateSpec) DeepCopyInto(out *PodTemplateSpec) {
 		*out = new(v1.Affinity)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.ActiveDeadlineSeconds != nil {
+		in, out := &in.ActiveDeadlineSeconds, &out.ActiveDeadlineSeconds
+		*out = new(int64)
+		**out = **in
+	}
 	if in.AutomountServiceAccountToken != nil {
 		in, out := &in.AutomountServiceAccountToken, &out.AutomountServiceAccountToken
 		*out = new(bool)

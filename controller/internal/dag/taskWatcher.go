@@ -314,26 +314,54 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	}
 
 	container := pod.Spec.Containers[0]
-	// Re-use envs instead of going to database again
-	taskId, err := t.taskAllocator.AllocateTaskWithEnv(ctx,
-		db.Task{
-			Name:    container.Name,
-			Args:    container.Args,
-			Command: container.Command,
-			Image:   container.Image,
-			PodTemplate: &v1alpha1.PodTemplateSpec{
-				Volumes:                      pod.Spec.Volumes,
-				VolumeMounts:                 container.VolumeMounts,
-				ImagePullSecrets:             pod.Spec.ImagePullSecrets,
-				SecurityContext:              pod.Spec.SecurityContext,
-				NodeSelector:                 pod.Spec.NodeSelector,
-				Tolerations:                  pod.Spec.Tolerations,
-				Affinity:                     pod.Spec.Affinity,
-				ServiceAccountName:           pod.Spec.ServiceAccountName,
-				AutomountServiceAccountToken: pod.Spec.AutomountServiceAccountToken,
-			},
-		}, dagRunId, taskRunId, pod.Namespace, container.Env, &container.Resources)
 
+	taskIdStr, ok := pod.Annotations["kontroler/task-id"]
+	if !ok {
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/task-id", "pod", pod.Name)
+		return
+	}
+
+	taskId, err := strconv.Atoi(taskIdStr)
+	if err != nil {
+		log.Log.Error(fmt.Errorf("failed to convert task id string: %s", taskIdStr), "annotation", "kontroler/task-id", "value", taskIdStr, "pod", pod.Name)
+		return
+	}
+
+	script, injector, err := t.dbManager.GetTaskScriptAndInjectorImage(ctx, taskId)
+	if err != nil {
+		log.Log.Error(fmt.Errorf("failed to get script and injector image"), "pod", pod.Name)
+		return
+	}
+
+	dbTask := db.Task{
+		Id:      taskId,
+		Name:    container.Name,
+		Args:    container.Args,
+		Command: container.Command,
+		Image:   container.Image,
+		PodTemplate: &v1alpha1.PodTemplateSpec{
+			Volumes:                      pod.Spec.Volumes,
+			VolumeMounts:                 container.VolumeMounts,
+			ImagePullSecrets:             pod.Spec.ImagePullSecrets,
+			SecurityContext:              pod.Spec.SecurityContext,
+			NodeSelector:                 pod.Spec.NodeSelector,
+			Tolerations:                  pod.Spec.Tolerations,
+			Affinity:                     pod.Spec.Affinity,
+			ServiceAccountName:           pod.Spec.ServiceAccountName,
+			AutomountServiceAccountToken: pod.Spec.AutomountServiceAccountToken,
+			ActiveDeadlineSeconds:        pod.Spec.ActiveDeadlineSeconds,
+		},
+	}
+
+	if script != nil {
+		dbTask.Script = *script
+	}
+
+	if injector != nil {
+		dbTask.ScriptInjectorImage = *injector
+	}
+
+	taskUUID, err := t.taskAllocator.AllocateTaskWithEnv(ctx, dbTask, dagRunId, taskRunId, pod.Namespace, container.Env, &container.Resources)
 	if err != nil {
 		log.Log.Error(err, "failed to allocate new pod")
 		return
@@ -343,7 +371,7 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 		log.Log.Error(err, "failed to increment attempts", "taskRunId", taskRunId)
 	}
 
-	log.Log.Info("new task allocated allocated with env", "taskId", taskId)
+	log.Log.Info("new task allocated allocated with env", "taskUUID", taskUUID)
 
 }
 

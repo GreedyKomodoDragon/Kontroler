@@ -32,7 +32,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
@@ -78,7 +77,7 @@ func main() {
 	flag.Parse()
 
 	logger := zap.New(zap.UseFlagOptions(&opts))
-	logf.SetLogger(logger)
+	log.SetLogger(logger)
 
 	ctrl.SetLogger(logger)
 

@@ -51,6 +51,10 @@ type PodTemplateSpec struct {
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 	// +optional
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+	// ActiveDeadlineSeconds is how long the pod will last for (basically a time-limit)
+	// Will Start the moment the pod is scheduled for a node, will count down even if in pending state
+	// +optional
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 	// +optional
 	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 	// +optional

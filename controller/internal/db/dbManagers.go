@@ -60,4 +60,5 @@ type DBDAGManager interface {
 	// Soft deletes the dag in database
 	SoftDeleteDAG(ctx context.Context, name string, namespace string) error
 	FindExistingDAGRun(ctx context.Context, name string) (bool, error)
+	GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error)
 }
