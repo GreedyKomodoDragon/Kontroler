@@ -62,6 +62,8 @@ spec:
             - --metrics-bind-address=127.0.0.1:8080
             - --leader-elect
           env:
+            - name: LEADER_ELECTION_ID
+              value: {{ .Values.controller.leaderElectionID }}
             - name: NAMESPACES
               value: {{ .Values.rbac.namespaces | join "," }}
             - name: DB_TYPE

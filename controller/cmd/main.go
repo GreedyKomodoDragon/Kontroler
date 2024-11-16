@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -107,6 +108,12 @@ func main() {
 		namespaces = "default"
 	}
 
+	leaderElectionID := os.Getenv("LEADER_ELECTION_ID")
+	if leaderElectionID == "" {
+		setupLog.Error(fmt.Errorf("missing LEADER_ELECTION_ID"), "must provide LEADER_ELECTION_ID")
+		os.Exit(1)
+	}
+
 	namespaceConfigMap := map[string]cache.Config{}
 	namespacesSlice := strings.Split(namespaces, ",")
 
@@ -124,7 +131,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "610a3770.greedykomodo",
+		LeaderElectionID:       leaderElectionID,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
