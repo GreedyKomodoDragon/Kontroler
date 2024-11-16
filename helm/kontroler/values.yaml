@@ -73,6 +73,7 @@ certManager:
 controller:
   enabled: true
   image: greedykomodo/kontroler-controller:0.0.1
+  leaderElectionID: "610a3770.greedykomodo"
   db:
     user: postgres
     password:
