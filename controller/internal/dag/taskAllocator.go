@@ -50,12 +50,18 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 	}
 
 	if task.Script != "" {
-		podSpec.Volumes = append(podSpec.Volumes, v1.Volume{
+		vol := v1.Volume{
 			Name: "shared-scripts",
 			VolumeSource: v1.VolumeSource{
 				EmptyDir: &v1.EmptyDirVolumeSource{},
 			},
-		})
+		}
+
+		// We check as AllocateTaskWithEnv re-uses the mounts to avoid going to the database
+		// Downside is that it will create two volumes with the same values
+		if task.PodTemplate != nil && !containsVolume(task.PodTemplate.VolumeMounts, vol) {
+			podSpec.Volumes = append(podSpec.Volumes, vol)
+		}
 
 		scriptInjectorImage := task.ScriptInjectorImage
 		if scriptInjectorImage == "" {
@@ -88,15 +94,21 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 				Image:   task.Image,
 				Command: []string{"bash", "-c", "/tmp/my-script.sh"},
 				Env:     envs,
-				VolumeMounts: []v1.VolumeMount{
-					{
-						Name:      "shared-scripts",
-						MountPath: "/tmp",
-						ReadOnly:  true,
-					},
-				},
 			},
 		}
+
+		mount := v1.VolumeMount{
+			Name:      "shared-scripts",
+			MountPath: "/tmp",
+			ReadOnly:  true,
+		}
+
+		// We check as AllocateTaskWithEnv re-uses the mounts to avoid going to the database
+		// Downside is that it will create two volumes with the same values
+		if task.PodTemplate != nil && !containsVolumeMount(task.PodTemplate.VolumeMounts, mount) {
+			podSpec.Containers[0].VolumeMounts = []v1.VolumeMount{mount}
+		}
+
 	} else {
 		podSpec.Containers = []v1.Container{
 			{
@@ -130,6 +142,7 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 			Annotations: map[string]string{
 				"kontroler/task-rid":  strconv.Itoa(taskRunId),
 				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
+				"kontroler/task-id":   strconv.Itoa(task.Id),
 			},
 			Finalizers: []string{"kontroler/logcollection"},
 		},
@@ -165,6 +178,7 @@ func (t *taskAllocator) applyPodTemplate(podSpec *v1.PodSpec, task *db.Task) {
 	podSpec.Affinity = task.PodTemplate.Affinity
 	podSpec.ServiceAccountName = task.PodTemplate.ServiceAccountName
 	podSpec.AutomountServiceAccountToken = task.PodTemplate.AutomountServiceAccountToken
+	podSpec.ActiveDeadlineSeconds = task.PodTemplate.ActiveDeadlineSeconds
 
 	if podSpec.Containers[0].VolumeMounts == nil {
 		podSpec.Containers[0].VolumeMounts = task.PodTemplate.VolumeMounts
@@ -202,4 +216,22 @@ func (t *taskAllocator) CreateEnvs(task db.Task) *[]v1.EnvVar {
 	}
 
 	return &envs
+}
+
+func containsVolumeMount(slice []v1.VolumeMount, item v1.VolumeMount) bool {
+	for _, v := range slice {
+		if v.Name == item.Name && v.MountPath == item.MountPath && v.ReadOnly == item.ReadOnly {
+			return true
+		}
+	}
+	return false
+}
+
+func containsVolume(slice []v1.VolumeMount, item v1.Volume) bool {
+	for _, v := range slice {
+		if v.Name == item.Name {
+			return true
+		}
+	}
+	return false
 }

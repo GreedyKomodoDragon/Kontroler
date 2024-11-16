@@ -94,6 +94,13 @@ spec:
                       description: PodTemplateSpec defines the template for the pod
                         of a task
                       properties:
+                        activeDeadlineSeconds:
+                          description: ActiveDeadlineSeconds is how long the pod will
+                            last for (basically a time-limit) Will Start the moment
+                            the pod is scheduled for a node, will count down even
+                            if in pending state
+                          format: int64
+                          type: integer
                         affinity:
                           description: Affinity is a group of affinity scheduling
                             rules.

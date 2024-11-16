@@ -82,7 +82,7 @@ spec:
             {{ end }}
             {{ if eq .Values.db.type "postgresql" }}
             - name: DB_NAME
-              value: {{ .Values.postgresql.db.name }}
+              value: {{ .Values.db.postgresql.name }}
             - name: DB_USER
               value: {{ .Values.controller.db.user }}
             - name: DB_PASSWORD
@@ -91,7 +91,7 @@ spec:
                   name: {{ .Values.controller.db.password.secret }}
                   key:  {{ .Values.controller.db.password.key }}
             - name: DB_ENDPOINT
-              value: {{ .Values.db.endpoint }}
+              value: {{ .Values.db.postgresql.endpoint }}
             {{ if .Values.controller.db.ssl.mode }}
             - name: DB_SSL_MODE
               value: {{ .Values.controller.db.ssl.mode }}

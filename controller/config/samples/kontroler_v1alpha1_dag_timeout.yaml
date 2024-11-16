@@ -1,0 +1,20 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag-timeout
+  name: dag-timeout
+spec:
+  task:
+    - name: "waiting"
+      script: |
+        #!/bin/bash
+        sleep 5m
+      image: "ubuntu"
+      backoff:
+        limit: 2
+      conditional:
+        enabled: true
+        retryCodes: [137]
+      podTemplate:
+        activeDeadlineSeconds: 120
