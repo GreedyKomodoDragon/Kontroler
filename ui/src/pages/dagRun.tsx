@@ -1,9 +1,9 @@
 import { Component, createEffect, createSignal } from "solid-js";
 import { DagRunAll, TaskRunDetails } from "../types/dag";
 import { getDagRunAll, getTaskRunDetails } from "../api/dags";
-import DagDiagram from "../components/dagDiagram";
 import { A, useParams } from "@solidjs/router";
 import LoadingIcon from "../components/loadingIcon";
+import DagViz from "../components/dagViz";
 
 const DagRun: Component = () => {
   const params = useParams();
@@ -40,7 +40,7 @@ const DagRun: Component = () => {
           </h3>
           <hr class="my-4 border-gray-300" />
           <h3 class="text-2xl font-semibold">Task Connections</h3>
-          <DagDiagram
+          <DagViz
             connections={dataRunMeta()?.connections ?? {}}
             taskInfo={dataRunMeta()?.taskInfo}
             setSelectedTask={setSelectedTask}

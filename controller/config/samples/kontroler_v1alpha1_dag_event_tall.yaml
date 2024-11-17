@@ -1,0 +1,113 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag
+    app.kubernetes.io/instance: dag-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dag-sample
+spec:
+  parameters:
+    - name: first
+      defaultFromSecret: secret-name
+    - name: second
+      defaultValue: value
+  task:
+    - name: "random"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      backoff:
+        limit: 5
+      parameters:
+        - second
+      conditional:
+        enabled: true
+        retryCodes: [1]
+      podTemplate:
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "791m"
+        volumes:
+          - name: example-pvc
+            persistentVolumeClaim:
+              claimName: example-claim  # The name of the PVC
+        volumeMounts:
+          - name: example-pvc
+            mountPath: /data  # Path inside the container where the PVC is mounted
+        # imagePullSecrets:
+        #   - name: my-registry-secret
+        # securityContext:
+        #   runAsUser: 1000
+        #   runAsGroup: 3000
+        #   fsGroup: 2000
+        # nodeSelector:
+        #   disktype: ssd
+        # tolerations:
+        #   - key: "key1"
+        #     operator: "Equal"
+        #     value: "value1"
+        #     effect: "NoSchedule"
+        # affinity:
+        #   nodeAffinity:
+        #     requiredDuringSchedulingIgnoredDuringExecution:
+        #       nodeSelectorTerms:
+        #         - matchExpressions:
+        #             - key: "kubernetes.io/e2e-az-name"
+        #               operator: In
+        #               values:
+        #                 - e2e-az1
+        #                 - e2e-az2
+        # serviceAccountName: "custom-service-account"
+        # automountServiceAccountToken: false
+    - name: "random-b"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+      parameters:
+        - first
+        - second
+    - name: "random-c"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-d"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
