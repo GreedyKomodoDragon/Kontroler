@@ -59,7 +59,7 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 
 		// We check as AllocateTaskWithEnv re-uses the mounts to avoid going to the database
 		// Downside is that it will create two volumes with the same values
-		if task.PodTemplate != nil && !containsVolume(task.PodTemplate.VolumeMounts, vol) {
+		if task.PodTemplate == nil || (task.PodTemplate != nil && !containsVolume(task.PodTemplate.Volumes, vol)) {
 			podSpec.Volumes = append(podSpec.Volumes, vol)
 		}
 
@@ -105,7 +105,7 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 
 		// We check as AllocateTaskWithEnv re-uses the mounts to avoid going to the database
 		// Downside is that it will create two volumes with the same values
-		if task.PodTemplate != nil && !containsVolumeMount(task.PodTemplate.VolumeMounts, mount) {
+		if task.PodTemplate == nil || (task.PodTemplate != nil && !containsVolumeMount(task.PodTemplate.VolumeMounts, mount)) {
 			podSpec.Containers[0].VolumeMounts = []v1.VolumeMount{mount}
 		}
 
@@ -227,7 +227,7 @@ func containsVolumeMount(slice []v1.VolumeMount, item v1.VolumeMount) bool {
 	return false
 }
 
-func containsVolume(slice []v1.VolumeMount, item v1.Volume) bool {
+func containsVolume(slice []v1.Volume, item v1.Volume) bool {
 	for _, v := range slice {
 		if v.Name == item.Name {
 			return true
