@@ -3,7 +3,7 @@ kind: DAG
 metadata:
   labels:
     app.kubernetes.io/name: dag-timeout
-  name: dag-timeout-sleep
+  name: dag-sleep
 spec:
   task:
     - name: "waiting"
