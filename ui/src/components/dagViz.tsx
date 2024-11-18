@@ -69,8 +69,6 @@ export default function DagViz(props: DagVizProps) {
     }));
   };
 
-  
-
   // Generate edges based on the connections prop
   const generateEdges = (): Edge[] => {
     const edges: Edge[] = [];
@@ -80,7 +78,7 @@ export default function DagViz(props: DagVizProps) {
       toNodes.forEach((to) => {
         edges.push({
           // Flipped as connections are sent as dependencies
-          from: parseInt(to), 
+          from: parseInt(to),
           to: parseInt(from),
           arrows: {
             to: { enabled: true, scaleFactor: 1 },
