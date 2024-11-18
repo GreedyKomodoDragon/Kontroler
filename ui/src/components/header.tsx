@@ -8,7 +8,7 @@ const Header: Component = () => {
 
   const navigation = [
     { title: "Profile", path: "/account/profile" },
-    { title: "Log out", path: "/logout" }
+    { title: "Log out", path: "/logout" },
   ];
 
   return (
@@ -30,14 +30,14 @@ const Header: Component = () => {
           </button>
         </div>
         <ul
-          class={`bg-white top-14 right-6 mt-2 absolute border rounded-md text-sm w-36 shadow-md space-y-0 ${
+          class={`bg-gray-800 top-14 right-6 mt-2 absolute border border-gray-700 rounded-md text-sm w-36 shadow-lg space-y-0 ${
             state() ? "" : "hidden"
           }`}
         >
-          {navigation.map((item, idx) => (
+          {navigation.map((item) => (
             <li>
               <a
-                class="block text-gray-600 hover:bg-gray-50 p-2.5"
+                class="block text-gray-300 hover:bg-gray-700 p-2.5 rounded-md transition-colors duration-200"
                 href={item.path}
               >
                 {item.title}

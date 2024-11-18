@@ -43,7 +43,11 @@ const DagComponent = ({ dag }: Props) => {
         <p class="text-sm text-gray-400">
           <strong class="font-medium text-gray-300">ID:</strong> {dag.dagId}
         </p>
-        {open() && <p class="text-sm text-gray-400">Click on node to see information on task</p>}
+        {open() && (
+          <p class="text-sm text-gray-400">
+            Click on node to see information on task
+          </p>
+        )}
       </div>
 
       {open() && (
@@ -96,7 +100,7 @@ const DagComponent = ({ dag }: Props) => {
             </p>
             <ul class="ml-4 list-disc text-gray-400">
               {taskDetails()?.parameters &&
-                taskDetails()!.parameters.map((param, index) => (
+                taskDetails()!.parameters.map((param) => (
                   <li>
                     {param.name} - Default
                     {param.isSecret && " Secret"}:{" "}
