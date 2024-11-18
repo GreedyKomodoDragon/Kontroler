@@ -8,6 +8,8 @@ import SuccessfulAlert from "./successfulAlert";
 import { DeleteTaskButton } from "./deleteTaskButton";
 import LabeledInput from "./inputs/labeledInput";
 import { ParameterAssignment } from "./createForm/parameterAssignment";
+import ErrorToast from "./toasts/errorToast";
+import SuccessToast from "./toasts/successToast";
 
 export default function DAGForm() {
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
@@ -183,275 +185,382 @@ export default function DAGForm() {
         e.preventDefault();
         submitDAG();
       }}
-      class="mx-auto text-gray-200 shadow-md rounded-lg"
+      class="w-full border  border-gray-700 bg-gray-800 shadow-2xl rounded-lg p-8 text-gray-200 space-y-8 relative"
     >
-      <div class="mb-2">
-        <LabeledInput
-          label="Name"
-          placeholder="Dag Name"
-          oninput={(e) => setName(e.currentTarget.value)}
-        />
+      {/* Toast Notifications */}
+      {errorMsgs().length !== 0 && (
+        <ErrorToast messages={errorMsgs()} clear={() => setErrorMsgs([])} />
+      )}
+      {successMsg() && (
+        <SuccessToast message={successMsg()} clear={() => setSuccessMsg("")} />
+      )}
+
+      {/* Form Header */}
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <LabeledInput
+            label="Name"
+            placeholder="DAG Name"
+            oninput={(e) => setName(e.currentTarget.value)}
+            class="col-span-1"
+          />
+          <LabeledInput
+            label="Namespace"
+            placeholder="Kubernetes Namespace"
+            oninput={(e) => setNamespace(e.currentTarget.value)}
+            class="col-span-1"
+          />
+          <LabeledInput
+            label="Schedule"
+            placeholder="*/5 * * * * (Optional)"
+            oninput={(e) => setSchedule(e.currentTarget.value)}
+            class="col-span-1"
+          />
+        </div>
       </div>
-      <div class="mb-2">
-        <LabeledInput
-          label="Namespace"
-          placeholder="Kubernetes Namespace"
-          oninput={(e) => setNamespace(e.currentTarget.value)}
-        />
-      </div>
-      <div class="mb-2">
-        <LabeledInput
-          label="Schedule"
-          placeholder="*/5 * * * * (Optional)"
-          oninput={(e) => setSchedule(e.currentTarget.value)}
-        />
-      </div>
-      <h2 class="text-2xl mt-4 font-semibold">Tasks</h2>
-      <For each={tasks}>
-        {(task, i) => (
-          <div class="p-4 border rounded-lg bg-gray-700 border-gray-600 space-y-4">
-            <div>
-              <label class="text-lg font-medium flex items-center justify-between">
-                Task Name
+
+      {/* Tasks Section */}
+      <div class="space-y-6">
+        <div class="flex justify-between items-center">
+          <h2 class="text-2xl font-semibold">Tasks</h2>
+          <button
+            type="button"
+            onClick={addTask}
+            class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          >
+            <svg
+              class="w-5 h-5 mr-2"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Add Task
+          </button>
+        </div>
+        <For each={tasks}>
+          {(task, i) => (
+            <div class="bg-gray-700 rounded-lg shadow-inner p-6 space-y-6">
+              <div class="flex justify-between items-center">
+                <h3 class="text-xl font-medium">Task {i() + 1}</h3>
                 <DeleteTaskButton delete={deleteTask} taskIndex={i()} />
-              </label>
-              <input
-                type="text"
-                value={task.name}
-                onInput={(e) => {
-                  setTasks(i(), "name", e.currentTarget.value);
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
+              </div>
 
-            <div>
-              <label class="block text-lg font-medium">Command</label>
-              <input
-                type="text"
-                onInput={(e) => {
-                  try {
-                    const array = JSON.parse(e.currentTarget.value);
-                    if (Array.isArray(array)) {
-                      setTasks(i(), "command", array);
-                    } else {
-                      setTasks(i(), "command", undefined);
-                    }
-                  } catch (error) {
-                    setTasks(i(), "command", undefined);
-                  }
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
-            <div>
-              <label class="block text-lg font-medium">Args</label>
-              <input
-                type="text"
-                onInput={(e) => {
-                  try {
-                    const array = JSON.parse(e.currentTarget.value);
-                    if (Array.isArray(array)) {
-                      setTasks(i(), "args", array);
-                    } else {
-                      setTasks(i(), "args", undefined);
-                    }
-                  } catch (error) {
-                    setTasks(i(), "args", undefined);
-                  }
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
-            <div>
-              <label class="block text-lg font-medium">Script</label>
-              <textarea
-                onInput={(e) => {
-                  setTasks(i(), "script", e.currentTarget.value);
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
-            <div>
-              <label class="block text-lg font-medium">Image</label>
-              <input
-                type="text"
-                value={task.image}
-                onInput={(e) => {
-                  setTasks(i(), "image", e.currentTarget.value);
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Task Name */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Task Name
+                  </label>
+                  <input
+                    type="text"
+                    value={task.name}
+                    onInput={(e) => {
+                      setTasks(i(), "name", e.currentTarget.value);
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                    required
+                  />
+                </div>
 
-            <div>
-              <label class="block text-lg font-medium">Retry Codes</label>
-              <input
-                type="text"
-                onInput={(e) => {
-                  try {
-                    const array = JSON.parse(e.currentTarget.value);
-                    if (
-                      Array.isArray(array) &&
-                      array.every((item) => typeof item === "number")
-                    ) {
-                      setTasks(i(), "retryCodes", array);
-                    } else {
-                      setTasks(i(), "retryCodes", undefined);
-                    }
-                  } catch (error) {
-                    setTasks(i(), "retryCodes", undefined);
-                  }
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
+                {/* Command */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Command (JSON Array)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder='e.g., ["echo", "Hello"]'
+                    onInput={(e) => {
+                      try {
+                        const array = JSON.parse(e.currentTarget.value);
+                        if (Array.isArray(array)) {
+                          setTasks(i(), "command", array);
+                        } else {
+                          setTasks(i(), "command", []);
+                        }
+                      } catch (error) {
+                        setTasks(i(), "command", []);
+                      }
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                  />
+                </div>
 
-            <div>
-              <label class="block text-lg font-medium">BackoffLimit</label>
-              <input
-                type="text"
-                onInput={(e) => {
-                  setTasks(
-                    i(),
-                    "backoffLimit",
-                    parseInt(e.currentTarget.value)
-                  );
-                }}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
+                {/* Args */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Args (JSON Array)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder='e.g., ["arg1", "arg2"]'
+                    onInput={(e) => {
+                      try {
+                        const array = JSON.parse(e.currentTarget.value);
+                        if (Array.isArray(array)) {
+                          setTasks(i(), "args", array);
+                        } else {
+                          setTasks(i(), "args", []);
+                        }
+                      } catch (error) {
+                        setTasks(i(), "args", []);
+                      }
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                  />
+                </div>
 
-            <div>
-              <label class="block text-lg font-medium">
-                Pod Template (Optional)
-              </label>
-              <textarea
-                value={task.podTemplate}
-                onInput={(e) => {
-                  setTasks(i(), "podTemplate", e.currentTarget.value);
-                }}
-                rows={10}
-                class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-              />
-            </div>
+                {/* Image */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Image
+                  </label>
+                  <input
+                    type="text"
+                    value={task.image}
+                    onInput={(e) => {
+                      setTasks(i(), "image", e.currentTarget.value);
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                  />
+                </div>
 
-            <div>
-              <label class="block text-lg font-medium">Run After</label>
-              <div class="flex space-x-2 items-center">
-                <select
-                  onChange={(e) => {
-                    setSelectedTaskToAdd(e.currentTarget.value);
-                  }}
-                  class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-                >
-                  <option value="">Select a </option>
-                  <For each={tasks.filter((_, index) => index !== i())}>
-                    {(t) => (
-                      <option value={t.name}>
-                        {t.name || `Task ${tasks.indexOf(t) + 1}`}
-                      </option>
+                {/* Backoff Limit */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Backoff Limit
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={task.backoffLimit}
+                    onInput={(e) => {
+                      setTasks(
+                        i(),
+                        "backoffLimit",
+                        parseInt(e.currentTarget.value) || 0
+                      );
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                  />
+                </div>
+
+                {/* Retry Codes */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Retry Codes (JSON Array)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., [404, 500]"
+                    onInput={(e) => {
+                      try {
+                        const array = JSON.parse(e.currentTarget.value);
+                        if (
+                          Array.isArray(array) &&
+                          array.every((item) => typeof item === "number")
+                        ) {
+                          setTasks(i(), "retryCodes", array);
+                        } else {
+                          setTasks(i(), "retryCodes", []);
+                        }
+                      } catch (error) {
+                        setTasks(i(), "retryCodes", []);
+                      }
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                  />
+                </div>
+
+                {/* Script */}
+                <div class="md:col-span-2">
+                  <label class="block text-sm font-medium text-gray-400">
+                    Script (Optional - If provided, Command and Args are ignored)
+                  </label>
+                  <textarea
+                    onInput={(e) => {
+                      setTasks(i(), "script", e.currentTarget.value);
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                    rows={3}
+                    placeholder="Enter your script here..."
+                  ></textarea>
+                </div>
+
+                {/* Pod Template */}
+                <div class="md:col-span-2">
+                  <label class="block text-sm font-medium text-gray-400">
+                    Pod Template (Optional)
+                  </label>
+                  <textarea
+                    value={task.podTemplate}
+                    onInput={(e) => {
+                      setTasks(i(), "podTemplate", e.currentTarget.value);
+                    }}
+                    rows={5}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                    placeholder="Enter Pod Template in JSON/YAML..."
+                  ></textarea>
+                </div>
+              </div>
+
+              {/* Run After Section */}
+              <div>
+                <label class="block text-sm font-medium text-gray-400">
+                  Run After
+                </label>
+                <div class="flex flex-wrap items-center mt-2 space-x-2">
+                  <select
+                    onChange={(e) => {
+                      setSelectedTaskToAdd(e.currentTarget.value);
+                    }}
+                    class="block w-full md:w-auto px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                  >
+                    <option value="">Select a Task</option>
+                    <For each={tasks.filter((_, index) => index !== i())}>
+                      {(t) => (
+                        <option
+                          value={t.name || `Task ${tasks.indexOf(t) + 1}`}
+                        >
+                          {t.name || `Task ${tasks.indexOf(t) + 1}`}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => addRunAfter(i())}
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div class="mt-2 flex flex-wrap">
+                  <For each={tasks[i()].runAfter}>
+                    {(runAfterTask) => (
+                      <span class="inline-flex items-center bg-blue-600 text-gray-200 text-sm px-3 py-1 rounded-full mr-2 mb-2">
+                        {runAfterTask}
+                      </span>
                     )}
                   </For>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => addRunAfter(i())}
-                  class="px-3 py-1 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Add
-                </button>
-              </div>
-              <div class="mt-2">
-                <For each={tasks[i()].runAfter}>
-                  {(runAfterTask) => (
-                    <span class="inline-block bg-blue-600 text-gray-200 text-lg px-2 py-1 mt-2 rounded-full mr-2">
-                      {runAfterTask}
-                    </span>
-                  )}
-                </For>
-              </div>
-            </div>
-            <ParameterAssignment
-              taskIndex={i()}
-              tasks={tasks}
-              parameters={parameters}
-              selectedParameters={selectedParameters()}
-              setSelectedParameterForTask={setSelectedParameterForTask}
-              addParameterToTask={addParameterToTask}
-            />
-          </div>
-        )}
-      </For>
-      <button
-        type="button"
-        onClick={addTask}
-        class="mt-2 px-6 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-      >
-        Add Task
-      </button>
-      <h2 class="text-2xl mt-4 font-semibold">Parameters</h2>
-      <div class="rounded-lg space-y-4">
-        <For each={parameters}>
-          {(param, i) => (
-            <div class="mt-4 p-4 border rounded-lg bg-gray-700 border-gray-600 space-y-2">
-              <div>
-                <label class="text-lg font-medium flex items-center justify-between">
-                  Parameter Name
-                  <DeleteTaskButton delete={deleteParameter} taskIndex={i()} />
-                </label>
-                <input
-                  type="text"
-                  value={param.name}
-                  onInput={(e) => {
-                    setParameterName(i(), e.currentTarget.value);
-                  }}
-                  class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-                />
+                </div>
               </div>
 
-              <div class="flex items-center space-x-4 mt-2">
-                <label class="block text-lg font-medium">Secret Env</label>
-                <input
-                  type="checkbox"
-                  checked={param.isSecret}
-                  onChange={() => handleParameterToggle(i())}
-                  class="form-checkbox h-5 w-5 text-indigo-600"
-                />
+              {/* Parameter Assignment */}
+              <ParameterAssignment
+                taskIndex={i()}
+                tasks={tasks}
+                parameters={parameters}
+                selectedParameters={selectedParameters()}
+                setSelectedParameterForTask={setSelectedParameterForTask}
+                addParameterToTask={addParameterToTask}
+              />
+            </div>
+          )}
+        </For>
+      </div>
+
+      {/* Parameters Section */}
+      <div class="space-y-6">
+        <div class="flex justify-between items-center">
+          <h2 class="text-2xl font-semibold">Parameters</h2>
+          <button
+            type="button"
+            onClick={addParameter}
+            class="flex items-center px-4 py-2 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
+          >
+            <svg
+              class="w-5 h-5 mr-2"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Add Parameter
+          </button>
+        </div>
+        <For each={parameters}>
+          {(param, i) => (
+            <div class="bg-gray-700 rounded-lg shadow-inner p-6 space-y-4">
+              <div class="flex justify-between items-center">
+                <h3 class="text-lg font-medium">Parameter {i() + 1}</h3>
+                <DeleteTaskButton delete={deleteParameter} taskIndex={i()} />
               </div>
-              <div>
-                <label class="block text-lg font-medium">
-                  {param.isSecret ? "Secret Name" : "Value"}
-                </label>
-                <input
-                  type="text"
-                  value={param.value}
-                  onInput={(e) => {
-                    setParameters(i(), "value", e.currentTarget.value);
-                  }}
-                  class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-800 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
-                />
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Parameter Name */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-400">
+                    Parameter Name
+                  </label>
+                  <input
+                    type="text"
+                    value={param.name}
+                    onInput={(e) => {
+                      setParameterName(i(), e.currentTarget.value);
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                    required
+                  />
+                </div>
+
+                {/* Secret Toggle */}
+                <div class="flex items-center">
+                  <label class="flex items-center text-sm font-medium text-gray-400">
+                    <input
+                      type="checkbox"
+                      checked={param.isSecret}
+                      onChange={() => handleParameterToggle(i())}
+                      class="form-checkbox h-5 w-5 text-indigo-600"
+                    />
+                    <span class="ml-2">Secret Env</span>
+                  </label>
+                </div>
+
+                {/* Parameter Value */}
+                <div class="md:col-span-2">
+                  <label class="block text-sm font-medium text-gray-400">
+                    {param.isSecret ? "Secret Name" : "Value"}
+                  </label>
+                  <input
+                    type="text"
+                    value={param.value}
+                    onInput={(e) => {
+                      setParameters(i(), "value", e.currentTarget.value);
+                    }}
+                    class="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-200"
+                    required
+                  />
+                </div>
               </div>
             </div>
           )}
         </For>
-        <button
-          type="button"
-          onClick={addParameter}
-          class="mt-2 px-4 py-2 bg-green-600 text-white rounded-md shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          Add Parameter
-        </button>
       </div>
 
-      <button
-        type="submit"
-        class="mt-8 px-6 py-3 bg-indigo-600 text-white rounded-md shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-      >
-        Submit DAG
-      </button>
-      {errorMsgs().length !== 0 && <ErrorAlert msgs={errorMsgs()} />}
-      {successMsg() && <SuccessfulAlert msg={successMsg()} />}
+      {/* Submit Button */}
+      <div class="flex justify-center">
+        <button
+          type="submit"
+          class="w-full md:w-auto px-6 py-3 bg-indigo-600 text-white rounded-md shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+        >
+          Submit DAG
+        </button>
+      </div>
     </form>
   );
 }
