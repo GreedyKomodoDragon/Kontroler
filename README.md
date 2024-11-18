@@ -244,14 +244,21 @@ It is worth noting that the install will not be production ready so use at your 
 
 #### Tools
 
-To start building and deploying you will need:
+To start building and deploying (a minimal build) you will need:
 
 * [kustomize >=5.4.3](https://kubectl.docs.kubernetes.io/installation/kustomize/) - deploy scripts relay on kustomize to work
 * [cert-manager >=1.15.1](https://cert-manager.io/) - Without editting the kustomize files it will use cert-manager to handle thw webhook certs
 * [docker](https://www.docker.com/) - used to create the docker images for each service (most modern version of docker should work)
-* [PostgreSQL >=16 Installed](https://github.com/bitnami/charts/tree/main/bitnami/postgresql) - We use the bitanmi chart for providing a PostgreSQL instance, postgresql is used as backend store for kontroler
 
 #### Database
+
+##### SQLite
+
+If you are using SQLite (the default), it should be all set up for you. You can configure some of the settings, see the helm chart for what can be changed.
+
+##### Postgresql
+
+[PostgreSQL >=16 is needed ](https://github.com/bitnami/charts/tree/main/bitnami/postgresql) - We use the bitanmi chart for providing a PostgreSQL instance, postgresql is used as backend store for kontroler
 
 Kontroler requires a database to already exist to insert the required tables to manage DAGs and DagRun results.
 
