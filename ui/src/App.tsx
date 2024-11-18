@@ -21,7 +21,7 @@ import Logs from "./pages/logs";
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
   return (
-    <div class="flex flex-col h-screen bg-gray-950 text-gray-50 overflow-hidden">
+    <div class="flex flex-col h-screen text-gray-50 overflow-hidden">
       <Header />
       <div class="flex flex-1">
         <Sidebar />
@@ -35,6 +35,7 @@ const Layout: Component<{ children: JSX.Element }> = (props) => {
     </div>
   );
 };
+
 
 const queryClient = new QueryClient();
 

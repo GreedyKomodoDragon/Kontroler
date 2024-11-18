@@ -4,6 +4,7 @@ import { getDagRunAll, getTaskRunDetails } from "../api/dags";
 import { A, useParams } from "@solidjs/router";
 import LoadingIcon from "../components/loadingIcon";
 import DagViz from "../components/dagViz";
+import { PodStatusTable } from "../components/tables/podStatusTable";
 
 const DagRun: Component = () => {
   const params = useParams();
@@ -63,32 +64,12 @@ const DagRun: Component = () => {
                 <p class="mb-1">
                   <strong>Attempts:</strong> {taskDetails()?.attempts}
                 </p>
+
                 <h4 class="text-lg font-semibold mt-4 mb-2">Pods:</h4>
-                <ul class="list-inside">
-                  {taskDetails()?.pods.map((pod) => (
-                    <li class="mb-2">
-                      <div class="ml-4 border-gray-200 p-4 rounded-lg border">
-                        <p>
-                          <strong>Name:</strong> {pod.name}
-                        </p>
-                        <p>
-                          <strong>Status:</strong> {pod.status}
-                        </p>
-                        <p>
-                          <strong>Exit Code:</strong> {pod.exitCode}
-                        </p>
-                        <p class="mt-4">
-                          <A
-                            href={`/logs/run/${dataRunMeta() && dataRunMeta()?.id}/pod/${pod.name}`}
-                            class="rounded-md bg-sky-700 p-2"
-                          >
-                            See Logs
-                          </A>
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <PodStatusTable
+                  details={taskDetails()!}
+                  id={dataRunMeta()!.id}
+                />
               </div>
             )
           )}
