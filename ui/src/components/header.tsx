@@ -12,7 +12,7 @@ const Header: Component = () => {
   ];
 
   return (
-    <div class="flex items-center h-16 px-4 border-b border-gray-800">
+    <div class="flex items-center h-16 px-4 border-b border-gray-800 ">
       <a class="flex items-center gap-2" href="/" rel="ugc">
         <img src="/logo.svg" width={45} height={45} />
         <span class="font-semibold text-lg">Kontroler</span>

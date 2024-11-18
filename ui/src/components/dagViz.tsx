@@ -145,7 +145,7 @@ export default function DagViz(props: DagVizProps) {
   return (
     <div
       ref={networkContainer}
-      class="h-[400px] overflow-auto max-w-full border border-gray-700 rounded-md bg-gray-800 p-4 m-2"
+      class="h-[400px] overflow-auto max-w-full border border-gray-700 rounded-md bg-gray-900 p-4 m-2"
     ></div>
   );
 }

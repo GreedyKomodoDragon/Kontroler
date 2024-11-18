@@ -7,24 +7,31 @@ interface Props {
 
 const DagRunComponent = ({ dagRun }: Props) => {
   return (
-    <div class="bg-gray-800 shadow-md rounded-md p-4 mb-4 text-white">
-      <div class="flex justify-between items-center">
-        <h3 class="text-2xl font-semibold">DAG Run Id: {dagRun.id}</h3>
-        <A class="mr-2 bg-blue-500 p-2 rounded-md" href={`/dags/run/${dagRun.id}`}>
-          Go to DagRun
+    <div class="bg-gray-800 shadow-2xl rounded-lg p-6 mb-6 text-white border border-gray-700 relative">
+      {/* Content */}
+      <div class="flex justify-between items-center border-b border-gray-700 pb-4">
+        <h3 class="text-3xl font-bold tracking-tight text-gray-100">
+          DAG Run ID: {dagRun.id}
+        </h3>
+        <A
+          class="bg-blue-600 hover:bg-blue-500 transition-colors duration-300 px-4 py-2 rounded-md text-sm font-semibold relative z-10"
+          href={`/dags/run/${dagRun.id}`}
+        >
+          Go to DAG Run
         </A>
       </div>
-      <div class="mt-2">
-        <p>
-          <strong>DAG ID:</strong> {dagRun.dagId}
+      <div class="mt-4 space-y-2">
+        <p class="text-sm text-gray-400">
+          <strong class="font-medium text-gray-300">DAG ID:</strong>{" "}
+          {dagRun.dagId}
         </p>
-      </div>
-      <div class="mt-2">
-        <p>
-          <strong>Successful Tasks:</strong> {dagRun.successfulCount}
+        <p class="text-sm text-gray-400">
+          <strong class="font-medium text-gray-300">Successful Tasks:</strong>{" "}
+          {dagRun.successfulCount}
         </p>
-        <p>
-          <strong>Failed Tasks:</strong> {dagRun.failedCount}
+        <p class="text-sm text-gray-400">
+          <strong class="font-medium text-gray-300">Failed Tasks:</strong>{" "}
+          {dagRun.failedCount}
         </p>
       </div>
     </div>

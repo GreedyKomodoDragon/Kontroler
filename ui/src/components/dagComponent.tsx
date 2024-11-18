@@ -21,91 +21,112 @@ const DagComponent = ({ dag }: Props) => {
   });
 
   return (
-    <div class="bg-gray-800 shadow-md rounded-md p-4 mb-4 text-white">
-      <div class="flex justify-between items-center">
-        <h3 class="text-2xl font-semibold">{dag.name}</h3>
+    <div class="bg-gray-800 shadow-2xl rounded-lg p-6 mb-6 text-white border border-gray-700 relative">
+      <div class="flex justify-between items-center border-b border-gray-600 pb-4">
+        <h3 class="text-3xl font-bold tracking-tight text-gray-100">
+          {dag.name}
+        </h3>
         <button
-          class="rounded-md bg-blue-700 p-2"
+          class="rounded-md bg-blue-600 hover:bg-blue-500 transition-colors duration-300 px-4 py-2 text-sm font-semibold relative z-10"
           onClick={() => setOpen(!open())}
         >
-          Toggle Diagram
+          {open() ? "Hide Diagram" : "Show Diagram"}
         </button>
       </div>
-      {dag.schedule && (
-        <div class="mt-2">
-          <p>
-            <strong>Schedule:</strong> {dag.schedule}
+      <div class="mt-4 space-y-2">
+        {dag.schedule && (
+          <p class="text-sm text-gray-400">
+            <strong class="font-medium text-gray-300">Schedule:</strong>{" "}
+            {dag.schedule}
           </p>
+        )}
+        <p class="text-sm text-gray-400">
+          <strong class="font-medium text-gray-300">ID:</strong> {dag.dagId}
+        </p>
+        {open() && <p class="text-sm text-gray-400">Click on node to see information on task</p>}
+      </div>
+
+      {open() && (
+        <div class="mt-6">
+          <DagViz
+            connections={dag.connections}
+            setSelectedTask={setSelectedTask}
+          />
         </div>
       )}
-      <div class="mt-2">
-        <p>
-          <strong>ID:</strong> {dag.dagId}
-        </p>
-      </div>
-      {open() && (
-        <DagViz
-          connections={dag.connections}
-          setSelectedTask={setSelectedTask}
-        />
-      )}
+
       {open() && selectedTask() !== -1 && taskDetails() && (
-        <div class="mt-4 p-4 bg-gray-700 rounded-md">
-          <h4 class="text-xl font-semibold mb-2">Task Details</h4>
-          <p class="my-2">
-            <strong>Name:</strong> {taskDetails()?.name}
-          </p>
-          {taskDetails()?.command && (
-            <p class="my-2">
-              <strong>Command:</strong> {taskDetails()?.command!.join(" ")}
+        <div class="mt-8 p-6 bg-gray-700 rounded-lg shadow-inner">
+          <h4 class="text-xl font-semibold text-gray-200 mb-4">Task Details</h4>
+          <div class="space-y-3">
+            <p>
+              <strong class="font-medium text-gray-300">Name:</strong>{" "}
+              {taskDetails()?.name}
             </p>
-          )}
-          {taskDetails()?.args && (
-            <p class="my-2">
-              <strong>Args:</strong> {taskDetails()?.args!.join(" ")}
+            {taskDetails()?.command && (
+              <p>
+                <strong class="font-medium text-gray-300">Command:</strong>{" "}
+                <span class="text-gray-400">
+                  {taskDetails()?.command!.join(" ")}
+                </span>
+              </p>
+            )}
+            {taskDetails()?.args && (
+              <p>
+                <strong class="font-medium text-gray-300">Args:</strong>{" "}
+                <span class="text-gray-400">
+                  {taskDetails()?.args!.join(" ")}
+                </span>
+              </p>
+            )}
+            {taskDetails()?.script && (
+              <div>
+                <p class="mb-2">
+                  <strong class="font-medium text-gray-300">Script:</strong>
+                </p>
+                <ShellScriptViewer script={taskDetails()?.script!} />
+              </div>
+            )}
+            <p>
+              <strong class="font-medium text-gray-300">Image:</strong>{" "}
+              {taskDetails()?.image}
             </p>
-          )}
-          {taskDetails()?.script && (
-            <>
-              <p class="my-2">
-                <strong>Script:</strong>
-              </p>
-              <ShellScriptViewer script={taskDetails()?.script!} />
-            </>
-          )}
-          <p>
-            <strong>Image:</strong> {taskDetails()?.image}
-          </p>
-          <p class="mt-2">
-            <strong>Parameters:</strong>
-          </p>
-          <ul class="ml-4 list-disc">
-            {taskDetails()?.parameters &&
-              taskDetails()!.parameters.map((param, index) => (
-                <li>
-                  {param.name} - Default{param.isSecret && " Secret"}:{" "}
-                  {param.defaultValue ? param.defaultValue : "N/A"}
-                </li>
-              ))}
-          </ul>
-          <p class="my-2">
-            <strong>BackOff Limit:</strong> {taskDetails()?.backOffLimit}
-          </p>
-          <p class="my-2">
-            <strong>Conditional:</strong>{" "}
-            {taskDetails()?.isConditional ? "Yes" : "No"}
-          </p>
-          <p class="my-2">
-            <strong>Retry Codes:</strong> {taskDetails()?.retryCodes}
-          </p>
-          {taskDetails()?.podTemplate && (
-            <>
-              <p class="my-2">
-                <strong>Pod Template:</strong>
-              </p>
-              <JsonToYamlViewer json={taskDetails()?.podTemplate!} />
-            </>
-          )}
+            <p>
+              <strong class="font-medium text-gray-300">Parameters:</strong>
+            </p>
+            <ul class="ml-4 list-disc text-gray-400">
+              {taskDetails()?.parameters &&
+                taskDetails()!.parameters.map((param, index) => (
+                  <li>
+                    {param.name} - Default
+                    {param.isSecret && " Secret"}:{" "}
+                    {param.defaultValue ? param.defaultValue : "N/A"}
+                  </li>
+                ))}
+            </ul>
+            <p>
+              <strong class="font-medium text-gray-300">BackOff Limit:</strong>{" "}
+              {taskDetails()?.backOffLimit}
+            </p>
+            <p>
+              <strong class="font-medium text-gray-300">Conditional:</strong>{" "}
+              {taskDetails()?.isConditional ? "Yes" : "No"}
+            </p>
+            <p>
+              <strong class="font-medium text-gray-300">Retry Codes:</strong>{" "}
+              {taskDetails()?.retryCodes}
+            </p>
+            {taskDetails()?.podTemplate && (
+              <div>
+                <p class="mb-2">
+                  <strong class="font-medium text-gray-300">
+                    Pod Template:
+                  </strong>
+                </p>
+                <JsonToYamlViewer json={taskDetails()?.podTemplate!} />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
