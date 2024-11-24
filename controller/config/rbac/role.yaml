@@ -56,3 +56,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks/status
+  verbs:
+  - get
+  - patch
+  - update

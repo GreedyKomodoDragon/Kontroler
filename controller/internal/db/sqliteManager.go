@@ -1067,3 +1067,7 @@ func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, ta
 
 	return script, injectorImage, nil
 }
+
+func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {
+	return nil
+}

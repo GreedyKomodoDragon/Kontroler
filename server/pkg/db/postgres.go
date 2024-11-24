@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
@@ -284,14 +285,15 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
 	var taskDetails TaskDetails
-	var podTemplateJSON string
+	var podTemplateJSON sql.NullString
 	var parameters []string
 
 	// Query for the task details from the Tasks table
 	queryTask := `
-			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes, script, parameters
-			FROM Tasks
-			WHERE task_id = $1
+			SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+			FROM Tasks t
+			LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+			WHERE t.task_id = $1;
 		`
 
 	if err := p.pool.QueryRow(ctx, queryTask, taskId).Scan(
@@ -310,8 +312,12 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 		return nil, fmt.Errorf("failed to query task details: %w", err)
 	}
 
-	// Convert JSONB field to string
-	taskDetails.PodTemplate = string(podTemplateJSON)
+	// Handle the nullable value from podTemplateJSON
+	if podTemplateJSON.Valid {
+		taskDetails.PodTemplate = podTemplateJSON.String
+	} else {
+		taskDetails.PodTemplate = "" // Or any default value
+	}
 
 	// Query for the parameters related to the task from the DAG_Parameters table
 	queryParameters := `

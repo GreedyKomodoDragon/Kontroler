@@ -3,4 +3,5 @@ resources:
 - kontroler_v1alpha1_schedule.yaml
 - kontroler_v1alpha1_dag.yaml
 - kontroler_v1alpha1_dagrun.yaml
+- kontroler_v1alpha1_dagtask.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

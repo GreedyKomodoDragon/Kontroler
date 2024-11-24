@@ -3117,6 +3117,10 @@ spec:
                       description: Used to select the image that is used to push to
                         script into the pod
                       type: string
+                    taskRef:
+                      description: Using reference to existing pre-created task -
+                        cannot reference another in-line task
+                      type: string
                   required:
                   - backoff
                   - conditional
