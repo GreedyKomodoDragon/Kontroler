@@ -59,6 +59,38 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks/status
+  verbs:
+  - get
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
+  - dagtasks/status
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

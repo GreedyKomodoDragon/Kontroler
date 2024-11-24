@@ -90,6 +90,9 @@ type TaskSpec struct {
 	// Used to select the image that is used to push to script into the pod
 	// +optional
 	ScriptInjectorImage string `json:"scriptInjectorImage,omitempty"`
+	// Using reference to existing pre-created task - cannot reference another in-line task
+	// +optional
+	TaskRef string `json:"taskRef,omitempty"`
 }
 
 // Backoff defines the backoff strategy for a task
@@ -175,6 +178,13 @@ func (dag *DAG) checkFieldsFilled() error {
 	for _, task := range dag.Spec.Task {
 		if task.Name == "" {
 			return errors.New("task name must be specified")
+		}
+
+		if task.TaskRef != "" {
+			// TODO look up task in DB
+
+			// We ignore any further checks as they will not be used
+			continue
 		}
 
 		// Either have a script or command

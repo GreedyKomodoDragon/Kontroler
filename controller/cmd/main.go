@@ -33,12 +33,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
 
+	log "sigs.k8s.io/controller-runtime/pkg/log"
+
 	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
-	log "sigs.k8s.io/controller-runtime/pkg/log"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -276,11 +277,21 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "DagRun")
 		os.Exit(1)
 	}
+
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&kontrolerv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DagRun")
 			os.Exit(1)
 		}
+	}
+
+	if err = (&controller.DagTaskReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		DbManager: dbDAGManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DagTask")
+		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 
