@@ -1,0 +1,37 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagTask
+metadata:
+  labels:
+    app.kubernetes.io/name: dagtask
+    app.kubernetes.io/instance: dagtask-sample
+  name: dagtask-sample
+spec:
+  name: "dagtask-example"
+  command: ["sh", "-c"]
+  args:
+    [
+      "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
+    ]
+  image: "alpine:latest"
+  backoff:
+    limit: 5
+  parameters:
+    - second
+  conditional:
+    enabled: true
+    retryCodes: [1]
+  podTemplate:
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"
+        cpu: "400m"
+    volumes:
+      - name: example-pvc
+        persistentVolumeClaim:
+          claimName: example-claim
+    volumeMounts:
+      - name: example-pvc
+        mountPath: /data 

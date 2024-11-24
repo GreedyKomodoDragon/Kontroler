@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	cron "github.com/robfig/cron/v3"
@@ -45,11 +46,11 @@ CREATE TABLE IF NOT EXISTS DAGs (
 	version INTEGER NOT NULL,
 	hash VARCHAR(64) NOT NULL,
     schedule VARCHAR(255) NOT NULL,
-	namespace VARCHAR(255) NOT NULL,
+	namespace VARCHAR(63) NOT NULL,
 	active BOOL NOT NULL,
 	taskCount INTEGER NOT NULL,
 	nexttime TIMESTAMP,
-	UNIQUE(name, version)
+	UNIQUE(name, version, namespace)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Parameters (
@@ -73,21 +74,25 @@ CREATE TABLE IF NOT EXISTS Tasks (
 	podTemplate JSONB,
 	retryCodes INTEGER[],
 	script TEXT NOT NULL,
-	scriptInjectorImage TEXT
+	scriptInjectorImage TEXT,
+	inline BOOL NOT NULL,
+	namespace VARCHAR(63) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS DAG_Tasks (
+	dag_task_id SERIAL PRIMARY KEY,
+    dag_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
+    FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
 );
 
 CREATE TABLE IF NOT EXISTS Dependencies (
     task_id INTEGER NOT NULL,
     depends_on_task_id INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
-    FOREIGN KEY (depends_on_task_id) REFERENCES Tasks(task_id)
-);
-
-CREATE TABLE IF NOT EXISTS DAG_Tasks (
-    dag_id INTEGER NOT NULL,
-    task_id INTEGER NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
+    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id),
+    FOREIGN KEY (depends_on_task_id) REFERENCES DAG_Tasks(dag_task_id)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Runs (
@@ -240,7 +245,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	// Insert tasks and map them to the DAG
 	for _, task := range dag.Spec.Task {
-		if err := p.insertTask(ctx, tx, dagID, &task); err != nil {
+		if err := p.insertTask(ctx, tx, dagID, &task, namespace); err != nil {
 			return err
 		}
 	}
@@ -272,7 +277,7 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	return nil
 }
 
-func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec) error {
+func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec, namespace string) error {
 	var jsonValue *string
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
@@ -284,20 +289,36 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	}
 
 	// Insert the task
+	// Must check if it is inline or not
 	var taskId int
-	if err := tx.QueryRow(ctx, `
-	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage) 
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
-	RETURNING task_id`,
-		task.Name, task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
-		task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage).Scan(&taskId); err != nil {
-		return err
+	inline := task.TaskRef != ""
+	if inline {
+
+		err := tx.QueryRow(ctx, `
+		SELECT task_id FROM Tasks
+		WHERE name = $1 AND inline = FALSE;`, task.TaskRef).Scan(&taskId)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+
+	} else {
+		// must provide a unique name - name is used not used for in-line and must just be unique
+		newUUID := uuid.New()
+
+		if err := tx.QueryRow(ctx, `
+		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE. $12) 
+		RETURNING task_id`,
+			newUUID.String(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
+			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace).Scan(&taskId); err != nil {
+			return err
+		}
 	}
 
 	// Map the task to the DAG
 	if _, err := tx.Exec(ctx, `
-	INSERT INTO DAG_Tasks (dag_id, task_id)
-	 VALUES ($1, $2)`, dagID, taskId); err != nil {
+	INSERT INTO DAG_Tasks (dag_id, task_id, name)
+	VALUES ($1, $2, $3)`, dagID, taskId, task.Name); err != nil {
 		return err
 	}
 
@@ -305,9 +326,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	for _, dependency := range task.RunAfter {
 		var depId int
 		err := tx.QueryRow(ctx, `
-		SELECT task_id FROM tasks
-		WHERE task_id in (SELECT task_id FROM DAG_Tasks WHERE dag_id = $1)
-			AND name = $2`, dagID, dependency).Scan(&depId)
+		SELECT task_id FROM DAG_Tasks WHERE dag_id = $1 AND name = $2`, dagID, dependency).Scan(&depId)
 		if err != nil && err != pgx.ErrNoRows {
 			return err
 		}
@@ -364,9 +383,10 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
+	SELECT t.task_id, dat.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
 	FROM Tasks t
 	LEFT JOIN Dependencies d ON t.task_id = d.task_id
+	LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
 	WHERE d.depends_on_task_id IS NULL
 	AND dt.dag_id IN (
@@ -520,8 +540,9 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 			GROUP BY d.task_id, dc.DependCount
 			HAVING COUNT(*) = dc.DependCount
 		)
-		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
+		SELECT t.task_id, dat.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
 		FROM Tasks t
+		LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 		WHERE 
 			t.task_id in (SELECT task_id FROM RunnableTask) 
 			AND t.task_id not in (select task_id FROM task_runs WHERE run_id = $2)
@@ -935,4 +956,35 @@ func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, 
 	}
 
 	return script, injectorImage, nil
+}
+
+func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {
+	// Begin transaction
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Rollback transaction if not committed
+	defer tx.Rollback(ctx)
+
+	var jsonValue *string
+	if task.Spec.PodTemplate != nil {
+		json, err := task.Spec.PodTemplate.Serialize()
+		if err != nil {
+			return err
+		}
+
+		jsonValue = &json
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12);`,
+		task.Name, task.Spec.Command, task.Spec.Args, task.Spec.Image, task.Spec.Parameters, task.Spec.Backoff.Limit,
+		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

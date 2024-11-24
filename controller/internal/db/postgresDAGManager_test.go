@@ -90,7 +90,7 @@ func TestUpsertDAG(t *testing.T) {
 
 	// Verify the new task was inserted
 	var taskName string
-	err = pool.QueryRow(context.Background(), "SELECT name FROM Tasks WHERE name = 'task3'").Scan(&taskName)
+	err = pool.QueryRow(context.Background(), "SELECT name FROM DAG_Tasks WHERE name = 'task3'").Scan(&taskName)
 	assert.NoError(t, err, "Failed to query new task")
 	assert.NotZero(t, taskName, "Task name should not be zero")
 
