@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -76,7 +77,9 @@ CREATE TABLE IF NOT EXISTS Tasks (
 	script TEXT NOT NULL,
 	scriptInjectorImage TEXT,
 	inline BOOL NOT NULL,
-	namespace VARCHAR(63) NOT NULL
+	namespace VARCHAR(63) NOT NULL,
+	version INTEGER NOT NULL,
+	UNIQUE(name, version, namespace)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Tasks (
@@ -84,6 +87,7 @@ CREATE TABLE IF NOT EXISTS DAG_Tasks (
     dag_id INTEGER NOT NULL,
     task_id INTEGER NOT NULL,
 	name VARCHAR(255) NOT NULL,
+	version INTEGER NOT NULL,
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
     FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
 );
@@ -243,9 +247,16 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 		return err
 	}
 
-	// Insert tasks and map them to the DAG
+	// Insert all tasks into DAG_Tasks
 	for _, task := range dag.Spec.Task {
 		if err := p.insertTask(ctx, tx, dagID, &task, namespace); err != nil {
+			return err
+		}
+	}
+
+	// After all tasks are inserted, handle dependencies
+	for _, task := range dag.Spec.Task {
+		if err := p.createDependencyConnection(ctx, tx, dagID, &task); err != nil {
 			return err
 		}
 	}
@@ -306,34 +317,50 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		newUUID := uuid.New()
 
 		if err := tx.QueryRow(ctx, `
-		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE. $12) 
-		RETURNING task_id`,
+		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13) 
+		RETURNING task_id;`,
 			newUUID.String(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
-			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace).Scan(&taskId); err != nil {
+			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, 1).Scan(&taskId); err != nil {
 			return err
 		}
 	}
 
-	// Map the task to the DAG
+	version := 1
+
 	if _, err := tx.Exec(ctx, `
-	INSERT INTO DAG_Tasks (dag_id, task_id, name)
-	VALUES ($1, $2, $3)`, dagID, taskId, task.Name); err != nil {
+		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
+		VALUES ($1, $2, $3, $4)`, dagID, taskId, task.Name, version); err != nil {
 		return err
 	}
 
-	// Insert task dependencies
+	return nil
+}
+
+func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec) error {
+	version := 1
+
 	for _, dependency := range task.RunAfter {
-		var depId int
+		var taskId, depId int
+
 		err := tx.QueryRow(ctx, `
-		SELECT task_id FROM DAG_Tasks WHERE dag_id = $1 AND name = $2`, dagID, dependency).Scan(&depId)
-		if err != nil && err != pgx.ErrNoRows {
+		SELECT dag_task_id FROM DAG_Tasks WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, task.Name, version).Scan(&taskId)
+		if err != nil {
+			return fmt.Errorf("task %s not found for version %d", task.Name, version)
+		}
+
+		err = tx.QueryRow(ctx, `
+		SELECT dag_task_id FROM DAG_Tasks WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, dependency, version).Scan(&depId)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return fmt.Errorf("dependency task %s not found for version %d", dependency, version)
+			}
 			return err
 		}
 
-		if _, err = tx.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 		INSERT INTO Dependencies (task_id, depends_on_task_id) 
-		VALUES ($1, $2)`, taskId, depId); err != nil {
+		VALUES ($1, $2);`, taskId, depId); err != nil {
 			return err
 		}
 	}
@@ -383,19 +410,24 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, dat.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
-	FROM Tasks t
-	LEFT JOIN Dependencies d ON t.task_id = d.task_id
-	LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
-	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
-	WHERE d.depends_on_task_id IS NULL
-	AND dt.dag_id IN (
-		SELECT dag_id
-		FROM DAGs
-		WHERE name = $1
-		ORDER BY version DESC
-		LIMIT 1
-  	);
+	SELECT t.task_id, dt.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
+	FROM 
+		Tasks t
+	JOIN 
+		DAG_Tasks dt ON t.task_id = dt.task_id
+	LEFT JOIN 
+		Dependencies d ON dt.dag_task_id = d.task_id
+	LEFT JOIN 
+		DAG_Tasks dat ON dat.dag_task_id = d.depends_on_task_id
+	WHERE 
+		d.depends_on_task_id IS NULL
+		AND dt.dag_id = (
+			SELECT dag_id
+			FROM DAGs
+			WHERE name = $1
+			ORDER BY version DESC
+			LIMIT 1
+		);
 	`, dagName)
 
 	if err != nil {
@@ -408,9 +440,11 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 	for rows.Next() {
 		var task Task
 		var parameters []string
-		var podTemplateJSON *string
+		var podTemplateJSON sql.NullString
+		var script sql.NullString
 		var dagId int
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &task.Script); err != nil {
+
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &script); err != nil {
 			return nil, err
 		}
 
@@ -432,10 +466,14 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		}
 
 		var podTemplate *v1alpha1.PodTemplateSpec
-		if podTemplateJSON != nil {
-			if err := json.Unmarshal([]byte(*podTemplateJSON), &podTemplate); err != nil {
+		if podTemplateJSON.Valid {
+			if err := json.Unmarshal([]byte(podTemplateJSON.String), &podTemplate); err != nil {
 				return nil, err
 			}
+		}
+
+		if script.Valid {
+			task.Script = &script.String
 		}
 
 		task.PodTemplate = podTemplate
@@ -978,13 +1016,27 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 		jsonValue = &json
 	}
 
+	// Check for an existing task and get its version
+	var currentVersion int
+	err = tx.QueryRow(ctx, `
+    SELECT COALESCE(MAX(version), 0) 
+    FROM Tasks 
+    WHERE name = $1 AND namespace = $2;`,
+		task.Name, namespace).Scan(&currentVersion)
+	if err != nil {
+		return err
+	}
+
+	newVersion := currentVersion + 1
+
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12);`,
+    INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12, $13);`,
 		task.Name, task.Spec.Command, task.Spec.Args, task.Spec.Image, task.Spec.Parameters, task.Spec.Backoff.Limit,
-		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace); err != nil {
+		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
+
 }
