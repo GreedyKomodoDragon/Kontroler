@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -85,8 +86,24 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, nil
 	}
 
+	taskRefs := []kontrolerv1alpha1.TaskRef{}
+	for _, val := range dag.Spec.Task {
+		if val.TaskRef != nil {
+			if val.TaskRef.Name == "" || val.TaskRef.Version == 0 {
+				return ctrl.Result{}, fmt.Errorf("missing name or version")
+			}
+
+			taskRefs = append(taskRefs, *val.TaskRef)
+		}
+	}
+
+	refParams, err := r.DbManager.GetTaskRefsParameters(ctx, taskRefs)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Validate the DAG
-	if err := dag.ValidateDAG(); err != nil {
+	if err := dag.ValidateDAG(refParams); err != nil {
 		// Return error if DAG is not valid
 		return ctrl.Result{}, err
 	}

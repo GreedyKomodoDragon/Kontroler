@@ -76,10 +76,14 @@ type TaskSpec struct {
 	// +optional
 	Command []string `json:"command,omitempty"`
 	// +optional
-	Args        []string    `json:"args,omitempty"`
-	Image       string      `json:"image"`
-	RunAfter    []string    `json:"runAfter,omitempty"`
-	Backoff     Backoff     `json:"backoff"`
+	Args []string `json:"args,omitempty"`
+	// +optional
+	Image string `json:"image"`
+	// +optional
+	RunAfter []string `json:"runAfter,omitempty"`
+	// +optional
+	Backoff Backoff `json:"backoff"`
+	// +optional
 	Conditional Conditional `json:"conditional"`
 	// +optional
 	Parameters []string `json:"parameters,omitempty"`
@@ -92,7 +96,12 @@ type TaskSpec struct {
 	ScriptInjectorImage string `json:"scriptInjectorImage,omitempty"`
 	// Using reference to existing pre-created task - cannot reference another in-line task
 	// +optional
-	TaskRef string `json:"taskRef,omitempty"`
+	TaskRef *TaskRef `json:"taskRef,omitempty"`
+}
+
+type TaskRef struct {
+	Name    string `json:"name"`
+	Version int    `json:"version"`
 }
 
 // Backoff defines the backoff strategy for a task
@@ -147,12 +156,12 @@ func init() {
 }
 
 // ValidateDAG checks if the DAG is valid.
-func (dag *DAG) ValidateDAG() error {
+func (dag *DAG) ValidateDAG(refParams map[TaskRef][]string) error {
 	if err := dag.checkFieldsFilled(); err != nil {
 		return err
 	}
 
-	if err := dag.checkParameters(); err != nil {
+	if err := dag.checkParameters(refParams); err != nil {
 		return err
 	}
 	if err := dag.checkNoCycles(); err != nil {
@@ -180,7 +189,7 @@ func (dag *DAG) checkFieldsFilled() error {
 			return errors.New("task name must be specified")
 		}
 
-		if task.TaskRef != "" {
+		if task.TaskRef != nil {
 			// TODO look up task in DB
 
 			// We ignore any further checks as they will not be used
@@ -310,7 +319,7 @@ func (dag *DAG) checkStartingTask() error {
 }
 
 // checkParameters ensures there is at least one task that has no runAfter dependencies.
-func (dag *DAG) checkParameters() error {
+func (dag *DAG) checkParameters(refParams map[TaskRef][]string) error {
 	paramsMap := map[string]bool{}
 	for _, value := range dag.Spec.Parameters {
 		if value.Name == "" {
@@ -329,6 +338,19 @@ func (dag *DAG) checkParameters() error {
 	}
 
 	for _, task := range dag.Spec.Task {
+		if task.TaskRef != nil {
+			values, ok := refParams[*task.TaskRef]
+			if !ok {
+				continue
+			}
+
+			for _, value := range values {
+				if _, ok := paramsMap[value]; !ok {
+					return fmt.Errorf("parameter selected in task does not exist")
+				}
+			}
+		}
+
 		for _, value := range task.Parameters {
 			if _, ok := paramsMap[value]; !ok {
 				return fmt.Errorf("parameter selected in task does not exist")
