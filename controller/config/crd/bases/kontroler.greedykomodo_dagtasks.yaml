@@ -65,8 +65,6 @@ spec:
                 type: object
               image:
                 type: string
-              name:
-                type: string
               parameters:
                 items:
                   type: string
@@ -2908,7 +2906,6 @@ spec:
             - backoff
             - conditional
             - image
-            - name
             type: object
           status:
             description: DagTaskStatus defines the observed state of DagTask

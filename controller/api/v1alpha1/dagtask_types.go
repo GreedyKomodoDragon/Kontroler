@@ -32,7 +32,6 @@ import (
 
 // DagTaskSpec defines the desired state of DagTask
 type DagTaskSpec struct {
-	Name string `json:"name"`
 	// +optional
 	Command []string `json:"command,omitempty"`
 	// +optional
