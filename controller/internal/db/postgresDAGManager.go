@@ -249,14 +249,26 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	// Insert all tasks into DAG_Tasks
 	for _, task := range dag.Spec.Task {
-		if err := p.insertTask(ctx, tx, dagID, &task, namespace); err != nil {
+		// TODO: Remove duplication of check
+		version := 1
+		if task.TaskRef != nil {
+			version = task.TaskRef.Version
+		}
+
+		if err := p.insertTask(ctx, tx, dagID, &task, namespace, version); err != nil {
 			return err
 		}
 	}
 
 	// After all tasks are inserted, handle dependencies
 	for _, task := range dag.Spec.Task {
-		if err := p.createDependencyConnection(ctx, tx, dagID, &task); err != nil {
+		// TODO: Remove duplication of check
+		version := 1
+		if task.TaskRef != nil {
+			version = task.TaskRef.Version
+		}
+
+		if err := p.createDependencyConnection(ctx, tx, dagID, &task, version); err != nil {
 			return err
 		}
 	}
@@ -288,7 +300,7 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	return nil
 }
 
-func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec, namespace string) error {
+func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec, namespace string, version int) error {
 	var jsonValue *string
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
@@ -302,13 +314,13 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	// Insert the task
 	// Must check if it is inline or not
 	var taskId int
-	inline := task.TaskRef != ""
-	if inline {
 
+	inline := task.TaskRef == nil
+	if !inline {
 		err := tx.QueryRow(ctx, `
 		SELECT task_id FROM Tasks
-		WHERE name = $1 AND inline = FALSE;`, task.TaskRef).Scan(&taskId)
-		if err != nil && err != pgx.ErrNoRows {
+		WHERE name = $1 AND inline = FALSE and version = $2;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
+		if err != nil {
 			return err
 		}
 
@@ -321,12 +333,10 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13) 
 		RETURNING task_id;`,
 			newUUID.String(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
-			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, 1).Scan(&taskId); err != nil {
+			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
 			return err
 		}
 	}
-
-	version := 1
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
@@ -337,9 +347,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	return nil
 }
 
-func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec) error {
-	version := 1
-
+func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec, version int) error {
 	for _, dependency := range task.RunAfter {
 		var taskId, depId int
 
@@ -350,7 +358,12 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 		}
 
 		err = tx.QueryRow(ctx, `
-		SELECT dag_task_id FROM DAG_Tasks WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, dependency, version).Scan(&depId)
+		SELECT dag_task_id
+		FROM DAG_Tasks 
+		WHERE dag_id = $1 AND name = $2
+		ORDER BY version DESC
+		LIMIT 1;
+		;`, dagID, dependency).Scan(&depId)
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				return fmt.Errorf("dependency task %s not found for version %d", dependency, version)
@@ -473,7 +486,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		}
 
 		if script.Valid {
-			task.Script = &script.String
+			task.Script = script.String
 		}
 
 		task.PodTemplate = podTemplate
@@ -1039,4 +1052,25 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 
 	return tx.Commit(ctx)
 
+}
+
+func (p *postgresDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error) {
+	taskMp := map[v1alpha1.TaskRef][]string{}
+
+	querySql := `
+		SELECT parameters
+		FROM Tasks
+		WHERE name = $1 AND version = $2 AND inline = FALSE;
+    `
+
+	for _, val := range taskRefs {
+		var parameters = []string{}
+		if err := p.pool.QueryRow(ctx, querySql, val.Name, val.Version).Scan(&parameters); err != nil {
+			return nil, err
+		}
+
+		taskMp[val] = parameters
+	}
+
+	return taskMp, nil
 }

@@ -3117,12 +3117,22 @@ spec:
                     script:
                       type: string
                     scriptInjectorImage:
-                      description: Used to select the image that is used to push to script into the pod
+                      description: Used to select the image that is used to push to
+                        script into the pod
                       type: string
+                    taskRef:
+                      description: Using reference to existing pre-created task -
+                        cannot reference another in-line task
+                      properties:
+                        name:
+                          type: string
+                        version:
+                          type: integer
+                      required:
+                      - name
+                      - version
+                      type: object
                   required:
-                  - backoff
-                  - conditional
-                  - image
                   - name
                   type: object
                 type: array

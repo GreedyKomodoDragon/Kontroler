@@ -6,7 +6,6 @@ metadata:
     app.kubernetes.io/instance: dagtask-sample
   name: dagtask-sample
 spec:
-  name: "dagtask-example"
   command: ["sh", "-c"]
   args:
     [

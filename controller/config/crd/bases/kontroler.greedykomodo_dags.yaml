@@ -3120,11 +3120,16 @@ spec:
                     taskRef:
                       description: Using reference to existing pre-created task -
                         cannot reference another in-line task
-                      type: string
+                      properties:
+                        name:
+                          type: string
+                        version:
+                          type: integer
+                      required:
+                      - name
+                      - version
+                      type: object
                   required:
-                  - backoff
-                  - conditional
-                  - image
                   - name
                   type: object
                 type: array

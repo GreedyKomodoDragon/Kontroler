@@ -15,6 +15,78 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+// Test case: IncrementAttempts increases the attempts count by 1
+func testDAGManagerInsertDag_TaskRef(t *testing.T, dm db.DBDAGManager) {
+	t.Run("insert dag with taskref", func(t *testing.T) {
+		// Add task to be retrieved
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		namespace := "default"
+		require.NoError(t, dm.AddTask(context.Background(), task, namespace))
+
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name: "task1",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task2",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task3",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+						RunAfter: []string{"task1", "task2"},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, dm.InsertDAG(context.Background(), dag, namespace))
+
+		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+		require.NoError(t, err)
+		require.NotEmpty(t, tasks)
+		require.Len(t, tasks, 2)
+
+		assert.Equal(t, tasks[0].Command, []string{"echo", "Hello"})
+		assert.Equal(t, tasks[0].Args, []string{"arg1", "arg2"})
+		assert.Equal(t, tasks[0].Image, "busybox")
+
+		assert.Equal(t, tasks[1].Command, []string{"echo", "Hello"})
+		assert.Equal(t, tasks[1].Args, []string{"arg1", "arg2"})
+		assert.Equal(t, tasks[1].Image, "busybox")
+
+		assert.Contains(t, []string{tasks[0].Name, tasks[1].Name}, "task1")
+		assert.Contains(t, []string{tasks[0].Name, tasks[1].Name}, "task2")
+	})
+}
+
 // Test case: Retrieve existing unique_id if present in IdTable
 func testDAGManagerGetID_ReturnsExistingID(t *testing.T, dm db.DBDAGManager) {
 	t.Run("ReturnsExistingID", func(t *testing.T) {
@@ -701,5 +773,103 @@ func testDAGManagerFindExistingDAGRun_Not_Exists(t *testing.T, dm db.DBDAGManage
 		ok, err := dm.FindExistingDAGRun(context.Background(), dagrunName)
 		assert.NoError(t, err)
 		assert.True(t, ok)
+	})
+}
+
+func testPostgresDAGManager_AddTask_Success(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Add Task Successfully", func(t *testing.T) {
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Command:    []string{"echo", "hello"},
+				Args:       []string{"world"},
+				Image:      "busybox",
+				Parameters: []string{"param1"},
+				Backoff: v1alpha1.Backoff{
+					Limit: 3,
+				},
+				Conditional: v1alpha1.Conditional{
+					Enabled:    true,
+					RetryCodes: []int{500},
+				},
+			},
+		}
+		namespace := "test_namespace"
+
+		err := dm.AddTask(context.Background(), task, namespace)
+		assert.NoError(t, err)
+	})
+}
+
+func testPostgresDAGManager_AddTask_ExistingTask(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Add Task with Existing Task Name", func(t *testing.T) {
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "existing_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Command:    []string{"echo", "updated"},
+				Args:       []string{"task"},
+				Image:      "busybox:latest",
+				Parameters: []string{"param2"},
+				Backoff: v1alpha1.Backoff{
+					Limit: 2,
+				},
+				Conditional: v1alpha1.Conditional{
+					Enabled:    false,
+					RetryCodes: []int{},
+				},
+			},
+		}
+		namespace := "test_namespace"
+
+		// Insert the initial task
+		err := dm.AddTask(context.Background(), task, namespace)
+		assert.NoError(t, err)
+
+		// Update with a new version
+		task.Spec.Args = []string{"new_version"}
+		err = dm.AddTask(context.Background(), task, namespace)
+		assert.NoError(t, err)
+	})
+}
+
+func testPostgresDAGManager_GetTaskRefsParameters_Success(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Get Parameters for Task Refs Successfully", func(t *testing.T) {
+		// Add task to be retrieved
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{"param1", "param2"},
+			},
+		}
+		namespace := "test_namespace"
+		err := dm.AddTask(context.Background(), task, namespace)
+		require.NoError(t, err)
+
+		taskRefs := []v1alpha1.TaskRef{
+			{Name: "retrieval_task", Version: 1},
+		}
+
+		params, err := dm.GetTaskRefsParameters(context.Background(), taskRefs)
+		assert.NoError(t, err)
+		assert.NotNil(t, params)
+		assert.Equal(t, []string{"param1", "param2"}, params[taskRefs[0]])
+	})
+}
+
+func testPostgresDAGManager_GetTaskRefsParameters_NonExistentTask(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Get Parameters for Non-Existent Task Ref", func(t *testing.T) {
+		taskRefs := []v1alpha1.TaskRef{
+			{Name: "non_existent_task", Version: 1},
+		}
+
+		params, err := dm.GetTaskRefsParameters(context.Background(), taskRefs)
+		assert.Error(t, err)
+		assert.Nil(t, params)
 	})
 }

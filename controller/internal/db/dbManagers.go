@@ -17,7 +17,7 @@ type Task struct {
 	Args                []string
 	Parameters          []Parameter
 	PodTemplate         *v1alpha1.PodTemplateSpec
-	Script              *string
+	Script              string
 	ScriptInjectorImage string
 }
 
@@ -62,4 +62,5 @@ type DBDAGManager interface {
 	FindExistingDAGRun(ctx context.Context, name string) (bool, error)
 	GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error)
 	AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error
+	GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error)
 }

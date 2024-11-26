@@ -324,7 +324,169 @@ func TestValidateDAG(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.dag.ValidateDAG(); (err != nil) != tt.wantErr {
+			if err := tt.dag.ValidateDAG(map[v1alpha1.TaskRef][]string{}); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateDAG() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateDAG_taskRef(t *testing.T) {
+	tests := []struct {
+		name      string
+		dag       v1alpha1.DAG
+		refParams map[v1alpha1.TaskRef][]string
+		wantErr   bool
+	}{
+		{
+			name: "valid single task DAG",
+			dag: v1alpha1.DAG{
+				Spec: v1alpha1.DAGSpec{
+					Schedule: "*/5 * * * *",
+					Parameters: []v1alpha1.DagParameterSpec{
+						{
+							Name:         "paramOne",
+							DefaultValue: "one",
+						},
+					},
+					Task: []v1alpha1.TaskSpec{
+						{
+							Name: "task1",
+							TaskRef: &v1alpha1.TaskRef{
+								Name:    "first",
+								Version: 1,
+							},
+						},
+					},
+				},
+			},
+			refParams: map[v1alpha1.TaskRef][]string{
+				{
+					Name:    "first",
+					Version: 1,
+				}: {"paramOne"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid single task DAG",
+			dag: v1alpha1.DAG{
+				Spec: v1alpha1.DAGSpec{
+					Schedule: "*/5 * * * *",
+					Parameters: []v1alpha1.DagParameterSpec{
+						{
+							Name:         "paramOne",
+							DefaultValue: "one",
+						},
+					},
+					Task: []v1alpha1.TaskSpec{
+						{
+							Name: "task1",
+							TaskRef: &v1alpha1.TaskRef{
+								Name:    "first",
+								Version: 1,
+							},
+						},
+					},
+				},
+			},
+			refParams: map[v1alpha1.TaskRef][]string{
+				{
+					Name:    "first",
+					Version: 1,
+				}: {"paramTwo"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid multiple task DAG",
+			dag: v1alpha1.DAG{
+				Spec: v1alpha1.DAGSpec{
+					Schedule: "*/5 * * * *",
+					Parameters: []v1alpha1.DagParameterSpec{
+						{
+							Name:         "paramOne",
+							DefaultValue: "one",
+						},
+					},
+					Task: []v1alpha1.TaskSpec{
+						{
+							Name: "task1",
+							TaskRef: &v1alpha1.TaskRef{
+								Name:    "first",
+								Version: 1,
+							},
+						},
+						{
+							Name: "task2",
+							TaskRef: &v1alpha1.TaskRef{
+								Name:    "second",
+								Version: 1,
+							},
+							RunAfter: []string{"task1"},
+						},
+					},
+				},
+			},
+			refParams: map[v1alpha1.TaskRef][]string{
+				{
+					Name:    "first",
+					Version: 1,
+				}: {"paramOne"},
+				{
+					Name:    "second",
+					Version: 1,
+				}: {"paramOne"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid multiple task DAG - missing parameters",
+			dag: v1alpha1.DAG{
+				Spec: v1alpha1.DAGSpec{
+					Schedule: "*/5 * * * *",
+					Parameters: []v1alpha1.DagParameterSpec{
+						{
+							Name:         "paramOne",
+							DefaultValue: "one",
+						},
+					},
+					Task: []v1alpha1.TaskSpec{
+						{
+							Name: "task1",
+							TaskRef: &v1alpha1.TaskRef{
+								Name:    "first",
+								Version: 1,
+							},
+						},
+						{
+							Name: "task2",
+							TaskRef: &v1alpha1.TaskRef{
+								Name:    "second",
+								Version: 1,
+							},
+							RunAfter: []string{"task1"},
+						},
+					},
+				},
+			},
+			refParams: map[v1alpha1.TaskRef][]string{
+				{
+					Name:    "first",
+					Version: 1,
+				}: {"paramOne"},
+				{
+					Name:    "second",
+					Version: 1,
+				}: {"paramTwo"},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.dag.ValidateDAG(tt.refParams); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateDAG() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
