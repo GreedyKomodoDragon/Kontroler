@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
     version INTEGER NOT NULL,
     hash VARCHAR(64) NOT NULL,
     schedule VARCHAR(255) NOT NULL,
-    namespace VARCHAR(255) NOT NULL,
+    namespace VARCHAR(63) NOT NULL,
     active BOOLEAN NOT NULL,
     taskCount INTEGER NOT NULL,
     nexttime TIMESTAMP,
@@ -129,23 +129,30 @@ CREATE TABLE IF NOT EXISTS Tasks (
     podTemplate TEXT,  -- Replace JSONB with TEXT or consider JSON1 extension for JSON data
     retryCodes TEXT,   -- Store as TEXT or JSON if array data is needed
     script TEXT NOT NULL,
-    scriptInjectorImage TEXT
+    scriptInjectorImage TEXT,
+	inline BOOL NOT NULL,
+	namespace VARCHAR(63) NOT NULL,
+	version INTEGER NOT NULL,
+	UNIQUE(name, version, namespace)
+);
+
+-- DAG_Tasks table
+CREATE TABLE IF NOT EXISTS DAG_Tasks (
+	dag_task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dag_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	version INTEGER NOT NULL,
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
+    FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
 );
 
 -- Dependencies table
 CREATE TABLE IF NOT EXISTS Dependencies (
     task_id INTEGER NOT NULL,
     depends_on_task_id INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
-    FOREIGN KEY (depends_on_task_id) REFERENCES Tasks(task_id)
-);
-
--- DAG_Tasks table
-CREATE TABLE IF NOT EXISTS DAG_Tasks (
-    dag_id INTEGER NOT NULL,
-    task_id INTEGER NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
+    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id),
+    FOREIGN KEY (depends_on_task_id) REFERENCES DAG_Tasks(dag_task_id)
 );
 
 -- DAG_Runs table
@@ -378,7 +385,26 @@ func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alp
 
 	// Insert tasks and map them to the DAG
 	for _, task := range dag.Spec.Task {
-		if err := s.insertTask(ctx, tx, dagID, &task); err != nil {
+		// TODO: Remove duplication of check
+		version := 1
+		if task.TaskRef != nil {
+			version = task.TaskRef.Version
+		}
+
+		if err := s.insertTask(ctx, tx, dagID, &task, namespace, version); err != nil {
+			return err
+		}
+	}
+
+	// After all tasks are inserted, handle dependencies
+	for _, task := range dag.Spec.Task {
+		// TODO: Remove duplication of check
+		version := 1
+		if task.TaskRef != nil {
+			version = task.TaskRef.Version
+		}
+
+		if err := s.createDependencyConnection(ctx, tx, dagID, &task, version); err != nil {
 			return err
 		}
 	}
@@ -393,7 +419,7 @@ func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alp
 	return nil
 }
 
-func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int, task *v1alpha1.TaskSpec) error {
+func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int, task *v1alpha1.TaskSpec, namespace string, version int) error {
 	var jsonValue *string
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
@@ -425,38 +451,69 @@ func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int
 		return err
 	}
 
-	// Insert the task
 	var taskId int
-	if err := tx.QueryRowContext(ctx, `
-	INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage) 
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-	RETURNING task_id`,
-		task.Name, commandJson, argsJson, task.Image, paramsJson, task.Backoff.Limit,
-		task.Conditional.Enabled, retryCodesJson, jsonValue, task.Script, task.ScriptInjectorImage).Scan(&taskId); err != nil {
-		return err
-	}
-
-	// Map the task to the DAG
-	if _, err := tx.Exec(`
-	INSERT INTO DAG_Tasks (dag_id, task_id)
-	 VALUES (?, ?)`, dagID, taskId); err != nil {
-		return err
-	}
-
-	// Insert task dependencies
-	for _, dependency := range task.RunAfter {
-		var depId int
+	inline := task.TaskRef == nil
+	if !inline {
 		err := tx.QueryRowContext(ctx, `
-		SELECT task_id FROM tasks
-		WHERE task_id in (SELECT task_id FROM DAG_Tasks WHERE dag_id = ?)
-			AND name = ?`, dagID, dependency).Scan(&depId)
-		if err != nil && err != pgx.ErrNoRows {
+		SELECT task_id FROM Tasks
+		WHERE name = ? AND inline = FALSE and version = ?;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
+		if err != nil {
 			return err
 		}
 
-		if _, err = tx.Exec(`
+	} else {
+		// must provide a unique name - name is used not used for in-line and must just be unique
+		newUUID := uuid.New()
+
+		if err := tx.QueryRowContext(ctx, `
+		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?) 
+		RETURNING task_id;`,
+			newUUID.String(), commandJson, argsJson, task.Image, paramsJson, task.Backoff.Limit,
+			task.Conditional.Enabled, retryCodesJson, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
+		VALUES (?, ?, ?, ?);`, dagID, taskId, task.Name, version); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *sqliteDAGManager) createDependencyConnection(ctx context.Context, tx *sql.Tx, dagID int, task *v1alpha1.TaskSpec, version int) error {
+	for _, dependency := range task.RunAfter {
+		var taskId, depId int
+
+		err := tx.QueryRowContext(ctx, `
+		SELECT dag_task_id
+		FROM DAG_Tasks 
+		WHERE dag_id = ? AND name = ? AND version = ?;
+		`, dagID, task.Name, version).Scan(&taskId)
+		if err != nil {
+			return fmt.Errorf("task: %s not found for version %d", task.Name, version)
+		}
+
+		err = tx.QueryRowContext(ctx, `
+		SELECT dag_task_id
+		FROM DAG_Tasks 
+		WHERE dag_id = ? AND name = ?
+		ORDER BY version DESC
+		LIMIT 1;
+		;`, dagID, dependency).Scan(&depId)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return fmt.Errorf("dependency task %s not found for version %d", dependency, version)
+			}
+			return err
+		}
+
+		if _, err := tx.ExecContext(ctx, `
 		INSERT INTO Dependencies (task_id, depends_on_task_id) 
-		VALUES (?, ?)`, taskId, depId); err != nil {
+		VALUES (?, ?);`, taskId, depId); err != nil {
 			return err
 		}
 	}
@@ -553,18 +610,24 @@ func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (
 
 func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
 	rows, err := s.db.Query(`
-	SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
-	FROM Tasks t
-	LEFT JOIN Dependencies d ON t.task_id = d.task_id
-	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
-	WHERE d.depends_on_task_id IS NULL
-	AND dt.dag_id IN (
-		SELECT dag_id
-		FROM DAGs
-		WHERE name = ?
-		ORDER BY version DESC
-		LIMIT 1
-  	);
+	SELECT t.task_id, dt.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
+	FROM 
+		Tasks t
+	JOIN 
+		DAG_Tasks dt ON t.task_id = dt.task_id
+	LEFT JOIN 
+		Dependencies d ON dt.dag_task_id = d.task_id
+	LEFT JOIN 
+		DAG_Tasks dat ON dat.dag_task_id = d.depends_on_task_id
+	WHERE 
+		d.depends_on_task_id IS NULL
+		AND dt.dag_id = (
+			SELECT dag_id
+			FROM DAGs
+			WHERE name = ?
+			ORDER BY version DESC
+			LIMIT 1
+		);
 	`, dagName)
 
 	if err != nil {
@@ -744,8 +807,9 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 			GROUP BY d.task_id, dc.DependCount
 			HAVING COUNT(*) = dc.DependCount
 		)
-		SELECT t.task_id, t.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
+		SELECT t.task_id, dat.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
 		FROM Tasks t
+		LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 		WHERE 
 			t.task_id in (SELECT task_id FROM RunnableTask) 
 			AND t.task_id not in (select task_id FROM task_runs WHERE run_id = ?)
@@ -1069,9 +1133,93 @@ func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, ta
 }
 
 func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {
-	return nil
+	// Begin transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// Rollback transaction if not committed
+	defer tx.Rollback()
+
+	var jsonValue *string
+	if task.Spec.PodTemplate != nil {
+		json, err := task.Spec.PodTemplate.Serialize()
+		if err != nil {
+			return err
+		}
+
+		jsonValue = &json
+	}
+
+	// SQLite has no slice/array type so we need to convert it to a JSON string
+	commandJson, err := json.Marshal(task.Spec.Command)
+	if err != nil {
+		return err
+	}
+
+	argsJson, err := json.Marshal(task.Spec.Args)
+	if err != nil {
+		return err
+	}
+
+	paramsJson, err := json.Marshal(task.Spec.Parameters)
+	if err != nil {
+		return err
+	}
+
+	retryCodesJson, err := json.Marshal(task.Spec.Conditional.RetryCodes)
+	if err != nil {
+		return err
+	}
+
+	// Check for an existing task and get its version
+	var currentVersion int
+	err = tx.QueryRowContext(ctx, `
+    SELECT COALESCE(MAX(version), 0) 
+    FROM Tasks 
+    WHERE name = ? AND namespace = ?;
+	`, task.Name, namespace).Scan(&currentVersion)
+	if err != nil {
+		return err
+	}
+
+	newVersion := currentVersion + 1
+
+	if _, err := tx.ExecContext(ctx, `
+    INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?);`,
+		task.Name, commandJson, argsJson, task.Spec.Image, paramsJson, task.Spec.Backoff.Limit,
+		task.Spec.Conditional.Enabled, retryCodesJson, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *sqliteDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error) {
-	return nil, nil
+	taskMp := map[v1alpha1.TaskRef][]string{}
+
+	querySql := `
+		SELECT parameters
+		FROM Tasks
+		WHERE name = ? AND version = ? AND inline = FALSE;
+    `
+
+	for _, val := range taskRefs {
+		var paramsJson string
+		if err := s.db.QueryRowContext(ctx, querySql, val.Name, val.Version).Scan(&paramsJson); err != nil {
+			return nil, err
+		}
+
+		var parameters []string
+
+		if err := json.Unmarshal([]byte(paramsJson), &parameters); err != nil {
+			return nil, err
+		}
+
+		taskMp[val] = parameters
+	}
+
+	return taskMp, nil
 }

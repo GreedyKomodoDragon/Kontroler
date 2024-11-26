@@ -1051,7 +1051,6 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 	}
 
 	return tx.Commit(ctx)
-
 }
 
 func (p *postgresDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error) {
