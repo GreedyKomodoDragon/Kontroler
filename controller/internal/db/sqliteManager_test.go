@@ -100,7 +100,7 @@ func Test_Sqlite_UpsertDAG(t *testing.T) {
 
 	// Verify the new task was inserted
 	var taskName string
-	err = dbConn.QueryRow("SELECT name FROM Tasks WHERE name = 'task3'").Scan(&taskName)
+	err = dbConn.QueryRow("SELECT name FROM DAG_Tasks WHERE name = 'task3'").Scan(&taskName)
 	require.NoError(t, err, "Failed to query new task")
 	require.NotZero(t, taskName, "Task name should not be zero")
 
@@ -653,4 +653,57 @@ func Test_SQLite_DAGManager_FindExistingDAGRun(t *testing.T) {
 
 	testDAGManagerFindExistingDAGRun_Exists(t, dm)
 	testDAGManagerFindExistingDAGRun_Not_Exists(t, dm)
+}
+
+func Test_SQLite_AddTask(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testPostgresDAGManager_AddTask_Success(t, dm)
+	testPostgresDAGManager_AddTask_ExistingTask(t, dm)
+}
+
+func Test_SQLite_GetTaskRefsParameters(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testPostgresDAGManager_GetTaskRefsParameters_Success(t, dm)
+	testPostgresDAGManager_GetTaskRefsParameters_NonExistentTask(t, dm)
+}
+
+func Test_SQLite_InsertDag_TaskRef(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerInsertDag_TaskRef(t, dm)
 }
