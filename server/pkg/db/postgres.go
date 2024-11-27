@@ -153,22 +153,19 @@ func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map
 	// Get the connections
 	rows, err := p.pool.Query(ctx, `
 	SELECT 
-		t.task_id, 
+		dt.dag_task_id,
 		CASE 
 			WHEN array_agg(td.depends_on_task_id) = ARRAY[NULL]::INTEGER[] THEN ARRAY[]::INTEGER[]
 			ELSE COALESCE(array_agg(td.depends_on_task_id), ARRAY[]::INTEGER[])
-    	END AS dependencies
+		END AS dependencies
 	FROM 
 		Tasks t
 	LEFT JOIN 
-		Dependencies td ON t.task_id = td.task_id
-	WHERE t.task_id in (
-		SELECT task_id
-		FROM DAG_Tasks
-		WHERE dag_id = $1
-	)
-	GROUP BY 
-		t.task_id;`, dagId)
+		DAG_Tasks dt ON t.task_id = dt.task_id
+	LEFT JOIN 
+		Dependencies td ON dt.dag_task_id = td.task_id
+	WHERE dt.dag_id = $1
+	GROUP BY dt.dag_task_id;`, dagId)
 
 	if err != nil {
 		return nil, err
@@ -290,11 +287,11 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 
 	// Query for the task details from the Tasks table
 	queryTask := `
-			SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
-			FROM Tasks t
-			LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
-			WHERE t.task_id = $1;
-		`
+		SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+		FROM Tasks t
+		LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+		WHERE dat.dag_task_id = $1;
+	`
 
 	if err := p.pool.QueryRow(ctx, queryTask, taskId).Scan(
 		&taskDetails.ID,

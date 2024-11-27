@@ -352,7 +352,9 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 		var taskId, depId int
 
 		err := tx.QueryRow(ctx, `
-		SELECT dag_task_id FROM DAG_Tasks WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, task.Name, version).Scan(&taskId)
+		SELECT dag_task_id 
+		FROM DAG_Tasks 
+		WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, task.Name, version).Scan(&taskId)
 		if err != nil {
 			return fmt.Errorf("task %s not found for version %d", task.Name, version)
 		}
@@ -423,7 +425,16 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
-	SELECT t.task_id, dt.name, t.image, t.command, t.args, t.parameters, t.podtemplate, dt.dag_id, t.script
+	SELECT 
+		dt.dag_task_id,
+		dt.name, 
+		t.image, 
+		t.command, 
+		t.args, 
+		t.parameters, 
+		t.podTemplate, 
+		dt.dag_id, 
+		t.script
 	FROM 
 		Tasks t
 	JOIN 
@@ -433,7 +444,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 	LEFT JOIN 
 		DAG_Tasks dat ON dat.dag_task_id = d.depends_on_task_id
 	WHERE 
-		d.depends_on_task_id IS NULL
+		d.depends_on_task_id IS NULL  -- Ensure tasks with no dependencies
 		AND dt.dag_id = (
 			SELECT dag_id
 			FROM DAGs
@@ -521,17 +532,20 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 
 	defer tx.Rollback(ctx)
 
-	var taskId int
 	var runId int
-	err = tx.QueryRow(ctx, "UPDATE Task_Runs SET status = 'success' WHERE task_run_id = $1 RETURNING task_id, run_id", taskRunId).Scan(&taskId, &runId)
+	err = tx.QueryRow(ctx, `
+	UPDATE Task_Runs 
+	SET status = 'success' 
+	WHERE task_run_id = $1 
+	RETURNING run_id`, taskRunId).Scan(&runId)
 	if err != nil && err != pgx.ErrNoRows {
 		return nil, err
 	}
 
 	if _, err := tx.Exec(ctx, `
-			UPDATE DAG_Runs 
-			SET successfulCount = successfulCount + 1
-			WHERE run_id = $1;`, runId); err != nil {
+		UPDATE DAG_Runs 
+		SET successfulCount = successfulCount + 1
+		WHERE run_id = $1;`, runId); err != nil {
 		return nil, err
 	}
 
@@ -570,33 +584,93 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	}
 
 	rows, err := tx.Query(ctx, `
-		WITH CompletedTask AS (
-			SELECT run_id, task_id 
-			FROM Task_Runs 
-			WHERE task_run_id = $1
+		WITH CompletedTasks AS (
+			SELECT 
+				tr.run_id, 
+				tr.task_id
+			FROM 
+				Task_Runs tr
+			WHERE 
+				tr.task_run_id = $1
 		),
 		DependCount AS (
-			SELECT d.task_id, COUNT(*) AS DependCount
-			FROM Dependencies d
-			JOIN Dependencies dep ON d.task_id = dep.task_id
-			JOIN CompletedTask ct ON dep.depends_on_task_id = ct.task_id
-			GROUP BY d.task_id
+			SELECT 
+				d.task_id, 
+				COUNT(d.depends_on_task_id) AS total_dependencies
+			FROM 
+				Dependencies d
+			GROUP BY 
+				d.task_id
 		),
-		RunnableTask as (
-			SELECT d.task_id
-			FROM Dependencies d
-			LEFT JOIN Task_Runs tr ON tr.task_id = d.depends_on_task_id
-			LEFT JOIN DependCount dc ON d.task_id = dc.task_id
-			WHERE tr.status = 'success' AND task_run_id = $1
-			GROUP BY d.task_id, dc.DependCount
-			HAVING COUNT(*) = dc.DependCount
+		MetDependencies AS (
+			SELECT 
+				d.task_id,
+				COUNT(d.depends_on_task_id) AS met_dependencies
+			FROM 
+				Dependencies d
+			JOIN 
+				Task_Runs tr 
+				ON d.depends_on_task_id = tr.task_id
+			WHERE 
+				tr.status = 'success'
+			GROUP BY 
+				d.task_id
+		),
+		RunnableTask AS (
+			SELECT 
+				dc.task_id
+			FROM 
+				DependCount dc
+			LEFT JOIN 
+				MetDependencies md 
+				ON dc.task_id = md.task_id
+			WHERE 
+				COALESCE(md.met_dependencies, 0) = dc.total_dependencies
+			UNION
+			SELECT 
+				d.task_id
+			FROM 
+				Dependencies d
+			WHERE 
+				NOT EXISTS (
+					SELECT 
+						1 
+					FROM 
+						Dependencies sub 
+					WHERE 
+						sub.task_id = d.task_id
+				)
+		),
+		FilteredTasks AS (
+			SELECT 
+				rt.task_id
+			FROM 
+				RunnableTask rt
+			WHERE 
+				rt.task_id NOT IN (
+					SELECT 
+						tr.task_id
+					FROM 
+						Task_Runs tr
+					WHERE 
+						tr.run_id = $2
+				)
 		)
-		SELECT t.task_id, dat.name, t.image, t.command, t.args, t.parameters, t.ScriptInjectorImage
-		FROM Tasks t
-		LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+		SELECT 
+			dat.dag_task_id, 
+			dat.name, 
+			t.image, 
+			t.command, 
+			t.args, 
+			t.parameters, 
+			t.scriptInjectorImage
+		FROM 
+			Tasks t
+		JOIN 
+			DAG_Tasks dat 
+			ON dat.task_id = t.task_id
 		WHERE 
-			t.task_id in (SELECT task_id FROM RunnableTask) 
-			AND t.task_id not in (select task_id FROM task_runs WHERE run_id = $2)
+			dat.dag_task_id IN (SELECT task_id FROM FilteredTasks);
     `, taskRunId, runId)
 
 	if err != nil {
