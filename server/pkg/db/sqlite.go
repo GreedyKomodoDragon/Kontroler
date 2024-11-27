@@ -382,11 +382,37 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 				SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS active_dag_runs
 			FROM DAG_Runs;
 		`
+		var successfulDagRuns, failedDagRuns, totalDagRuns, activeDagRuns sql.NullInt64
 		row := s.db.QueryRowContext(ctx, dagRunsQuery)
-		if err := row.Scan(&stats.SuccessfulDagRuns, &stats.FailedDagRuns, &stats.TotalDagRuns, &stats.ActiveDagRuns); err != nil {
+		if err := row.Scan(&successfulDagRuns, &failedDagRuns, &totalDagRuns, &activeDagRuns); err != nil {
 			errChan <- fmt.Errorf("failed to execute dagRunsQuery: %w", err)
 			return
 		}
+
+		if successfulDagRuns.Valid {
+			stats.SuccessfulDagRuns = int(successfulDagRuns.Int64)
+		} else {
+			stats.SuccessfulDagRuns = 0
+		}
+
+		if failedDagRuns.Valid {
+			stats.FailedDagRuns = int(failedDagRuns.Int64)
+		} else {
+			stats.FailedDagRuns = 0
+		}
+
+		if totalDagRuns.Valid {
+			stats.TotalDagRuns = int(totalDagRuns.Int64)
+		} else {
+			stats.TotalDagRuns = 0
+		}
+
+		if activeDagRuns.Valid {
+			stats.ActiveDagRuns = int(activeDagRuns.Int64)
+		} else {
+			stats.ActiveDagRuns = 0
+		}
+
 	}()
 
 	// Goroutine for Task Outcomes
@@ -404,17 +430,25 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 			) tp ON tr.task_run_id = tp.task_run_id
 			WHERE tp.max_updated_at >= datetime('now', '-30 days');
 		`
-		var completedTasks, failedTasks int
+		var completedTasks, failedTasks sql.NullInt64
 		row := s.db.QueryRowContext(ctx, taskOutcomesQuery)
 		if err := row.Scan(&completedTasks, &failedTasks); err != nil {
 			errChan <- fmt.Errorf("failed to execute taskOutcomesQuery: %w", err)
 			return
 		}
 
-		// Set task outcomes
-		stats.TaskOutcomes = map[string]int{
-			"Completed": completedTasks,
-			"Failed":    failedTasks,
+		stats.TaskOutcomes = map[string]int{}
+
+		if completedTasks.Valid {
+			stats.TaskOutcomes["Completed"] = int(completedTasks.Int64)
+		} else {
+			stats.TaskOutcomes["Completed"] = 0
+		}
+
+		if failedTasks.Valid {
+			stats.TaskOutcomes["Failed"] = int(failedTasks.Int64)
+		} else {
+			stats.TaskOutcomes["Failed"] = 0
 		}
 	}()
 
@@ -564,7 +598,6 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 	return results, nil
 }
 
-// GetTaskDetails implements DbManager.
 func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
 	var taskDetails TaskDetails
 	var podTemplateJSON *string
@@ -575,9 +608,10 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDe
 
 	// Query for the task details from the Tasks table
 	queryTask := `
-			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes, script, parameters
-			FROM Tasks
-			WHERE task_id = ?;
+			SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+			FROM Tasks t
+			LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+			WHERE t.task_id = ?;
 		`
 
 	if err := s.db.QueryRowContext(ctx, queryTask, taskId).Scan(
