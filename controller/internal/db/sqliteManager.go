@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS Tasks (
 	inline BOOL NOT NULL,
 	namespace VARCHAR(63) NOT NULL,
 	version INTEGER NOT NULL,
+	hash VARCHAR(64),
 	UNIQUE(name, version, namespace)
 );
 
@@ -1262,6 +1263,31 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 	// Rollback transaction if not committed
 	defer tx.Rollback()
 
+	var taskId int
+	var version int
+	var hash *string
+
+	err = tx.QueryRowContext(ctx, `
+	SELECT task_id, version, hash
+	FROM Tasks
+	WHERE name = ? AND namespace = ?
+	ORDER BY version DESC;`, task.Name, namespace).Scan(&taskId, &version, &hash)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	if hash != nil {
+		hashBytes := hashDagTaskSpec(&task.Spec)
+		if hashBytes == nil {
+			return fmt.Errorf("failed to create hash")
+		}
+
+		hashValue := fmt.Sprintf("%x", hashBytes)
+		if *hash == hashValue {
+			return fmt.Errorf("applying the same task")
+		}
+	}
+
 	var jsonValue *string
 	if task.Spec.PodTemplate != nil {
 		json, err := task.Spec.PodTemplate.Serialize()
@@ -1293,18 +1319,7 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 		return err
 	}
 
-	// Check for an existing task and get its version
-	var currentVersion int
-	err = tx.QueryRowContext(ctx, `
-    SELECT COALESCE(MAX(version), 0) 
-    FROM Tasks 
-    WHERE name = ? AND namespace = ?;
-	`, task.Name, namespace).Scan(&currentVersion)
-	if err != nil {
-		return err
-	}
-
-	newVersion := currentVersion + 1
+	newVersion := version + 1
 
 	if _, err := tx.ExecContext(ctx, `
     INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version)

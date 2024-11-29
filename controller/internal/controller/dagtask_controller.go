@@ -52,18 +52,13 @@ type DagTaskReconciler struct {
 func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	log.Log.Info("reconcile event", "controller", "dag", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
+	log.Log.Info("reconcile event", "controller", "dagTask", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
 
 	// Fetch the DAG object that triggered the reconciliation
 	var task kontrolerv1alpha1.DagTask
 	if err := r.Get(ctx, req.NamespacedName, &task); err != nil {
 		// Handle the case where the DAG object was deleted before reconciliation
 		if errors.IsNotFound(err) {
-			// Task was deleted, remove it from the database
-			// if err := r.deleteFromDatabase(ctx, req.NamespacedName); err != nil {
-			// 	return ctrl.Result{}, err
-			// }
-
 			return ctrl.Result{}, nil
 		}
 
@@ -73,31 +68,17 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Check if the Task is marked for deletion
 	if !task.ObjectMeta.DeletionTimestamp.IsZero() {
-		// // The DAG is being deleted, remove it from the database
-		// if err := r.deleteFromDatabase(ctx, req.NamespacedName); err != nil {
-		// 	return ctrl.Result{}, err
-		// }
-		// // Remove the finalizer if it exists
-		// if controllerutil.ContainsFinalizer(&task, "dag.finalizer.kontroler.greedykomodo") {
-		// 	controllerutil.RemoveFinalizer(&task, "dag.finalizer.kontroler.greedykomodo")
-		// 	if err := r.Update(ctx, &task); err != nil {
-		// 		return ctrl.Result{}, err
-		// 	}
-		// }
-
+		// TODO: Check if has finialiser on it, if so ignored/say not allowed
+		// TODO: Check that it has no dags using that task:
+		//       - if it does => add finialiser to it
+		//       - if it does not => (soft?) delete the task
 		return ctrl.Result{}, nil
 	}
 
-	// // Validate the DAG
-	// if err := task.Validate(); err != nil {
-	// 	// Return error if DAG is not valid
-	// 	return ctrl.Result{}, err
-	// }
-
 	// Store the DAG object in the database
 	if err := r.DbManager.AddTask(ctx, &task, req.NamespacedName.Namespace); err != nil {
-		if err.Error() == "applying the same dag" {
-			log.Log.Info("reconcile event", "controller", "dag", "event", "applying the same dag")
+		if err.Error() == "applying the same task" {
+			log.Log.Info("reconcile event", "controller", "task", "event", "applying the same task")
 			return ctrl.Result{}, nil
 		}
 

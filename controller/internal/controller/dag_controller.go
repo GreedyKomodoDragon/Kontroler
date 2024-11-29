@@ -118,6 +118,8 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// TODO: Get tasks that has references and add finialisers to them so they cannot be deleted until all references are gone
+
 	return ctrl.Result{}, nil
 }
 
