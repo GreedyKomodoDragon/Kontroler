@@ -704,8 +704,8 @@ func TestPostgresDAGManager_AddTask(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testPostgresDAGManager_AddTask_Success(t, dm)
-	testPostgresDAGManager_AddTask_ExistingTask(t, dm)
+	testDAGManager_AddTask_Success(t, dm)
+	testDAGManager_AddTask_ExistingTask(t, dm)
 }
 
 func TestPostgresDAGManager_GetTaskRefsParameters(t *testing.T) {
@@ -722,8 +722,8 @@ func TestPostgresDAGManager_GetTaskRefsParameters(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testPostgresDAGManager_GetTaskRefsParameters_Success(t, dm)
-	testPostgresDAGManager_GetTaskRefsParameters_NonExistentTask(t, dm)
+	testDAGManager_GetTaskRefsParameters_Success(t, dm)
+	testDAGManager_GetTaskRefsParameters_NonExistentTask(t, dm)
 }
 
 func TestPostgresDAGManager_InsertDag_TaskRef(t *testing.T) {
@@ -759,7 +759,7 @@ func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testPostgresDAGManager_AddTask_Success(t, dm)
+	testDAGManager_AddTask_Success(t, dm)
 
 	dag := &v1alpha1.DAG{
 		ObjectMeta: metav1.ObjectMeta{
@@ -821,4 +821,24 @@ func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
 	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
+	require.Equal(t, tasks[0].Name, "task3")
+}
+
+func Test_Postgres_Complex_Example(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_AddTask_Success(t, dm)
+	testDAGManager_Complex_Dag(t, dm)
 }
