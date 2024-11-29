@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -80,6 +79,7 @@ CREATE TABLE IF NOT EXISTS Tasks (
 	inline BOOL NOT NULL,
 	namespace VARCHAR(63) NOT NULL,
 	version INTEGER NOT NULL,
+	hash VARCHAR(64),
 	UNIQUE(name, version, namespace)
 );
 
@@ -149,21 +149,6 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
 	}
 
 	return nil
-}
-
-func hashDagSpec(s *v1alpha1.DAGSpec) []byte {
-	// Convert the DAGSpec to JSON
-	data, err := json.Marshal(s)
-	if err != nil {
-		// Handle the error appropriately
-		return nil
-	}
-
-	// Hash the JSON bytes
-	hash := sha256.New()
-	hash.Write(data)
-
-	return hash.Sum(nil)
 }
 
 func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
@@ -1143,6 +1128,31 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 	// Rollback transaction if not committed
 	defer tx.Rollback(ctx)
 
+	var taskId int
+	var version int
+	var hash *string
+
+	err = tx.QueryRow(ctx, `
+	SELECT task_id, version, hash
+	FROM Tasks
+	WHERE name = $1 AND namespace = $2
+	ORDER BY version DESC;`, task.Name, namespace).Scan(&taskId, &version, &hash)
+	if err != nil && err != pgx.ErrNoRows {
+		return err
+	}
+
+	if hash != nil {
+		hashBytes := hashDagTaskSpec(&task.Spec)
+		if hashBytes == nil {
+			return fmt.Errorf("failed to create hash")
+		}
+
+		hashValue := fmt.Sprintf("%x", hashBytes)
+		if *hash == hashValue {
+			return fmt.Errorf("applying the same task")
+		}
+	}
+
 	var jsonValue *string
 	if task.Spec.PodTemplate != nil {
 		json, err := task.Spec.PodTemplate.Serialize()
@@ -1153,18 +1163,7 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 		jsonValue = &json
 	}
 
-	// Check for an existing task and get its version
-	var currentVersion int
-	err = tx.QueryRow(ctx, `
-    SELECT COALESCE(MAX(version), 0) 
-    FROM Tasks 
-    WHERE name = $1 AND namespace = $2;`,
-		task.Name, namespace).Scan(&currentVersion)
-	if err != nil {
-		return err
-	}
-
-	newVersion := currentVersion + 1
+	newVersion := version + 1
 
 	if _, err := tx.Exec(ctx, `
     INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version)
