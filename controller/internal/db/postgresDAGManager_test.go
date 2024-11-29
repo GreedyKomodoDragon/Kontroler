@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
@@ -672,6 +671,41 @@ func TestPostgresDAGManager_SoftDeleteDag(t *testing.T) {
 	testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t, dm)
 }
 
+func TestPostgresDAGManager_SoftDeleteDag_TaskRefs(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
+}
+
+func TestPostgresDAGManager_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
+}
+
 func TestPostgresDAGManager_FindExistingDAGRun(t *testing.T) {
 	pool, err := utils.SetupPostgresContainer(context.Background())
 	if err != nil {
@@ -807,7 +841,6 @@ func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
 	require.Len(t, tasks, 2)
 	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
 
-	fmt.Println(tasks[0].Id, tasks[1].Id)
 	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
 	require.NoError(t, err)
 
