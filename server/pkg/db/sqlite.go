@@ -168,19 +168,16 @@ func (s *sqliteManager) getDagConnections(ctx context.Context, dagId int) (map[i
 	// Query for the task connections
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT 
-			t.task_id, 
+			dt.dag_task_id,
 			COALESCE(GROUP_CONCAT(td.depends_on_task_id), '') AS dependencies
 		FROM 
 			Tasks t
 		LEFT JOIN 
-			Dependencies td ON t.task_id = td.task_id
-		WHERE t.task_id IN (
-			SELECT task_id
-			FROM DAG_Tasks
-			WHERE dag_id = ?
-		)
-		GROUP BY 
-			t.task_id;
+		DAG_Tasks dt ON t.task_id = dt.task_id
+		LEFT JOIN 
+			Dependencies td ON dt.dag_task_id = td.task_id
+		WHERE dt.dag_id = ?
+		GROUP BY dt.dag_task_id;
 	`, dagId)
 
 	if err != nil {

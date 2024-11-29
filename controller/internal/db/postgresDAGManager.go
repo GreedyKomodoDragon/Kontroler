@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
@@ -249,11 +250,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	// Insert all tasks into DAG_Tasks
 	for _, task := range dag.Spec.Task {
-		// TODO: Remove duplication of check
-		version := 1
-		if task.TaskRef != nil {
-			version = task.TaskRef.Version
-		}
+		version := getTaskVersion(&task)
 
 		if err := p.insertTask(ctx, tx, dagID, &task, namespace, version); err != nil {
 			return err
@@ -262,11 +259,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	// After all tasks are inserted, handle dependencies
 	for _, task := range dag.Spec.Task {
-		// TODO: Remove duplication of check
-		version := 1
-		if task.TaskRef != nil {
-			version = task.TaskRef.Version
-		}
+		version := getTaskVersion(&task)
 
 		if err := p.createDependencyConnection(ctx, tx, dagID, &task, version); err != nil {
 			return err
@@ -572,131 +565,181 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		return []Task{}, nil
 	}
 
-	var dagId int
-	err = tx.QueryRow(ctx, `
-		SELECT dag_id
-		FROM dag_runs
-		WHERE run_id = $1
-	`, runId).Scan(&dagId)
-
+	dagId, err := p.getDAGIdFromRun(ctx, tx, runId)
 	if err != nil {
 		return nil, err
 	}
 
+	tasks, parameters, err := p.getNextRunnableTasks(ctx, tx, taskRunId, runId, dagId)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.fetchTaskParameters(ctx, tx, dagId, tasks, parameters); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
+}
+
+func (p *postgresDAGManager) getNextRunnableTasks(ctx context.Context, tx pgx.Tx, taskRunId, runId int, dagId int) ([]Task, [][]string, error) {
+	dependencyCounts, err := p.getDependencyCounts(ctx, tx, dagId)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	metDependencies, err := p.getMetDependencies(ctx, tx, dagId)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	runnableTasks, err := p.getRunnableTasks(ctx, tx, dependencyCounts, metDependencies, taskRunId)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return p.getTasksByIds(ctx, tx, runnableTasks)
+}
+
+func (p *postgresDAGManager) getRunnableTasks(ctx context.Context, tx pgx.Tx, dependencyCounts, metDependencies map[int]int, taskRunId int) ([]int, error) {
+	var runnableTasks []int
+
+	for taskId, totalDeps := range dependencyCounts {
+		metDeps := metDependencies[taskId]
+		if totalDeps != metDeps {
+			continue
+		}
+		var taskStatus string
+		err := tx.QueryRow(ctx, `
+                SELECT status
+                FROM Task_Runs
+                WHERE task_id = $1 AND run_id = $2;
+            `, taskId, taskRunId).Scan(&taskStatus)
+
+		if err == pgx.ErrNoRows {
+			runnableTasks = append(runnableTasks, taskId)
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+	}
+
+	return runnableTasks, nil
+}
+
+func (p *postgresDAGManager) getDependencyCounts(ctx context.Context, tx pgx.Tx, dagId int) (map[int]int, error) {
 	rows, err := tx.Query(ctx, `
-		WITH CompletedTasks AS (
-			SELECT 
-				tr.run_id, 
-				tr.task_id
-			FROM 
-				Task_Runs tr
-			WHERE 
-				tr.task_run_id = $1
-		),
-		DependCount AS (
-			SELECT 
-				d.task_id, 
-				COUNT(d.depends_on_task_id) AS total_dependencies
-			FROM 
-				Dependencies d
-			GROUP BY 
-				d.task_id
-		),
-		MetDependencies AS (
-			SELECT 
-				d.task_id,
-				COUNT(d.depends_on_task_id) AS met_dependencies
-			FROM 
-				Dependencies d
-			JOIN 
-				Task_Runs tr 
-				ON d.depends_on_task_id = tr.task_id
-			WHERE 
-				tr.status = 'success'
-			GROUP BY 
-				d.task_id
-		),
-		RunnableTask AS (
-			SELECT 
-				dc.task_id
-			FROM 
-				DependCount dc
-			LEFT JOIN 
-				MetDependencies md 
-				ON dc.task_id = md.task_id
-			WHERE 
-				COALESCE(md.met_dependencies, 0) = dc.total_dependencies
-			UNION
-			SELECT 
-				d.task_id
-			FROM 
-				Dependencies d
-			WHERE 
-				NOT EXISTS (
-					SELECT 
-						1 
-					FROM 
-						Dependencies sub 
-					WHERE 
-						sub.task_id = d.task_id
-				)
-		),
-		FilteredTasks AS (
-			SELECT 
-				rt.task_id
-			FROM 
-				RunnableTask rt
-			WHERE 
-				rt.task_id NOT IN (
-					SELECT 
-						tr.task_id
-					FROM 
-						Task_Runs tr
-					WHERE 
-						tr.run_id = $2
-				)
-		)
-		SELECT 
-			dat.dag_task_id, 
-			dat.name, 
-			t.image, 
-			t.command, 
-			t.args, 
-			t.parameters, 
-			t.scriptInjectorImage
-		FROM 
-			Tasks t
-		JOIN 
-			DAG_Tasks dat 
-			ON dat.task_id = t.task_id
-		WHERE 
-			dat.dag_task_id IN (SELECT task_id FROM FilteredTasks);
-    `, taskRunId, runId)
+		SELECT d.task_id, COUNT(d.depends_on_task_id) AS total_dependencies
+		FROM Dependencies d
+		JOIN DAG_Tasks dt ON d.task_id = dt.task_id
+		WHERE dt.dag_id = $1
+		GROUP BY d.task_id`, dagId)
 
 	if err != nil {
 		return nil, err
 	}
-
 	defer rows.Close()
 
+	dependencyCounts := make(map[int]int)
+	for rows.Next() {
+		var taskId, totalDependencies int
+		if err := rows.Scan(&taskId, &totalDependencies); err != nil {
+			return nil, err
+		}
+		dependencyCounts[taskId] = totalDependencies
+	}
+
+	return dependencyCounts, nil
+}
+
+func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, dagId int) (map[int]int, error) {
+	// Query to get the count of met dependencies for tasks in the same DAG and not already started/completed
+	rows, err := tx.Query(ctx, `
+		SELECT d.task_id, COUNT(d.depends_on_task_id) AS met_dependencies
+		FROM Dependencies d
+		JOIN Task_Runs tr ON d.depends_on_task_id = tr.task_id
+		WHERE tr.status = 'success'
+		AND d.task_id IN (
+			SELECT task_id 
+			FROM DAG_Tasks 
+			WHERE dag_id = $1
+		)
+		AND d.task_id NOT IN (
+			SELECT task_id 
+			FROM Task_Runs 
+			WHERE status IN ('running', 'success')
+		)
+		GROUP BY d.task_id`, dagId)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Map to store met dependency counts for each task
+	metDependencies := make(map[int]int)
+	for rows.Next() {
+		var taskId, metDeps int
+		if err := rows.Scan(&taskId, &metDeps); err != nil {
+			return nil, err
+		}
+		metDependencies[taskId] = metDeps
+	}
+
+	return metDependencies, nil
+}
+
+func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskIds []int) ([]Task, [][]string, error) {
+	// Ensure there are task IDs to query
+	if len(taskIds) == 0 {
+		return []Task{}, [][]string{}, nil
+	}
+
+	// Dynamically generate placeholders for the task IDs
+	placeholders := []string{}
+	args := []interface{}{}
+	for i, id := range taskIds {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1)) // Create placeholders like $1, $2, ...
+		args = append(args, id)
+	}
+
+	// Construct the query
+	query := fmt.Sprintf(`
+		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage
+		FROM Tasks t
+		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+		WHERE dat.dag_task_id IN (%s)`, strings.Join(placeholders, ","))
+
+	// Execute the query
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	// Process the rows
 	tasks := []Task{}
 	parameters := [][]string{}
 	for rows.Next() {
 		var task Task
 		var params []string
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage); err != nil {
-			return nil, err
-		}
 
-		// can be a null return
-		if params == nil {
-			params = []string{}
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage); err != nil {
+			return nil, nil, err
 		}
 
 		parameters = append(parameters, params)
 		tasks = append(tasks, task)
 	}
 
+	return tasks, parameters, nil
+}
+
+func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx, dagId int, tasks []Task, parameters [][]string) error {
 	for i := 0; i < len(tasks); i++ {
 		tasks[i].Parameters = []Parameter{}
 		for _, parameter := range parameters[i] {
@@ -715,18 +758,25 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 			}
 
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			tasks[i].Parameters = append(tasks[i].Parameters, param)
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
+	return nil
+}
 
-	return tasks, nil
+func (p *postgresDAGManager) getDAGIdFromRun(ctx context.Context, tx pgx.Tx, runId int) (int, error) {
+	var dagId int
+	err := tx.QueryRow(ctx, `
+		SELECT dag_id
+		FROM dag_runs
+		WHERE run_id = $1
+	`, runId).Scan(&dagId)
+
+	return dagId, err
 }
 
 func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {

@@ -669,8 +669,8 @@ func Test_SQLite_AddTask(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testPostgresDAGManager_AddTask_Success(t, dm)
-	testPostgresDAGManager_AddTask_ExistingTask(t, dm)
+	testDAGManager_AddTask_Success(t, dm)
+	testDAGManager_AddTask_ExistingTask(t, dm)
 }
 
 func Test_SQLite_GetTaskRefsParameters(t *testing.T) {
@@ -687,8 +687,8 @@ func Test_SQLite_GetTaskRefsParameters(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testPostgresDAGManager_GetTaskRefsParameters_Success(t, dm)
-	testPostgresDAGManager_GetTaskRefsParameters_NonExistentTask(t, dm)
+	testDAGManager_GetTaskRefsParameters_Success(t, dm)
+	testDAGManager_GetTaskRefsParameters_NonExistentTask(t, dm)
 }
 
 func Test_SQLite_InsertDag_TaskRef(t *testing.T) {
@@ -722,7 +722,7 @@ func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testPostgresDAGManager_AddTask_Success(t, dm)
+	testDAGManager_AddTask_Success(t, dm)
 
 	dag := &v1alpha1.DAG{
 		ObjectMeta: metav1.ObjectMeta{
@@ -783,4 +783,109 @@ func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
+}
+
+func Test_Sqlite_Task_Before_InsertDag(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_AddTask_Success(t, dm)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:    "task2",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task3",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1", "task2"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
+
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 2)
+	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
+
+	fmt.Println(tasks[0].Id, tasks[1].Id)
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
+
+	tasksEmpty, err := dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
+	require.NoError(t, err)
+	require.Empty(t, tasksEmpty, "taskIdMarked", tasks[0].Id)
+
+	taskRun, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[1].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 1)
+	require.Equal(t, tasks[0].Name, "task3")
+
+	taskRun, err = dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
+	require.NoError(t, err)
+	require.Empty(t, tasks)
+}
+
+func Test_Sqlite_Complex_Example(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_AddTask_Success(t, dm)
+	testDAGManager_Complex_Dag(t, dm)
 }
