@@ -847,7 +847,6 @@ func Test_Sqlite_Task_Before_InsertDag(t *testing.T) {
 	require.Len(t, tasks, 2)
 	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
 
-	fmt.Println(tasks[0].Id, tasks[1].Id)
 	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
 	require.NoError(t, err)
 
@@ -888,4 +887,39 @@ func Test_Sqlite_Complex_Example(t *testing.T) {
 
 	testDAGManager_AddTask_Success(t, dm)
 	testDAGManager_Complex_Dag(t, dm)
+}
+
+func Test_SQLite_SoftDeleteDag_TaskRefs(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
+}
+
+func Test_SQLite_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
 }

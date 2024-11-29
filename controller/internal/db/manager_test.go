@@ -644,27 +644,65 @@ func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManage
 
 }
 
-func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Successful", func(t *testing.T) {
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		namespace := "default"
+		require.NoError(t, dm.AddTask(context.Background(), task, namespace))
+
+		taskTwo := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task_two",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		require.NoError(t, dm.AddTask(context.Background(), taskTwo, namespace))
+
 		dag := &v1alpha1.DAG{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "test_dag_Normal",
+				Name: "test_dag",
 			},
 			Spec: v1alpha1.DAGSpec{
 				Schedule: "*/5 * * * *",
 				Task: []v1alpha1.TaskSpec{
 					{
-						Name:    "task1",
-						Command: []string{"echo", "Hello"},
-						Args:    []string{"arg1", "arg2"},
-						Image:   "busybox",
-						Conditional: v1alpha1.Conditional{
-							Enabled:    true,
-							RetryCodes: []int{3},
+						Name: "task1",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
 						},
-						Backoff: v1alpha1.Backoff{
-							Limit: 1,
+					},
+					{
+						Name: "task2",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
 						},
+					},
+					{
+						Name: "task3",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+						RunAfter: []string{"task1", "task2"},
 					},
 				},
 			},
@@ -673,14 +711,287 @@ func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
 		err := dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		require.Equal(t, tasks[0], 1)
+	})
+}
+
+func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful", func(t *testing.T) {
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		namespace := "default"
+		require.NoError(t, dm.AddTask(context.Background(), task, namespace))
+
+		taskTwo := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task_two",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		require.NoError(t, dm.AddTask(context.Background(), taskTwo, namespace))
+
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name: "task1",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task2",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task3",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+						RunAfter: []string{"task1", "task2"},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		require.Equal(t, tasks[0], 1)
+	})
+}
+
+func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful", func(t *testing.T) {
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task_needed",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		namespace := "default"
+		require.NoError(t, dm.AddTask(context.Background(), task, namespace))
+
+		taskTwo := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task_two_needed",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		require.NoError(t, dm.AddTask(context.Background(), taskTwo, namespace))
+
+		taskTwoRev := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task_two_needed",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello two"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		require.NoError(t, dm.AddTask(context.Background(), taskTwoRev, namespace))
+
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name: "task1",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task_two_needed",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task2",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task_two_needed",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task3",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task_two_needed",
+							Version: 1,
+						},
+						RunAfter: []string{"task1", "task2"},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dagTwo := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_needed",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name: "task1",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task_two_needed",
+							Version: 2,
+						},
+					},
+					{
+						Name: "task2",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task_two_needed",
+							Version: 2,
+						},
+					},
+					{
+						Name: "task3",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task_two_needed",
+							Version: 2,
+						},
+						RunAfter: []string{"task1", "task2"},
+					},
+				},
+			},
+		}
+
+		err = dm.InsertDAG(context.Background(), dagTwo, "default")
+		require.NoError(t, err)
+
+		tasks, err := dm.SoftDeleteDAG(context.Background(), dagTwo.Name, "default")
+		require.NoError(t, err)
+		require.Len(t, tasks, 0)
+	})
+}
+
+func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Successful", func(t *testing.T) {
+		task := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		namespace := "default"
+		require.NoError(t, dm.AddTask(context.Background(), task, namespace))
+
+		taskTwo := &v1alpha1.DagTask{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "retrieval_task_two",
+			},
+			Spec: v1alpha1.DagTaskSpec{
+				Parameters: []string{},
+				Command:    []string{"echo", "Hello"},
+				Args:       []string{"arg1", "arg2"},
+				Image:      "busybox",
+			},
+		}
+
+		require.NoError(t, dm.AddTask(context.Background(), taskTwo, namespace))
+
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name: "task1",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task2",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+					},
+					{
+						Name: "task3",
+						TaskRef: &v1alpha1.TaskRef{
+							Name:    "retrieval_task",
+							Version: 1,
+						},
+						RunAfter: []string{"task1", "task2"},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		require.Equal(t, tasks[0], 1)
 	})
 }
 
 func testDAGManagerSoftDeleteDAG_Does_Not_Exist(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Does not exist", func(t *testing.T) {
-		err := dm.SoftDeleteDAG(context.Background(), "random name", "default")
+		_, err := dm.SoftDeleteDAG(context.Background(), "random name", "default")
 		require.Error(t, err)
 	})
 
@@ -715,10 +1026,10 @@ func testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t *testing.T, dm db.DBDAG
 		err := dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		_, err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 
-		err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		_, err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 	})
 }

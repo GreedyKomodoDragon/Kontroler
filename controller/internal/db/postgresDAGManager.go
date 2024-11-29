@@ -172,7 +172,7 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 	WHERE name = $1 AND namespace = $2
 	ORDER BY version DESC;`, dag.Name, namespace).Scan(&existingDAGID, &version, &hash)
 	if err != nil && err != pgx.ErrNoRows {
-		return err
+		return fmt.Errorf("failed when getting hash: %w", err)
 	}
 
 	hashBytes := hashDagSpec(&dag.Spec)
@@ -217,7 +217,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 	if dag.Spec.Schedule != "" {
 		sched, err := p.parser.Parse(dag.Spec.Schedule)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed when parsing: %w", err)
 		}
 
 		// Get the next occurrence of the scheduled time
@@ -230,7 +230,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount) 
 	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7)
 	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
-		return err
+		return fmt.Errorf("failed inserting DAG: %w", err)
 	}
 
 	// Insert all tasks into DAG_Tasks
@@ -299,7 +299,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		SELECT task_id FROM Tasks
 		WHERE name = $1 AND inline = FALSE and version = $2;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get task ref when inserting dag: %w, name: %s, version: %v", err, task.TaskRef.Name, task.TaskRef.Version)
 		}
 
 	} else {
@@ -1007,36 +1007,91 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 	return tx.Commit(ctx)
 }
 
-func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) error {
-	// Check if the DAG already exists
+func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]int, error) {
 	// Begin transaction
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Rollback transaction if not committed
 	defer tx.Rollback(ctx)
 
 	var version int
+	// Get the latest version of the DAG
 	if err := tx.QueryRow(ctx, `
 	SELECT version
 	FROM DAGs
 	WHERE name = $1 AND namespace = $2
 	ORDER BY version DESC;`, name, namespace).Scan(&version); err != nil {
-		return err
+		return nil, err
 	}
 
+	// Check for associated tasks and find those not in-line
+	rows, err := tx.Query(ctx, `
+	SELECT DISTINCT(t.task_id), t.name, t.namespace
+	FROM Tasks t
+	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
+	JOIN DAGs d ON d.dag_id = dt.dag_id
+	WHERE d.name = $1 AND d.namespace = $2 AND d.version = $3 AND t.inline = FALSE;
+	`, name, namespace, version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var unusedTaskIDs []int
+	taskData := []struct {
+		TaskID        int
+		TaskName      string
+		TaskNamespace string
+	}{}
+	for rows.Next() {
+		var taskID int
+		var taskName, taskNamespace string
+		if err := rows.Scan(&taskID, &taskName, &taskNamespace); err != nil {
+			return nil, err
+		}
+		taskData = append(taskData, struct {
+			TaskID        int
+			TaskName      string
+			TaskNamespace string
+		}{TaskID: taskID, TaskName: taskName, TaskNamespace: taskNamespace})
+	}
+
+	// For each task, check if it is used by other DAGs or if other versions of the task are used
+	for _, task := range taskData {
+		var count int
+		err = tx.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM DAG_Tasks dt
+		JOIN Tasks t ON dt.task_id = t.task_id
+		JOIN DAGs d ON dt.dag_id = d.dag_id
+		WHERE (t.name = $1 AND t.namespace = $2) AND
+		      NOT (d.name = $3 AND d.namespace = $4 AND d.version = $5);
+		`, task.TaskName, task.TaskNamespace, name, namespace, version).Scan(&count)
+		if err != nil {
+			return nil, err
+		}
+
+		// If neither the task nor its other versions are used anywhere else, add it to the unused list
+		if count == 0 {
+			unusedTaskIDs = append(unusedTaskIDs, task.TaskID)
+		}
+	}
+
+	// Mark the DAG as inactive
 	if err := p.setInactive(ctx, tx, name, namespace, version); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	// Return the list of unused task IDs
+	return unusedTaskIDs, nil
 }
 
 func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name string, namespace string, prevVersion int) error {

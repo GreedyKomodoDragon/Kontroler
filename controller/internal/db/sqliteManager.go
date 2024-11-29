@@ -711,8 +711,6 @@ func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId 
 		return 0, err
 	}
 
-	fmt.Println("taskRunId:", taskRunId)
-
 	return taskRunId, nil
 }
 
@@ -1191,36 +1189,85 @@ func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, 
 	return tx.Commit()
 }
 
-func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) error {
-	// Check if the DAG already exists
-	// Begin transaction
+func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]int, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Rollback transaction if not committed
 	defer tx.Rollback()
 
 	var version int
+	// Get the latest version of the DAG
 	if err := tx.QueryRowContext(ctx, `
 	SELECT version
 	FROM DAGs
 	WHERE name = ? AND namespace = ?
 	ORDER BY version DESC;`, name, namespace).Scan(&version); err != nil {
-		return err
+		return nil, err
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+	SELECT DISTINCT(t.task_id), t.name, t.namespace
+	FROM Tasks t
+	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
+	JOIN DAGs d ON d.dag_id = dt.dag_id
+	WHERE d.name = ? AND d.namespace = ? AND d.version = ? AND t.inline = FALSE;
+	`, name, namespace, version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var unusedTaskIDs []int
+	taskData := []struct {
+		TaskID        int
+		TaskName      string
+		TaskNamespace string
+	}{}
+	for rows.Next() {
+		var taskID int
+		var taskName, taskNamespace string
+		if err := rows.Scan(&taskID, &taskName, &taskNamespace); err != nil {
+			return nil, err
+		}
+		taskData = append(taskData, struct {
+			TaskID        int
+			TaskName      string
+			TaskNamespace string
+		}{TaskID: taskID, TaskName: taskName, TaskNamespace: taskNamespace})
+	}
+
+	for _, task := range taskData {
+		var count int
+		err = tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM DAG_Tasks dt
+		JOIN Tasks t ON dt.task_id = t.task_id
+		JOIN DAGs d ON dt.dag_id = d.dag_id
+		WHERE (t.name = ? AND t.namespace = ?) AND
+		      NOT (d.name = ? AND d.namespace = ? AND d.version = ?);
+		`, task.TaskName, task.TaskNamespace, name, namespace, version).Scan(&count)
+		if err != nil {
+			return nil, err
+		}
+
+		if count == 0 {
+			unusedTaskIDs = append(unusedTaskIDs, task.TaskID)
+		}
 	}
 
 	if err := s.setInactive(tx, name, namespace, version); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	// Return the list of unused task IDs
+	return unusedTaskIDs, nil
 }
 
 func (s *sqliteDAGManager) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {

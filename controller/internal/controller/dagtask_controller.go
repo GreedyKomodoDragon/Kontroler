@@ -54,7 +54,7 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	log.Log.Info("reconcile event", "controller", "dagTask", "req.Name", req.Name, "req.Namespace", req.Namespace, "req.NamespacedName", req.NamespacedName)
 
-	// Fetch the DAG object that triggered the reconciliation
+	// Fetch the DagTask object that triggered the reconciliation
 	var task kontrolerv1alpha1.DagTask
 	if err := r.Get(ctx, req.NamespacedName, &task); err != nil {
 		// Handle the case where the DAG object was deleted before reconciliation
