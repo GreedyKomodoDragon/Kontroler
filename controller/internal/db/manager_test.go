@@ -776,7 +776,7 @@ func testDAGManagerFindExistingDAGRun_Not_Exists(t *testing.T, dm db.DBDAGManage
 	})
 }
 
-func testPostgresDAGManager_AddTask_Success(t *testing.T, dm db.DBDAGManager) {
+func testDAGManager_AddTask_Success(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Add Task Successfully", func(t *testing.T) {
 		task := &v1alpha1.DagTask{
 			ObjectMeta: metav1.ObjectMeta{
@@ -803,7 +803,7 @@ func testPostgresDAGManager_AddTask_Success(t *testing.T, dm db.DBDAGManager) {
 	})
 }
 
-func testPostgresDAGManager_AddTask_ExistingTask(t *testing.T, dm db.DBDAGManager) {
+func testDAGManager_AddTask_ExistingTask(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Add Task with Existing Task Name", func(t *testing.T) {
 		task := &v1alpha1.DagTask{
 			ObjectMeta: metav1.ObjectMeta{
@@ -836,7 +836,7 @@ func testPostgresDAGManager_AddTask_ExistingTask(t *testing.T, dm db.DBDAGManage
 	})
 }
 
-func testPostgresDAGManager_GetTaskRefsParameters_Success(t *testing.T, dm db.DBDAGManager) {
+func testDAGManager_GetTaskRefsParameters_Success(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Get Parameters for Task Refs Successfully", func(t *testing.T) {
 		// Add task to be retrieved
 		task := &v1alpha1.DagTask{
@@ -862,7 +862,7 @@ func testPostgresDAGManager_GetTaskRefsParameters_Success(t *testing.T, dm db.DB
 	})
 }
 
-func testPostgresDAGManager_GetTaskRefsParameters_NonExistentTask(t *testing.T, dm db.DBDAGManager) {
+func testDAGManager_GetTaskRefsParameters_NonExistentTask(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Get Parameters for Non-Existent Task Ref", func(t *testing.T) {
 		taskRefs := []v1alpha1.TaskRef{
 			{Name: "non_existent_task", Version: 1},
@@ -871,5 +871,338 @@ func testPostgresDAGManager_GetTaskRefsParameters_NonExistentTask(t *testing.T, 
 		params, err := dm.GetTaskRefsParameters(context.Background(), taskRefs)
 		assert.Error(t, err)
 		assert.Nil(t, params)
+	})
+}
+
+func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Checking complex dag works", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "dag-sample-long",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Parameters: []v1alpha1.DagParameterSpec{
+					{
+						Name:              "first",
+						DefaultFromSecret: "secret-name",
+					},
+					{
+						Name:         "second",
+						DefaultValue: "value",
+					},
+				},
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:       "random",
+						Command:    []string{"sh", "-c"},
+						Args:       []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi"},
+						Image:      "alpine:latest",
+						Backoff:    v1alpha1.Backoff{Limit: 5},
+						Parameters: []string{"second"},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-b",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+						Parameters: []string{"first", "second"},
+					},
+					{
+						Name:     "random-c",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-d",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-e",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-d"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-f",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-e"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-g",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-f"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-h",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-e"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-i",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-c"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-j",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-b"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+				},
+			},
+		}
+
+		dag2 := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "dag-sample-longv",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Parameters: []v1alpha1.DagParameterSpec{
+					{
+						Name:              "first",
+						DefaultFromSecret: "secret-name",
+					},
+					{
+						Name:         "second",
+						DefaultValue: "value",
+					},
+				},
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:       "random",
+						Command:    []string{"sh", "-c"},
+						Args:       []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi"},
+						Image:      "alpine:latest",
+						Backoff:    v1alpha1.Backoff{Limit: 5},
+						Parameters: []string{"second"},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-b",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+						Parameters: []string{"first", "second"},
+					},
+					{
+						Name:     "random-c",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-d",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-e",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-d"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-f",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-e"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-g",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-f"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-h",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-e"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-i",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-c"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+					{
+						Name:     "random-j",
+						Command:  []string{"sh", "-c"},
+						Args:     []string{"if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi"},
+						Image:    "alpine:latest",
+						RunAfter: []string{"random-b"},
+						Backoff:  v1alpha1.Backoff{Limit: 3},
+						Conditional: v1alpha1.Conditional{
+							Enabled:    true,
+							RetryCodes: []int{1},
+						},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		err = dm.InsertDAG(context.Background(), dag2, "default")
+		require.NoError(t, err)
+
+		dagRun := &v1alpha1.DagRunSpec{
+			DagName: "dag-sample-long",
+		}
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		require.NoError(t, err)
+
+		tasks, err := dm.GetStartingTasks(context.Background(), "dag-sample-long")
+		require.NoError(t, err)
+		require.NotEmpty(t, tasks)
+		require.Len(t, tasks, 1)
+		require.Equal(t, tasks[0].Name, "random")
+
+		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+		require.NoError(t, err)
+
+		tasksSecond, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunID)
+		require.NoError(t, err)
+		require.Len(t, tasksSecond, 3)
+
+		taskRunOne, err := dm.MarkTaskAsStarted(context.Background(), runID, tasksSecond[0].Id)
+		require.NoError(t, err)
+
+		taskRunTwo, err := dm.MarkTaskAsStarted(context.Background(), runID, tasksSecond[1].Id)
+		require.NoError(t, err)
+
+		taskRunThree, err := dm.MarkTaskAsStarted(context.Background(), runID, tasksSecond[2].Id)
+		require.NoError(t, err)
+
+		tasksSecondOne, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunOne)
+		require.NoError(t, err)
+		require.NotEmpty(t, tasksSecondOne)
+
+		tasksSecondTwo, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunTwo)
+		require.NoError(t, err)
+		require.NotEmpty(t, tasksSecondTwo)
+
+		tasksSecondThree, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunThree)
+		require.NoError(t, err)
+		require.Len(t, tasksSecondThree, 3)
 	})
 }
