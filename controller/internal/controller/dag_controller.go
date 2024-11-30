@@ -73,7 +73,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	// Check if the DAG is marked for deletion
 	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
 		// The DAG is being deleted, remove it from the database
-		_, err := r.deleteFromDatabase(ctx, req.NamespacedName)
+		taskNames, err := r.deleteFromDatabase(ctx, req.NamespacedName)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -85,6 +85,8 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 				return ctrl.Result{}, err
 			}
 		}
+
+		r.removingDagTaskFinalisers(ctx, taskNames, req.Namespace)
 
 		return ctrl.Result{}, nil
 	}
@@ -131,7 +133,7 @@ func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kontrolerv1alp
 	return r.DbManager.InsertDAG(ctx, dag, namespace)
 }
 
-func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName types.NamespacedName) ([]int, error) {
+func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName types.NamespacedName) ([]string, error) {
 	return r.DbManager.SoftDeleteDAG(ctx, namespacedName.Name, namespacedName.Namespace)
 }
 
@@ -158,6 +160,27 @@ func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs 
 			controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo")
 			if err := r.Update(ctx, &dagTask); err != nil {
 				log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", taskRef)
+			}
+		}
+	}
+}
+
+func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs []string, namespace string) {
+	for _, taskRef := range taskRefs {
+		var dagTask kontrolerv1alpha1.DagTask
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      taskRef,
+			Namespace: namespace,
+		}, &dagTask); err != nil {
+			// Log the error and continue
+			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
+			continue
+		}
+
+		if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+			controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo")
+			if err := r.Update(ctx, &dagTask); err != nil {
+				log.Log.Error(err, "failed to remove finalizer to dagTask", "taskRef", taskRef)
 			}
 		}
 	}
