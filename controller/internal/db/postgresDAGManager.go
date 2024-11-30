@@ -1007,7 +1007,7 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 	return tx.Commit(ctx)
 }
 
-func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]int, error) {
+func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
 	// Begin transaction
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
@@ -1040,7 +1040,7 @@ func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, nam
 	}
 	defer rows.Close()
 
-	var unusedTaskIDs []int
+	var unusedTaskNames []string
 	taskData := []struct {
 		TaskID        int
 		TaskName      string
@@ -1076,7 +1076,7 @@ func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, nam
 
 		// If neither the task nor its other versions are used anywhere else, add it to the unused list
 		if count == 0 {
-			unusedTaskIDs = append(unusedTaskIDs, task.TaskID)
+			unusedTaskNames = append(unusedTaskNames, task.TaskName)
 		}
 	}
 
@@ -1091,7 +1091,7 @@ func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, nam
 	}
 
 	// Return the list of unused task IDs
-	return unusedTaskIDs, nil
+	return unusedTaskNames, nil
 }
 
 func (p *postgresDAGManager) setInactive(ctx context.Context, tx pgx.Tx, name string, namespace string, prevVersion int) error {

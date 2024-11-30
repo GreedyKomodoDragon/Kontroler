@@ -1189,7 +1189,7 @@ func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, 
 	return tx.Commit()
 }
 
-func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]int, error) {
+func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -1219,7 +1219,7 @@ func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, names
 	}
 	defer rows.Close()
 
-	var unusedTaskIDs []int
+	var unusedTaskNames []string
 	taskData := []struct {
 		TaskID        int
 		TaskName      string
@@ -1253,7 +1253,7 @@ func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, names
 		}
 
 		if count == 0 {
-			unusedTaskIDs = append(unusedTaskIDs, task.TaskID)
+			unusedTaskNames = append(unusedTaskNames, task.TaskName)
 		}
 	}
 
@@ -1267,7 +1267,7 @@ func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, names
 	}
 
 	// Return the list of unused task IDs
-	return unusedTaskIDs, nil
+	return unusedTaskNames, nil
 }
 
 func (s *sqliteDAGManager) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {

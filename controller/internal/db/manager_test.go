@@ -714,7 +714,7 @@ func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t *testing.T, dm db.DB
 		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
-		require.Equal(t, tasks[0], 1)
+		require.Equal(t, tasks[0], "retrieval_task")
 	})
 }
 
