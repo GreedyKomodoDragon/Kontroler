@@ -985,14 +985,15 @@ func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
 		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
-		require.Equal(t, tasks[0], 1)
+		require.Equal(t, "retrieval_task", tasks[0])
 	})
 }
 
 func testDAGManagerSoftDeleteDAG_Does_Not_Exist(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Does not exist", func(t *testing.T) {
-		_, err := dm.SoftDeleteDAG(context.Background(), "random name", "default")
-		require.Error(t, err)
+		tasks, err := dm.SoftDeleteDAG(context.Background(), "random name", "default")
+		require.Nil(t, err)
+		require.Len(t, tasks, 0)
 	})
 
 }
@@ -1139,6 +1140,11 @@ func testDAGManager_AddTask_ExistingTask(t *testing.T, dm db.DBDAGManager) {
 		// Insert the initial task
 		err := dm.AddTask(context.Background(), task, namespace)
 		assert.NoError(t, err)
+
+		// Insert the initial task
+		err = dm.AddTask(context.Background(), task, namespace)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "applying the same task")
 
 		// Update with a new version
 		task.Spec.Args = []string{"new_version"}

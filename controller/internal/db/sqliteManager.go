@@ -1323,16 +1323,15 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 		return err
 	}
 
-	if hash != nil {
-		hashBytes := hashDagTaskSpec(&task.Spec)
-		if hashBytes == nil {
-			return fmt.Errorf("failed to create hash")
-		}
+	hashBytes := hashDagTaskSpec(&task.Spec)
+	if hashBytes == nil {
+		return fmt.Errorf("failed to create hash")
+	}
 
-		hashValue := fmt.Sprintf("%x", hashBytes)
-		if *hash == hashValue {
-			return fmt.Errorf("applying the same task")
-		}
+	hashValue := fmt.Sprintf("%x", hashBytes)
+
+	if hash != nil && *hash == hashValue {
+		return fmt.Errorf("applying the same task")
 	}
 
 	var jsonValue *string
@@ -1369,10 +1368,10 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 	newVersion := version + 1
 
 	if _, err := tx.ExecContext(ctx, `
-    INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?);`,
+    INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version, hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?, ?);`,
 		task.Name, commandJson, argsJson, task.Spec.Image, paramsJson, task.Spec.Backoff.Limit,
-		task.Spec.Conditional.Enabled, retryCodesJson, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion); err != nil {
+		task.Spec.Conditional.Enabled, retryCodesJson, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion, hashValue); err != nil {
 		return err
 	}
 

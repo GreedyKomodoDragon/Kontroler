@@ -78,7 +78,7 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Store the DAG object in the database
 	if err := r.DbManager.AddTask(ctx, &task, req.NamespacedName.Namespace); err != nil {
 		if err.Error() == "applying the same task" {
-			log.Log.Info("reconcile event", "controller", "task", "event", "applying the same task")
+			log.Log.Info("reconcile event", "controller", "dagTask", "event", "applying the same task")
 			return ctrl.Result{}, nil
 		}
 
