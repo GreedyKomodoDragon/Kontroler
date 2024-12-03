@@ -44,91 +44,91 @@ CREATE TABLE IF NOT EXISTS IdTable (
 CREATE TABLE IF NOT EXISTS DAGs (
     dag_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-	version INTEGER NOT NULL,
-	hash VARCHAR(64) NOT NULL,
+    version INTEGER NOT NULL,
+    hash VARCHAR(64) NOT NULL,
     schedule VARCHAR(255) NOT NULL,
-	namespace VARCHAR(63) NOT NULL,
-	active BOOL NOT NULL,
-	taskCount INTEGER NOT NULL,
-	nexttime TIMESTAMP,
-	UNIQUE(name, version, namespace)
+    namespace VARCHAR(63) NOT NULL,
+    active BOOL NOT NULL,
+    taskCount INTEGER NOT NULL,
+    nexttime TIMESTAMP,
+    UNIQUE(name, version, namespace)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Parameters (
-	parameter_id SERIAL PRIMARY KEY,
+    parameter_id SERIAL PRIMARY KEY,
     dag_id INTEGER NOT NULL,
     name VARCHAR(255) NOT NULL,
-	isSecret BOOL NOT NULL,
-	defaultValue VARCHAR(255) NOT NULL,
-	FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
+    isSecret BOOL NOT NULL,
+    defaultValue VARCHAR(255) NOT NULL,
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Tasks (
-	task_id SERIAL PRIMARY KEY,
+    task_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     command TEXT[],
     args TEXT[],
     image VARCHAR(255) NOT NULL,
-	parameters TEXT[],
-	backoffLimit BIGINT NOT NULL,
-	isConditional BOOL NOT NULL,
-	podTemplate JSONB,
-	retryCodes INTEGER[],
-	script TEXT NOT NULL,
-	scriptInjectorImage TEXT,
-	inline BOOL NOT NULL,
-	namespace VARCHAR(63) NOT NULL,
-	version INTEGER NOT NULL,
-	hash VARCHAR(64),
-	UNIQUE(name, version, namespace)
+    parameters TEXT[],
+    backoffLimit BIGINT NOT NULL,
+    isConditional BOOL NOT NULL,
+    podTemplate JSONB,
+    retryCodes INTEGER[],
+    script TEXT NOT NULL,
+    scriptInjectorImage TEXT,
+    inline BOOL NOT NULL,
+    namespace VARCHAR(63) NOT NULL,
+    version INTEGER NOT NULL,
+    hash VARCHAR(64),
+    UNIQUE(name, version, namespace)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Tasks (
-	dag_task_id SERIAL PRIMARY KEY,
+    dag_task_id SERIAL PRIMARY KEY,
     dag_id INTEGER NOT NULL,
     task_id INTEGER NOT NULL,
-	name VARCHAR(255) NOT NULL,
-	version INTEGER NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id)
+    name VARCHAR(255) NOT NULL,
+    version INTEGER NOT NULL,
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES Tasks(task_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Dependencies (
     task_id INTEGER NOT NULL,
     depends_on_task_id INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id),
-    FOREIGN KEY (depends_on_task_id) REFERENCES DAG_Tasks(dag_task_id)
+    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE,
+    FOREIGN KEY (depends_on_task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Runs (
-	run_id SERIAL PRIMARY KEY,
-	name VARCHAR(255) NOT NULL,
+    run_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
     dag_id INTEGER NOT NULL,
-	status VARCHAR(255) NOT NULL,
-	successfulCount INTEGER NOT NULL,
-	failedCount INTEGER NOT NULL,
-	run_time TIMESTAMP NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
-	UNIQUE(name)
+    status VARCHAR(255) NOT NULL,
+    successfulCount INTEGER NOT NULL,
+    failedCount INTEGER NOT NULL,
+    run_time TIMESTAMP NOT NULL,
+    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE,
+    UNIQUE(name)
 );
 
 CREATE TABLE IF NOT EXISTS DAG_Run_Parameters (
-	param_id SERIAL PRIMARY KEY,
+    param_id SERIAL PRIMARY KEY,
     run_id INTEGER NOT NULL,
-	name VARCHAR(255) NOT NULL,
-	value  VARCHAR(255) NOT NULL,
-	isSecret BOOL NOT NULL,
-    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
+    name VARCHAR(255) NOT NULL,
+    value VARCHAR(255) NOT NULL,
+    isSecret BOOL NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Task_Runs (
-	task_run_id SERIAL PRIMARY KEY,
-	run_id INTEGER NOT NULL,
+    task_run_id SERIAL PRIMARY KEY,
+    run_id INTEGER NOT NULL,
     task_id INTEGER NOT NULL,
-	status VARCHAR(255) NOT NULL,
-	attempts INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
-	FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
+    status VARCHAR(255) NOT NULL,
+    attempts INTEGER NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES Tasks(task_id) ON DELETE CASCADE,
+    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Task_Pods (
@@ -137,10 +137,10 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     exitCode INTEGER,
     name VARCHAR(255) NOT NULL,
     status VARCHAR(255) NOT NULL,
-	namespace TEXT NOT NULL,
+    namespace TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (Pod_UID),
-    FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id)
+    FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id) ON DELETE CASCADE
 );
 `
 
@@ -1007,6 +1007,40 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 	return tx.Commit(ctx)
 }
 
+type taskData struct {
+	TaskID        int
+	TaskName      string
+	TaskNamespace string
+}
+
+func (p *postgresDAGManager) getTaskDeletionData(ctx context.Context, tx pgx.Tx, name, namespace string) ([]taskData, error) {
+	// Check for tasks associated with the specified DAG
+	rows, err := tx.Query(ctx, `
+	SELECT DISTINCT(t.task_id), t.name, t.namespace
+	FROM Tasks t
+	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
+	JOIN DAGs d ON d.dag_id = dt.dag_id
+	WHERE d.name = $1 AND d.namespace = $2 AND t.inline = FALSE;
+	`, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	taskDatas := []taskData{}
+	for rows.Next() {
+		var taskID int
+		var taskName, taskNamespace string
+		if err := rows.Scan(&taskID, &taskName, &taskNamespace); err != nil {
+			return nil, err
+		}
+
+		taskDatas = append(taskDatas, taskData{TaskID: taskID, TaskName: taskName, TaskNamespace: taskNamespace})
+	}
+
+	return taskDatas, nil
+}
+
 func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
 	// Begin transaction
 	tx, err := p.pool.Begin(ctx)
@@ -1017,80 +1051,85 @@ func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, nam
 	// Rollback transaction if not committed
 	defer tx.Rollback(ctx)
 
-	var version int
-	// Get the latest version of the DAG
-	if err := tx.QueryRow(ctx, `
-	SELECT version
-	FROM DAGs
-	WHERE name = $1 AND namespace = $2
-	ORDER BY version DESC;`, name, namespace).Scan(&version); err != nil {
-		return nil, err
-	}
-
-	// Check for associated tasks and find those not in-line
-	rows, err := tx.Query(ctx, `
-	SELECT DISTINCT(t.task_id), t.name, t.namespace
-	FROM Tasks t
-	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
-	JOIN DAGs d ON d.dag_id = dt.dag_id
-	WHERE d.name = $1 AND d.namespace = $2 AND d.version = $3 AND t.inline = FALSE;
-	`, name, namespace, version)
+	taskData, err := p.getTaskDeletionData(ctx, tx, name, namespace)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
+	// Check if each task is still associated with other DAGs
 	var unusedTaskNames []string
-	taskData := []struct {
-		TaskID        int
-		TaskName      string
-		TaskNamespace string
-	}{}
-	for rows.Next() {
-		var taskID int
-		var taskName, taskNamespace string
-		if err := rows.Scan(&taskID, &taskName, &taskNamespace); err != nil {
-			return nil, err
-		}
-		taskData = append(taskData, struct {
-			TaskID        int
-			TaskName      string
-			TaskNamespace string
-		}{TaskID: taskID, TaskName: taskName, TaskNamespace: taskNamespace})
-	}
 
-	// For each task, check if it is used by other DAGs or if other versions of the task are used
 	for _, task := range taskData {
 		var count int
 		err = tx.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM DAG_Tasks dt
-		JOIN Tasks t ON dt.task_id = t.task_id
-		JOIN DAGs d ON dt.dag_id = d.dag_id
-		WHERE (t.name = $1 AND t.namespace = $2) AND
-		      NOT (d.name = $3 AND d.namespace = $4 AND d.version = $5);
-		`, task.TaskName, task.TaskNamespace, name, namespace, version).Scan(&count)
+	SELECT COUNT(*)
+	FROM DAG_Tasks dt
+	JOIN DAGs d ON dt.dag_id = d.dag_id
+	WHERE dt.task_id = $1
+	  AND NOT (d.name = $2 AND d.namespace = $3);
+	`, task.TaskID, name, namespace).Scan(&count)
 		if err != nil {
 			return nil, err
 		}
 
-		// If neither the task nor its other versions are used anywhere else, add it to the unused list
+		// Add tasks that are no longer connected to any DAG
 		if count == 0 {
 			unusedTaskNames = append(unusedTaskNames, task.TaskName)
 		}
 	}
 
-	// Mark the DAG as inactive
-	if err := p.setInactive(ctx, tx, name, namespace, version); err != nil {
+	rowsTasks, err := tx.Query(ctx, `
+	SELECT t.task_id
+	FROM Tasks t
+	JOIN dag_tasks dt ON dt.task_id = t.task_id
+	LEFT JOIN dags d on dt.dag_id = d.dag_id
+	WHERE d.name = $1 and t.inline = TRUE;
+	`, name)
+
+	if err != nil {
 		return nil, err
 	}
 
-	// Commit transaction
+	defer rowsTasks.Close()
+
+	taskIds := []interface{}{}
+	placeholders := []string{}
+	i := 0
+	for rowsTasks.Next() {
+		var taskId int
+		if err := rowsTasks.Scan(&taskId); err != nil {
+			return nil, err
+		}
+
+		taskIds = append(taskIds, taskId)
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		i++
+	}
+
+	// Get the latest version of the DAG
+	if _, err := tx.Exec(ctx, `
+	DELETE FROM DAGs
+	WHERE name = $1 AND namespace = $2;
+	`, name, namespace); err != nil {
+		return nil, err
+	}
+
+	if len(taskIds) > 0 {
+		// Construct the query
+		query := fmt.Sprintf(`
+		DELETE FROM Tasks
+		WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
+
+		// Get the latest version of the DAG
+		if _, err := tx.Exec(ctx, query, taskIds...); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
-	// Return the list of unused task IDs
 	return unusedTaskNames, nil
 }
 
@@ -1196,16 +1235,15 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 		return err
 	}
 
-	if hash != nil {
-		hashBytes := hashDagTaskSpec(&task.Spec)
-		if hashBytes == nil {
-			return fmt.Errorf("failed to create hash")
-		}
+	hashBytes := hashDagTaskSpec(&task.Spec)
+	if hashBytes == nil {
+		return fmt.Errorf("failed to create hash")
+	}
 
-		hashValue := fmt.Sprintf("%x", hashBytes)
-		if *hash == hashValue {
-			return fmt.Errorf("applying the same task")
-		}
+	hashValue := fmt.Sprintf("%x", hashBytes)
+
+	if hash != nil && *hash == hashValue {
+		return fmt.Errorf("applying the same task")
 	}
 
 	var jsonValue *string
@@ -1221,10 +1259,10 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 	newVersion := version + 1
 
 	if _, err := tx.Exec(ctx, `
-    INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12, $13);`,
+    INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version, hash)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12, $13, $14);`,
 		task.Name, task.Spec.Command, task.Spec.Args, task.Spec.Image, task.Spec.Parameters, task.Spec.Backoff.Limit,
-		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion); err != nil {
+		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion, hashValue); err != nil {
 		return err
 	}
 
