@@ -571,13 +571,13 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 	return tasks, nil
 }
 
-func (p *postgresDAGManager) getNextRunnableTasks(ctx context.Context, tx pgx.Tx, taskRunId, runId int, dagId int) ([]Task, [][]string, error) {
+func (p *postgresDAGManager) getNextRunnableTasks(ctx context.Context, tx pgx.Tx, taskRunId, runId, dagId int) ([]Task, [][]string, error) {
 	dependencyCounts, err := p.getDependencyCounts(ctx, tx, dagId)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	metDependencies, err := p.getMetDependencies(ctx, tx, dagId)
+	metDependencies, err := p.getMetDependencies(ctx, tx, dagId, runId)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -618,7 +618,7 @@ func (p *postgresDAGManager) getRunnableTasks(ctx context.Context, tx pgx.Tx, de
 
 func (p *postgresDAGManager) getDependencyCounts(ctx context.Context, tx pgx.Tx, dagId int) (map[int]int, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT d.task_id, COUNT(d.depends_on_task_id) AS total_dependencies
+		SELECT d.task_id, COUNT(d.depends_on_task_id)
 		FROM Dependencies d
 		JOIN DAG_Tasks dt ON d.task_id = dt.task_id
 		WHERE dt.dag_id = $1
@@ -641,10 +641,10 @@ func (p *postgresDAGManager) getDependencyCounts(ctx context.Context, tx pgx.Tx,
 	return dependencyCounts, nil
 }
 
-func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, dagId int) (map[int]int, error) {
+func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, dagId, runID int) (map[int]int, error) {
 	// Query to get the count of met dependencies for tasks in the same DAG and not already started/completed
 	rows, err := tx.Query(ctx, `
-		SELECT d.task_id, COUNT(d.depends_on_task_id) AS met_dependencies
+		SELECT d.task_id, COUNT(d.depends_on_task_id)
 		FROM Dependencies d
 		JOIN Task_Runs tr ON d.depends_on_task_id = tr.task_id
 		WHERE tr.status = 'success'
@@ -656,9 +656,12 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 		AND d.task_id NOT IN (
 			SELECT task_id 
 			FROM Task_Runs 
-			WHERE status IN ('running', 'success')
+			WHERE
+				status IN ('running', 'success')
+			AND run_id = $2
 		)
-		GROUP BY d.task_id`, dagId)
+		AND tr.run_id = $2
+		GROUP BY d.task_id`, dagId, runID)
 
 	if err != nil {
 		return nil, err
@@ -672,6 +675,7 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 		if err := rows.Scan(&taskId, &metDeps); err != nil {
 			return nil, err
 		}
+
 		metDependencies[taskId] = metDeps
 	}
 
@@ -948,7 +952,7 @@ func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int
 	if _, err := tx.Exec(ctx, `
 		UPDATE Task_Runs 
 		SET status = 'failed' 
-		WHERE task_run_id = $1 ;
+		WHERE task_run_id = $1;
 	`, taskRunId); err != nil {
 		return err
 	}
@@ -1120,7 +1124,6 @@ func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, nam
 		DELETE FROM Tasks
 		WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
 
-		// Get the latest version of the DAG
 		if _, err := tx.Exec(ctx, query, taskIds...); err != nil {
 			return nil, err
 		}
