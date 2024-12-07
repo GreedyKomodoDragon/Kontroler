@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
-  name: dag-sample1
+  name: dag-sample3
 spec:
   schedule: "*/1 * * * *"
   parameters:

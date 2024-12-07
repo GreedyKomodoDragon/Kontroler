@@ -6,14 +6,14 @@ metadata:
     app.kubernetes.io/instance: dagtask-sample
   name: dagtask-sample
 spec:
-  command: ["sh", "-c"]
+  command: ["sh","-c"]
   args:
     [
       "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
     ]
   image: "alpine:latest"
   backoff:
-    limit: 5
+    limit: 3
   parameters:
     - second
   conditional:
