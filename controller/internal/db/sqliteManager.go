@@ -818,7 +818,7 @@ func (s *sqliteDAGManager) getNextRunnableTasks(ctx context.Context, tx *sql.Tx,
 		return nil, nil, err
 	}
 
-	metDependencies, err := s.getMetDependencies(ctx, tx, dagId)
+	metDependencies, err := s.getMetDependencies(ctx, tx, dagId, runId)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -913,10 +913,10 @@ func (s *sqliteDAGManager) getRunnableTasks(ctx context.Context, tx *sql.Tx, dep
 	return runnableTasks, nil
 }
 
-func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, dagId int) (map[int]int, error) {
+func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, dagId, runID int) (map[int]int, error) {
 	// Query to get the count of met dependencies for tasks in the same DAG and not already started/completed
 	rows, err := tx.QueryContext(ctx, `
-		SELECT d.task_id, COUNT(d.depends_on_task_id) AS met_dependencies
+		SELECT d.task_id, COUNT(d.depends_on_task_id)
 		FROM Dependencies d
 		JOIN Task_Runs tr ON d.depends_on_task_id = tr.task_id
 		WHERE tr.status = 'success'
@@ -928,9 +928,12 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 		AND d.task_id NOT IN (
 			SELECT task_id 
 			FROM Task_Runs 
-			WHERE status IN ('running', 'success')
+			WHERE
+				status IN ('running', 'success')
+			AND run_id = ?
 		)
-		GROUP BY d.task_id`, dagId)
+		AND tr.run_id = ?
+		GROUP BY d.task_id`, dagId, runID, runID)
 
 	if err != nil {
 		return nil, err
@@ -953,7 +956,7 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, dagId int) (map[int]int, error) {
 	// Query to get the total dependencies for tasks associated with the given DAG
 	rows, err := tx.QueryContext(ctx, `
-		SELECT d.task_id, COUNT(d.depends_on_task_id) AS total_dependencies
+		SELECT d.task_id, COUNT(d.depends_on_task_id)
 		FROM Dependencies d
 		JOIN DAG_Tasks dt ON d.task_id = dt.task_id
 		WHERE dt.dag_id = ?
