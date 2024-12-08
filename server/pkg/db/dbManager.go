@@ -114,6 +114,7 @@ type DbManager interface {
 	GetDagNames(ctx context.Context, term string, limit int) ([]*string, error)
 	GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error)
 	GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error)
+	GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error)
 
 	Close()
 }

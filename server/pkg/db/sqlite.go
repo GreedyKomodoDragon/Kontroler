@@ -726,6 +726,111 @@ func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, tas
 	return task, nil
 }
 
+func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error) {
+	// Query for the task details from the Tasks table
+	queryTask := `
+		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+		FROM Tasks t
+		WHERE t.inline = FALSE		
+		LIMIT ? OFFSET ?;
+	`
+
+	rows, err := s.db.QueryContext(ctx, queryTask, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
+	}
+
+	taskDetails := []*TaskDetails{}
+	for rows.Next() {
+		var taskDetail TaskDetails
+		var podTemplateJSON *string
+		var commandJSON string
+		var argsJSON string
+		var retryJSON string
+		var paramsJson string
+
+		if err := rows.Scan(
+			&taskDetail.ID,
+			&taskDetail.Name,
+			&commandJSON,
+			&argsJSON,
+			&taskDetail.Image,
+			&taskDetail.BackOffLimit,
+			&taskDetail.IsConditional,
+			&podTemplateJSON,
+			&retryJSON,
+			&taskDetail.Script,
+			&paramsJson,
+		); err != nil {
+			return nil, fmt.Errorf("failed to query task details: %w", err)
+		}
+
+		if err := json.Unmarshal([]byte(commandJSON), &taskDetail.Command); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(retryJSON), &taskDetail.RetryCodes); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(argsJSON), &taskDetail.Args); err != nil {
+			return nil, err
+		}
+
+		if podTemplateJSON != nil {
+			taskDetail.PodTemplate = string(*podTemplateJSON)
+		} else {
+			taskDetail.PodTemplate = ""
+		}
+
+		params := []string{}
+		if err := json.Unmarshal([]byte(paramsJson), &params); err != nil {
+			return nil, err
+		}
+
+		placeholders := generateQuestionMarks(params)
+
+		queryParameters := fmt.Sprintf(`
+			SELECT parameter_id, name, isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE dag_id = (
+				SELECT dag_id
+				FROM DAG_Tasks
+				WHERE task_id = ?
+			) AND name IN (%s)
+		`, placeholders)
+
+		args := make([]interface{}, len(params)+1)
+		args[0] = taskDetail.ID
+		for i, param := range params {
+			args[i+1] = param
+		}
+
+		rows, err := s.db.QueryContext(ctx, queryParameters, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query parameters: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var param Parameter
+			if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
+				return nil, fmt.Errorf("failed to scan parameter row: %w", err)
+			}
+			taskDetail.Parameters = append(taskDetail.Parameters, param)
+		}
+
+		if rows.Err() != nil {
+			return nil, fmt.Errorf("error iterating parameter rows: %w", rows.Err())
+		}
+
+		taskDetails = append(taskDetails, &taskDetail)
+
+	}
+
+	return taskDetails, nil
+}
+
 func generateQuestionMarks(slice []string) string {
 	length := len(slice)
 
