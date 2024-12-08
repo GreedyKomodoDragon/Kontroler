@@ -182,6 +182,23 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
 	})
 
+	dagRouter.Get("/dagTask/:page", func(c *fiber.Ctx) error {
+		page, err := strconv.Atoi(c.Params("page"))
+		if err != nil || page < 1 {
+			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		taskDetails, err := dbManager.GetDagTasks(c.Context(), 10, (page-1)*10)
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting DagTask details")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		fmt.Println("data:", taskDetails)
+
+		return c.Status(fiber.StatusOK).JSON(taskDetails)
+	})
+
 	dagRouter.Post("/create", func(c *fiber.Ctx) error {
 		var dagForm kclient.DagFormObj
 		if err := c.BodyParser(&dagForm); err != nil {
