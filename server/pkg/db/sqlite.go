@@ -831,6 +831,23 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 	return taskDetails, nil
 }
 
+func (s *sqliteManager) GetDagTaskPageCount(ctx context.Context, limit int) (int, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM Tasks
+		WHERE inline = FALSE;`).Scan(&count); err != nil {
+		return 0, err
+	}
+
+	pages := count / limit
+	if count%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
+}
+
 func generateQuestionMarks(slice []string) string {
 	length := len(slice)
 
