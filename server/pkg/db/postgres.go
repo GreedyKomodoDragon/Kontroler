@@ -710,3 +710,22 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 
 	return taskDetails, nil
 }
+
+func (p *postgresManager) GetDagTaskPageCount(ctx context.Context, limit int) (int, error) {
+	var pageCount int
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT COUNT(*)
+	FROM Tasks
+	WHERE inline = FALSE;
+	`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+
+	pages := pageCount / limit
+	if pageCount%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
+}

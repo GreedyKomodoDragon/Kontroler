@@ -57,6 +57,28 @@ const Sidebar: Component = () => {
       </a>
       <a
         class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
+        href="/tasks"
+        rel="ugc"
+      >
+        <div class="flex items-center gap-3">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="white"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M13.152.682a2.25 2.25 0 0 1 2.269 0l.007.004 6.957 4.276a2.28 2.28 0 0 1 1.126 1.964v7.516c0 .81-.432 1.56-1.133 1.968l-.002.001-11.964 7.037-.004.003a2.28 2.28 0 0 1-2.284 0l-.026-.015-6.503-4.502a2.27 2.27 0 0 1-1.096-1.943V9.438c0-.392.1-.77.284-1.1l.003-.006.014-.026a2.3 2.3 0 0 1 .82-.827h.002L13.152.681zm.757 1.295h-.001L2.648 8.616l6.248 4.247a.78.78 0 0 0 .758-.01h.001l11.633-6.804-6.629-4.074a.75.75 0 0 0-.75.003zM18 9.709l-3.25 1.9v7.548L18 17.245zm1.5-.878v7.532l2.124-1.25a.78.78 0 0 0 .387-.671V7.363zm-9.09 5.316 2.84-1.66v7.552l-3.233 1.902v-7.612q.202-.07.391-.18zm-1.893 7.754V14.33a2.3 2.3 0 0 1-.393-.18l-.023-.014-6.102-4.147v7.003c0 .275.145.528.379.664l.025.014 6.114 4.232z"
+            />
+          </svg>
+
+          <span class="text-sm font-medium">Tasks</span>
+        </div>
+      </a>
+      <a
+        class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-800 transition-colors"
         href="/dags"
         rel="ugc"
       >
