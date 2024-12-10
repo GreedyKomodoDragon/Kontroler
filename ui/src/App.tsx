@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
 import CreateDagRun from "./pages/createDagRun";
 import UserProfile from "./pages/userProfile";
 import Logs from "./pages/logs";
+import Tasks from "./pages/tasks";
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -71,6 +72,16 @@ const App: Component = () => {
               <ProtectedRoute>
                 <Layout>
                   <Create />
+                </Layout>
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/tasks"
+            component={() => (
+              <ProtectedRoute>
+                <Layout>
+                  <Tasks />
                 </Layout>
               </ProtectedRoute>
             )}

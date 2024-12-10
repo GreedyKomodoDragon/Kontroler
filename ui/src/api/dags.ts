@@ -196,3 +196,29 @@ export async function createDagRun(
     }
   );
 }
+
+export async function getDagTasks({
+  queryKey,
+}: {
+  queryKey: string[];
+}): Promise<TaskDetails[]> {
+  const result = await axios.get(
+    `${getApiUrl()}/api/v1/dag/dagTask/pages/page/${queryKey[1]}`,
+    {
+      withCredentials: true,
+    }
+  );
+
+  return result.data;
+}
+
+export async function getDagTaskPageCount(): Promise<number> {
+  const result = await axios.get(
+    `${getApiUrl()}/api/v1/dag/dagTask/pages/count`,
+    {
+      withCredentials: true,
+    }
+  );
+
+  return result.data.count;
+}

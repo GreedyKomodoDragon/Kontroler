@@ -56,7 +56,7 @@ const DagRun: Component = () => {
               <div class="mt-6  p-4 rounded-lg border border-gray-200">
                 <h3 class="text-xl font-semibold  mb-2">Task Details</h3>
                 <p class="mb-1">
-                  <strong>ID:</strong> {taskDetails()?.id}
+                  <strong>TaskRun ID:</strong> {taskDetails()?.id}
                 </p>
                 <p class="mb-1">
                   <strong>Status:</strong> {taskDetails()?.status}
