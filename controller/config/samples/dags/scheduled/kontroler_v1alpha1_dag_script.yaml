@@ -7,8 +7,9 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
-  name: dag-sample
+  name: dag-sample1
 spec:
+  schedule: "*/1 * * * *"
   parameters:
     - name: first
       defaultFromSecret: secret-name
@@ -16,27 +17,17 @@ spec:
       defaultValue: value
   task:
     - name: "random"
-      command: ["sh", "-c"]
-      args:
-        [
-          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
-        ]
-      image: "alpine:latest"
+      script: |
+        echo "ehllow"
+      image: "ubuntu:latest"
       backoff:
-        limit: 5
+        limit: 3
       parameters:
         - second
       conditional:
         enabled: true
         retryCodes: [1]
       podTemplate:
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "250m"
-          limits:
-            memory: "128Mi"
-            cpu: "791m"
         volumes:
           - name: example-pvc
             persistentVolumeClaim:
@@ -70,12 +61,9 @@ spec:
         # serviceAccountName: "custom-service-account"
         # automountServiceAccountToken: false
     - name: "random-b"
-      command: ["sh", "-c"]
-      args:
-        [
-          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
-        ]
-      image: "alpine:latest"
+      script: |
+        echo "ehllow $first"
+      image: "ubuntu:latest"
       runAfter: ["random"]
       backoff:
         limit: 3
@@ -91,7 +79,7 @@ spec:
         [
           "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
         ]
-      image: "alpine:latest"
+      image: "ubuntu:latest"
       runAfter: ["random"]
       backoff:
         limit: 3

@@ -1,0 +1,15 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag-ref
+  name: dag-ref
+spec:
+  parameters:
+    - name: second
+      defaultValue: value
+  task:
+    - name: "ref"
+      taskRef:
+        name: "dagtask-sample"
+        version: 1

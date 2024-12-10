@@ -90,7 +90,7 @@ func TestUpsertDAG(t *testing.T) {
 
 	// Verify the new task was inserted
 	var taskName string
-	err = pool.QueryRow(context.Background(), "SELECT name FROM Tasks WHERE name = 'task3'").Scan(&taskName)
+	err = pool.QueryRow(context.Background(), "SELECT name FROM DAG_Tasks WHERE name = 'task3'").Scan(&taskName)
 	assert.NoError(t, err, "Failed to query new task")
 	assert.NotZero(t, taskName, "Task name should not be zero")
 
@@ -671,6 +671,41 @@ func TestPostgresDAGManager_SoftDeleteDag(t *testing.T) {
 	testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t, dm)
 }
 
+func TestPostgresDAGManager_SoftDeleteDag_TaskRefs(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
+}
+
+func TestPostgresDAGManager_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
+	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
+}
+
 func TestPostgresDAGManager_FindExistingDAGRun(t *testing.T) {
 	pool, err := utils.SetupPostgresContainer(context.Background())
 	if err != nil {
@@ -687,4 +722,173 @@ func TestPostgresDAGManager_FindExistingDAGRun(t *testing.T) {
 
 	testDAGManagerFindExistingDAGRun_Exists(t, dm)
 	testDAGManagerFindExistingDAGRun_Not_Exists(t, dm)
+}
+
+func TestPostgresDAGManager_AddTask(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_AddTask_Success(t, dm)
+	testDAGManager_AddTask_ExistingTask(t, dm)
+}
+
+func TestPostgresDAGManager_GetTaskRefsParameters(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_GetTaskRefsParameters_Success(t, dm)
+	testDAGManager_GetTaskRefsParameters_NonExistentTask(t, dm)
+}
+
+func TestPostgresDAGManager_InsertDag_TaskRef(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerInsertDag_TaskRef(t, dm)
+}
+
+func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_AddTask_Success(t, dm)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:    "task1",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:    "task2",
+					Command: []string{"echo", "Hello"},
+					Args:    []string{"arg1", "arg2"},
+					Image:   "busybox",
+				},
+				{
+					Name:     "task3",
+					Command:  []string{"echo"},
+					Args:     []string{"Goodbye, World!"},
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1", "task2"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
+
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 2)
+	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
+
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
+
+	tasksEmpty, err := dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
+	require.NoError(t, err)
+	require.Empty(t, tasksEmpty, "taskIdMarked", tasks[0].Id)
+
+	taskRun, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[1].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Equal(t, tasks[0].Name, "task3")
+}
+
+func Test_Postgres_Complex_Example(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_AddTask_Success(t, dm)
+	testDAGManager_Complex_Dag(t, dm)
+}
+
+func TestPostgresDAGManager_CreateDAGRun_Sequential(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_CreateDagRun_Sequential(t, dm)
 }

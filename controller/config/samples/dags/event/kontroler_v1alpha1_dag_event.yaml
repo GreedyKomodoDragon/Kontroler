@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
-  name: dag-sample
+  name: dag-sample-event
 spec:
   parameters:
     - name: first
@@ -86,19 +86,6 @@ spec:
         - first
         - second
     - name: "random-c"
-      command: ["sh", "-c"]
-      args:
-        [
-          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
-        ]
-      image: "alpine:latest"
-      runAfter: ["random"]
-      backoff:
-        limit: 3
-      conditional:
-        enabled: true
-        retryCodes: [1]
-    - name: "random-d"
       command: ["sh", "-c"]
       args:
         [

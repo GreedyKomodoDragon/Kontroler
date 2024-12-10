@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: operator
-  name: dag-sample1
+  name: dag-sample3
 spec:
   schedule: "*/1 * * * *"
   parameters:
@@ -17,8 +17,11 @@ spec:
       defaultValue: value
   task:
     - name: "random"
-      script: |
-        echo "ehllow"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
+        ]
       image: "alpine:latest"
       backoff:
         limit: 3
@@ -61,8 +64,11 @@ spec:
         # serviceAccountName: "custom-service-account"
         # automountServiceAccountToken: false
     - name: "random-b"
-      script: |
-        echo "ehllow $first"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
       image: "alpine:latest"
       runAfter: ["random"]
       backoff:

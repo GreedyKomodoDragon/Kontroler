@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -57,11 +58,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
 		// Handle the case where the DAG object was deleted before reconciliation
 		if errors.IsNotFound(err) {
-			// DAG was deleted, remove it from the database
-			if err := r.deleteFromDatabase(ctx, req.NamespacedName); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, nil
+			return r.handleDeletion(ctx, req, dag)
 		}
 
 		// Return error if unable to fetch DAG object
@@ -70,23 +67,27 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	// Check if the DAG is marked for deletion
 	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The DAG is being deleted, remove it from the database
-		if err := r.deleteFromDatabase(ctx, req.NamespacedName); err != nil {
-			return ctrl.Result{}, err
-		}
-		// Remove the finalizer if it exists
-		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
-			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
-			if err := r.Update(ctx, &dag); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
+		return r.handleDeletion(ctx, req, dag)
+	}
 
-		return ctrl.Result{}, nil
+	taskRefs := []kontrolerv1alpha1.TaskRef{}
+	for _, val := range dag.Spec.Task {
+		if val.TaskRef != nil {
+			if val.TaskRef.Name == "" || val.TaskRef.Version == 0 {
+				return ctrl.Result{}, fmt.Errorf("missing name or version")
+			}
+
+			taskRefs = append(taskRefs, *val.TaskRef)
+		}
+	}
+
+	refParams, err := r.DbManager.GetTaskRefsParameters(ctx, taskRefs)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Validate the DAG
-	if err := dag.ValidateDAG(); err != nil {
+	if err := dag.ValidateDAG(refParams); err != nil {
 		// Return error if DAG is not valid
 		return ctrl.Result{}, err
 	}
@@ -101,6 +102,9 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// Add Finialiser to DagTasks if they are used
+	r.updatingDagTaskFinalisers(ctx, taskRefs, req.Namespace)
+
 	return ctrl.Result{}, nil
 }
 
@@ -108,7 +112,8 @@ func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kontrolerv1alp
 	return r.DbManager.InsertDAG(ctx, dag, namespace)
 }
 
-func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName types.NamespacedName) error {
+func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName types.NamespacedName) ([]string, error) {
+	log.Log.Info("reconcile deletion", "controller", "dag", "namespacedName.Name", namespacedName.Name, "namespacedName.Namespace", namespacedName.Namespace)
 	return r.DbManager.SoftDeleteDAG(ctx, namespacedName.Name, namespacedName.Namespace)
 }
 
@@ -117,4 +122,68 @@ func (r *DAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kontrolerv1alpha1.DAG{}).
 		Complete(r)
+}
+
+func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs []kontrolerv1alpha1.TaskRef, namespace string) {
+	for _, taskRef := range taskRefs {
+		var dagTask kontrolerv1alpha1.DagTask
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      taskRef.Name,
+			Namespace: namespace,
+		}, &dagTask); err != nil {
+			// Log the error and continue
+			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
+			continue
+		}
+
+		if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+			controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo")
+			if err := r.Update(ctx, &dagTask); err != nil {
+				log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", taskRef)
+			}
+		}
+	}
+}
+
+func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs []string, namespace string) {
+	log.Log.Info("reconcile deletion", "controller", "dag", "namespace", namespace, "method", "removingDagTaskFinalisers", "taskCount", len(taskRefs))
+
+	for _, taskRef := range taskRefs {
+		var dagTask kontrolerv1alpha1.DagTask
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      taskRef,
+			Namespace: namespace,
+		}, &dagTask); err != nil {
+			// Log the error and continue
+			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
+			continue
+		}
+
+		if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+			controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo")
+			if err := r.Update(ctx, &dagTask); err != nil {
+				log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", taskRef)
+			}
+		}
+	}
+}
+
+func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, dag kontrolerv1alpha1.DAG) (ctrl.Result, error) {
+	// The DAG is being deleted, remove it from the database
+	taskNames, err := r.deleteFromDatabase(ctx, req.NamespacedName)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Remove the finalizer if it exists
+	if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
+		controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
+		if err := r.Update(ctx, &dag); err != nil {
+			log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
+		}
+	}
+
+	r.removingDagTaskFinalisers(ctx, taskNames, req.Namespace)
+
+	return ctrl.Result{}, nil
 }

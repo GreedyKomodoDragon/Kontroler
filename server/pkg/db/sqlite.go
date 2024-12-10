@@ -168,19 +168,16 @@ func (s *sqliteManager) getDagConnections(ctx context.Context, dagId int) (map[i
 	// Query for the task connections
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT 
-			t.task_id, 
+			dt.dag_task_id,
 			COALESCE(GROUP_CONCAT(td.depends_on_task_id), '') AS dependencies
 		FROM 
 			Tasks t
 		LEFT JOIN 
-			Dependencies td ON t.task_id = td.task_id
-		WHERE t.task_id IN (
-			SELECT task_id
-			FROM DAG_Tasks
-			WHERE dag_id = ?
-		)
-		GROUP BY 
-			t.task_id;
+		DAG_Tasks dt ON t.task_id = dt.task_id
+		LEFT JOIN 
+			Dependencies td ON dt.dag_task_id = td.task_id
+		WHERE dt.dag_id = ?
+		GROUP BY dt.dag_task_id;
 	`, dagId)
 
 	if err != nil {
@@ -382,11 +379,37 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 				SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS active_dag_runs
 			FROM DAG_Runs;
 		`
+		var successfulDagRuns, failedDagRuns, totalDagRuns, activeDagRuns sql.NullInt64
 		row := s.db.QueryRowContext(ctx, dagRunsQuery)
-		if err := row.Scan(&stats.SuccessfulDagRuns, &stats.FailedDagRuns, &stats.TotalDagRuns, &stats.ActiveDagRuns); err != nil {
+		if err := row.Scan(&successfulDagRuns, &failedDagRuns, &totalDagRuns, &activeDagRuns); err != nil {
 			errChan <- fmt.Errorf("failed to execute dagRunsQuery: %w", err)
 			return
 		}
+
+		if successfulDagRuns.Valid {
+			stats.SuccessfulDagRuns = int(successfulDagRuns.Int64)
+		} else {
+			stats.SuccessfulDagRuns = 0
+		}
+
+		if failedDagRuns.Valid {
+			stats.FailedDagRuns = int(failedDagRuns.Int64)
+		} else {
+			stats.FailedDagRuns = 0
+		}
+
+		if totalDagRuns.Valid {
+			stats.TotalDagRuns = int(totalDagRuns.Int64)
+		} else {
+			stats.TotalDagRuns = 0
+		}
+
+		if activeDagRuns.Valid {
+			stats.ActiveDagRuns = int(activeDagRuns.Int64)
+		} else {
+			stats.ActiveDagRuns = 0
+		}
+
 	}()
 
 	// Goroutine for Task Outcomes
@@ -404,17 +427,25 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 			) tp ON tr.task_run_id = tp.task_run_id
 			WHERE tp.max_updated_at >= datetime('now', '-30 days');
 		`
-		var completedTasks, failedTasks int
+		var completedTasks, failedTasks sql.NullInt64
 		row := s.db.QueryRowContext(ctx, taskOutcomesQuery)
 		if err := row.Scan(&completedTasks, &failedTasks); err != nil {
 			errChan <- fmt.Errorf("failed to execute taskOutcomesQuery: %w", err)
 			return
 		}
 
-		// Set task outcomes
-		stats.TaskOutcomes = map[string]int{
-			"Completed": completedTasks,
-			"Failed":    failedTasks,
+		stats.TaskOutcomes = map[string]int{}
+
+		if completedTasks.Valid {
+			stats.TaskOutcomes["Completed"] = int(completedTasks.Int64)
+		} else {
+			stats.TaskOutcomes["Completed"] = 0
+		}
+
+		if failedTasks.Valid {
+			stats.TaskOutcomes["Failed"] = int(failedTasks.Int64)
+		} else {
+			stats.TaskOutcomes["Failed"] = 0
 		}
 	}()
 
@@ -564,7 +595,6 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 	return results, nil
 }
 
-// GetTaskDetails implements DbManager.
 func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
 	var taskDetails TaskDetails
 	var podTemplateJSON *string
@@ -575,9 +605,10 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDe
 
 	// Query for the task details from the Tasks table
 	queryTask := `
-			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes, script, parameters
-			FROM Tasks
-			WHERE task_id = ?;
+			SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+			FROM Tasks t
+			LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+			WHERE t.task_id = ?;
 		`
 
 	if err := s.db.QueryRowContext(ctx, queryTask, taskId).Scan(
@@ -693,6 +724,128 @@ func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, tas
 	}
 
 	return task, nil
+}
+
+func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error) {
+	// Query for the task details from the Tasks table
+	queryTask := `
+		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+		FROM Tasks t
+		WHERE t.inline = FALSE		
+		LIMIT ? OFFSET ?;
+	`
+
+	rows, err := s.db.QueryContext(ctx, queryTask, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
+	}
+
+	taskDetails := []*TaskDetails{}
+	for rows.Next() {
+		var taskDetail TaskDetails
+		var podTemplateJSON *string
+		var commandJSON string
+		var argsJSON string
+		var retryJSON string
+		var paramsJson string
+
+		if err := rows.Scan(
+			&taskDetail.ID,
+			&taskDetail.Name,
+			&commandJSON,
+			&argsJSON,
+			&taskDetail.Image,
+			&taskDetail.BackOffLimit,
+			&taskDetail.IsConditional,
+			&podTemplateJSON,
+			&retryJSON,
+			&taskDetail.Script,
+			&paramsJson,
+		); err != nil {
+			return nil, fmt.Errorf("failed to query task details: %w", err)
+		}
+
+		if err := json.Unmarshal([]byte(commandJSON), &taskDetail.Command); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(retryJSON), &taskDetail.RetryCodes); err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal([]byte(argsJSON), &taskDetail.Args); err != nil {
+			return nil, err
+		}
+
+		if podTemplateJSON != nil {
+			taskDetail.PodTemplate = string(*podTemplateJSON)
+		} else {
+			taskDetail.PodTemplate = ""
+		}
+
+		params := []string{}
+		if err := json.Unmarshal([]byte(paramsJson), &params); err != nil {
+			return nil, err
+		}
+
+		placeholders := generateQuestionMarks(params)
+
+		queryParameters := fmt.Sprintf(`
+			SELECT parameter_id, name, isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE dag_id = (
+				SELECT dag_id
+				FROM DAG_Tasks
+				WHERE task_id = ?
+			) AND name IN (%s)
+		`, placeholders)
+
+		args := make([]interface{}, len(params)+1)
+		args[0] = taskDetail.ID
+		for i, param := range params {
+			args[i+1] = param
+		}
+
+		rows, err := s.db.QueryContext(ctx, queryParameters, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query parameters: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var param Parameter
+			if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
+				return nil, fmt.Errorf("failed to scan parameter row: %w", err)
+			}
+			taskDetail.Parameters = append(taskDetail.Parameters, param)
+		}
+
+		if rows.Err() != nil {
+			return nil, fmt.Errorf("error iterating parameter rows: %w", rows.Err())
+		}
+
+		taskDetails = append(taskDetails, &taskDetail)
+
+	}
+
+	return taskDetails, nil
+}
+
+func (s *sqliteManager) GetDagTaskPageCount(ctx context.Context, limit int) (int, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM Tasks
+		WHERE inline = FALSE;`).Scan(&count); err != nil {
+		return 0, err
+	}
+
+	pages := count / limit
+	if count%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
 }
 
 func generateQuestionMarks(slice []string) string {

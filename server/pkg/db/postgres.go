@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
@@ -152,22 +153,19 @@ func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map
 	// Get the connections
 	rows, err := p.pool.Query(ctx, `
 	SELECT 
-		t.task_id, 
+		dt.dag_task_id,
 		CASE 
 			WHEN array_agg(td.depends_on_task_id) = ARRAY[NULL]::INTEGER[] THEN ARRAY[]::INTEGER[]
 			ELSE COALESCE(array_agg(td.depends_on_task_id), ARRAY[]::INTEGER[])
-    	END AS dependencies
+		END AS dependencies
 	FROM 
 		Tasks t
 	LEFT JOIN 
-		Dependencies td ON t.task_id = td.task_id
-	WHERE t.task_id in (
-		SELECT task_id
-		FROM DAG_Tasks
-		WHERE dag_id = $1
-	)
-	GROUP BY 
-		t.task_id;`, dagId)
+		DAG_Tasks dt ON t.task_id = dt.task_id
+	LEFT JOIN 
+		Dependencies td ON dt.dag_task_id = td.task_id
+	WHERE dt.dag_id = $1
+	GROUP BY dt.dag_task_id;`, dagId)
 
 	if err != nil {
 		return nil, err
@@ -284,15 +282,16 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
 	var taskDetails TaskDetails
-	var podTemplateJSON string
+	var podTemplateJSON sql.NullString
 	var parameters []string
 
 	// Query for the task details from the Tasks table
 	queryTask := `
-			SELECT task_id, name, command, args, image, backoffLimit, isConditional, podTemplate, retryCodes, script, parameters
-			FROM Tasks
-			WHERE task_id = $1
-		`
+		SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+		FROM Tasks t
+		LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+		WHERE dat.dag_task_id = $1;
+	`
 
 	if err := p.pool.QueryRow(ctx, queryTask, taskId).Scan(
 		&taskDetails.ID,
@@ -310,8 +309,12 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 		return nil, fmt.Errorf("failed to query task details: %w", err)
 	}
 
-	// Convert JSONB field to string
-	taskDetails.PodTemplate = string(podTemplateJSON)
+	// Handle the nullable value from podTemplateJSON
+	if podTemplateJSON.Valid {
+		taskDetails.PodTemplate = podTemplateJSON.String
+	} else {
+		taskDetails.PodTemplate = "" // Or any default value
+	}
 
 	// Query for the parameters related to the task from the DAG_Parameters table
 	queryParameters := `
@@ -627,4 +630,102 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 	}
 
 	return results, nil
+}
+
+func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error) {
+	// Query for the task details from the Tasks table
+	queryTask := `
+		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
+		FROM Tasks t
+		WHERE t.inline = FALSE		
+		LIMIT $1 OFFSET $2;
+	`
+
+	rows, err := p.pool.Query(ctx, queryTask, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
+	}
+
+	taskDetails := []*TaskDetails{}
+	for rows.Next() {
+		var taskDetail TaskDetails
+		var podTemplateJSON sql.NullString
+		var parameters []string
+
+		if err := rows.Scan(
+			&taskDetail.ID,
+			&taskDetail.Name,
+			&taskDetail.Command,
+			&taskDetail.Args,
+			&taskDetail.Image,
+			&taskDetail.BackOffLimit,
+			&taskDetail.IsConditional,
+			&podTemplateJSON,
+			&taskDetail.RetryCodes,
+			&taskDetail.Script,
+			&parameters,
+		); err != nil {
+			return nil, err
+		}
+
+		// Handle the nullable value from podTemplateJSON
+		if podTemplateJSON.Valid {
+			taskDetail.PodTemplate = podTemplateJSON.String
+		} else {
+			taskDetail.PodTemplate = "" // Or any default value
+		}
+
+		// Query for the parameters related to the task from the DAG_Parameters table
+		queryParameters := `
+			SELECT parameter_id, name, isSecret, defaultValue
+			FROM DAG_Parameters
+			WHERE 
+				dag_id in (SELECT dag_id
+							FROM DAG_Tasks
+							WHERE task_id = $1)
+				AND name = ANY($2);
+		`
+
+		rowsParam, err := p.pool.Query(ctx, queryParameters, taskDetail.ID, parameters)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query parameters: %w", err)
+		}
+		defer rowsParam.Close()
+
+		for rowsParam.Next() {
+			var param Parameter
+			if err := rowsParam.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
+				return nil, fmt.Errorf("failed to scan parameter row: %w", err)
+			}
+			taskDetail.Parameters = append(taskDetail.Parameters, param)
+		}
+
+		if rowsParam.Err() != nil {
+			return nil, fmt.Errorf("error iterating parameter rows: %w", rows.Err())
+		}
+
+		taskDetails = append(taskDetails, &taskDetail)
+
+	}
+
+	return taskDetails, nil
+}
+
+func (p *postgresManager) GetDagTaskPageCount(ctx context.Context, limit int) (int, error) {
+	var pageCount int
+
+	if err := p.pool.QueryRow(ctx, `
+	SELECT COUNT(*)
+	FROM Tasks
+	WHERE inline = FALSE;
+	`).Scan(&pageCount); err != nil {
+		return 0, err
+	}
+
+	pages := pageCount / limit
+	if pageCount%limit > 0 {
+		pages++
+	}
+
+	return pages, nil
 }

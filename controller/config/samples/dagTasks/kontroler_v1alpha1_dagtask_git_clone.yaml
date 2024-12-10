@@ -1,0 +1,27 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagTask
+metadata:
+  labels:
+    app.kubernetes.io/name: dagtask
+    app.kubernetes.io/instance: dagtask-sample
+  name: gitclone
+spec:
+  script: |
+    #!/bin/bash
+    set -e
+    git clone $HTTPSURL
+    ls
+    cd lapce
+    ls
+    for i in 1 2 3 4 5 6 7 8 9; do
+      echo "Output $i"
+      sleep 0.01
+    done
+  image: "alpine/git:v2.45.2"
+  backoff:
+    limit: 2
+  parameters:
+    - HTTPSURL
+  conditional:
+    enabled: true
+    retryCodes: [1]

@@ -18,6 +18,8 @@ This system allows for running containers as tasks within a DAG, while providing
 <img src="./images/ui-screenshot.png" width="600" />
 </p>
 
+*Worth noting that as this is alpha still expect multiple breaking changes between version, while there are no real uses of Kontroler there will be no migration scripts between versions*
+
 ## Getting Started
 
 ### Helm Chart
