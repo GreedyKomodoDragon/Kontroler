@@ -190,9 +190,8 @@ func (dag *DAG) checkFieldsFilled() error {
 		}
 
 		if task.TaskRef != nil {
-			// TODO look up task in DB
-
 			// We ignore any further checks as they will not be used
+			// Previous check will have confirmed if this task exists or not
 			continue
 		}
 
