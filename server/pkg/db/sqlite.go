@@ -740,6 +740,8 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
 	}
 
+	defer rows.Close()
+
 	taskDetails := []*TaskDetails{}
 	for rows.Next() {
 		var taskDetail TaskDetails
@@ -832,6 +834,10 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 }
 
 func (s *sqliteManager) GetDagTaskPageCount(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, fmt.Errorf("limit must be greater than zero")
+	}
+
 	var count int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
