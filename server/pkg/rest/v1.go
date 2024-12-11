@@ -184,18 +184,23 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 
 	dagRouter.Get("/dagTask/pages/page/:page", func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
-		if err != nil || page < 1 {
-			return c.SendStatus(fiber.StatusBadRequest)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid page number format",
+			})
 		}
-
+		if page < 1 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Page number must be greater than 0",
+			})
+		}
 		taskDetails, err := dbManager.GetDagTasks(c.Context(), 10, (page-1)*10)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting DagTask details")
-			return c.SendStatus(fiber.StatusInternalServerError)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to retrieve DAG tasks",
+			})
 		}
-
-		fmt.Println("data:", taskDetails)
-
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
 	})
 
@@ -261,10 +266,6 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 			// TODO: Improve better error handling
 			log.Error().Err(err).Msg("Error getting dag run parameters")
 			return c.SendStatus(fiber.StatusBadRequest)
-		}
-
-		for k := range isSecretMap {
-			fmt.Println(k, isSecretMap[k])
 		}
 
 		if err := kclient.CreateDagRun(c.Context(), dagrunForm, isSecretMap, dagrunForm.Namespace, kubClient); err != nil {

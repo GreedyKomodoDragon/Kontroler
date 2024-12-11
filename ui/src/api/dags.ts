@@ -43,23 +43,17 @@ export async function getDagRuns({
 }
 
 export async function getDagRunGraph(runId: number): Promise<DagRunGraph> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/run/${runId}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.get(`${getApiUrl()}/api/v1/dag/run/${runId}`, {
+    withCredentials: true,
+  });
 
   return result.data;
 }
 
 export async function getDagRunAll(runId: number): Promise<DagRunAll> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/run/all/${runId}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.get(`${getApiUrl()}/api/v1/dag/run/all/${runId}`, {
+    withCredentials: true,
+  });
   return result.data;
 }
 
@@ -87,54 +81,38 @@ export async function getTaskDetails(
     return undefined;
   }
 
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/task/${taskId}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.get(`${getApiUrl()}/api/v1/dag/task/${taskId}`, {
+    withCredentials: true,
+  });
   return result.data;
 }
 
 export async function createDag(dagForm: DagFormObj): Promise<any> {
-  const result = await axios.post(
-    `${getApiUrl()}/api/v1/dag/create`,
-    dagForm,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.post(`${getApiUrl()}/api/v1/dag/create`, dagForm, {
+    withCredentials: true,
+  });
   return result.data;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/stats/dashboard`,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.get(`${getApiUrl()}/api/v1/stats/dashboard`, {
+    withCredentials: true,
+  });
   return result.data;
 }
 
 export async function getDagRunPageCount(): Promise<number> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/run/pages/count`,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.get(`${getApiUrl()}/api/v1/dag/run/pages/count`, {
+    withCredentials: true,
+  });
 
   return result.data.count;
 }
 
 export async function getDagPageCount(): Promise<number> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/pages/count`,
-    {
-      withCredentials: true,
-    }
-  );
+  const result = await axios.get(`${getApiUrl()}/api/v1/dag/pages/count`, {
+    withCredentials: true,
+  });
 
   return result.data.count;
 }
@@ -202,23 +180,34 @@ export async function getDagTasks({
 }: {
   queryKey: string[];
 }): Promise<TaskDetails[]> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/dagTask/pages/page/${queryKey[1]}`,
-    {
-      withCredentials: true,
-    }
-  );
-
-  return result.data;
+  try {
+    const result = await axios.get(
+      `${getApiUrl()}/api/v1/dag/dagTask/pages/page/${queryKey[1]}`,
+      {
+        withCredentials: true,
+      }
+    );
+    return result.data;
+  } catch (error) {
+    console.error('Failed to fetch DAG tasks:', error);
+    throw error;
+  }
 }
 
 export async function getDagTaskPageCount(): Promise<number> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/dagTask/pages/count`,
-    {
-      withCredentials: true,
+  try {
+    const result = await axios.get(
+      `${getApiUrl()}/api/v1/dag/dagTask/pages/count`,
+      {
+        withCredentials: true,
+      }
+    );
+    if (typeof result.data.count !== "number") {
+      throw new Error("Invalid response format: count is not a number");
     }
-  );
-
-  return result.data.count;
+    return result.data.count;
+  } catch (error) {
+    console.error("Failed to fetch DAG task page count:", error);
+    throw error;
+  }
 }
