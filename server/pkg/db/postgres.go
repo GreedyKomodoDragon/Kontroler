@@ -646,6 +646,8 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
 	}
 
+	defer rows.Close()
+
 	taskDetails := []*TaskDetails{}
 	for rows.Next() {
 		var taskDetail TaskDetails
@@ -712,6 +714,10 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 }
 
 func (p *postgresManager) GetDagTaskPageCount(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, fmt.Errorf("limit must be greater than zero")
+	}
+
 	var pageCount int
 
 	if err := p.pool.QueryRow(ctx, `
