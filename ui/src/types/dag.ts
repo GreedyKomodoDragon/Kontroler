@@ -70,6 +70,20 @@ export type TaskDetails = {
   script?: string;
 };
 
+export type DagTaskDetails = {
+  id: number;
+  name: string;
+  command?: string[];
+  args?: string[];
+  image: string;
+  parameters: string[];
+  backOffLimit: number;
+  isConditional: boolean;
+  podTemplate: string;
+  retryCodes: number[];
+  script?: string;
+};
+
 export type DashboardStats = {
   dag_count: number;
   successful_dag_runs: number;

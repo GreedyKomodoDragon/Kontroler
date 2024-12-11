@@ -632,7 +632,7 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 	return results, nil
 }
 
-func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error) {
+func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*DagTaskDetails, error) {
 	// Query for the task details from the Tasks table
 	queryTask := `
 		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
@@ -640,20 +640,15 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 		WHERE t.inline = FALSE		
 		LIMIT $1 OFFSET $2;
 	`
-
 	rows, err := p.pool.Query(ctx, queryTask, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
 	}
-
 	defer rows.Close()
-
-	taskDetails := []*TaskDetails{}
+	taskDetails := []*DagTaskDetails{}
 	for rows.Next() {
-		var taskDetail TaskDetails
+		var taskDetail DagTaskDetails
 		var podTemplateJSON sql.NullString
-		var parameters []string
-
 		if err := rows.Scan(
 			&taskDetail.ID,
 			&taskDetail.Name,
@@ -665,11 +660,10 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 			&podTemplateJSON,
 			&taskDetail.RetryCodes,
 			&taskDetail.Script,
-			&parameters,
+			&taskDetail.Parameters,
 		); err != nil {
 			return nil, err
 		}
-
 		// Handle the nullable value from podTemplateJSON
 		if podTemplateJSON.Valid {
 			taskDetail.PodTemplate = podTemplateJSON.String
@@ -677,37 +671,7 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 			taskDetail.PodTemplate = "" // Or any default value
 		}
 
-		// Query for the parameters related to the task from the DAG_Parameters table
-		queryParameters := `
-			SELECT parameter_id, name, isSecret, defaultValue
-			FROM DAG_Parameters
-			WHERE 
-				dag_id in (SELECT dag_id
-							FROM DAG_Tasks
-							WHERE task_id = $1)
-				AND name = ANY($2);
-		`
-
-		rowsParam, err := p.pool.Query(ctx, queryParameters, taskDetail.ID, parameters)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query parameters: %w", err)
-		}
-		defer rowsParam.Close()
-
-		for rowsParam.Next() {
-			var param Parameter
-			if err := rowsParam.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
-				return nil, fmt.Errorf("failed to scan parameter row: %w", err)
-			}
-			taskDetail.Parameters = append(taskDetail.Parameters, param)
-		}
-
-		if rowsParam.Err() != nil {
-			return nil, fmt.Errorf("error iterating parameter rows: %w", rows.Err())
-		}
-
 		taskDetails = append(taskDetails, &taskDetail)
-
 	}
 
 	return taskDetails, nil
