@@ -1,10 +1,10 @@
 import { createSignal } from "solid-js";
-import { TaskDetails } from "../../types/dag";
+import { DagTaskDetails } from "../../types/dag";
 import JsonToYamlViewer from "../code/JsonToYamlViewer";
 import ShellScriptViewer from "../code/shellScriptViewer";
 
 type TaskBoxProps = {
-  taskDetails: TaskDetails;
+  taskDetails: DagTaskDetails;
 };
 
 export default function TaskBox(props: TaskBoxProps) {
@@ -78,9 +78,7 @@ export default function TaskBox(props: TaskBoxProps) {
             {props.taskDetails.parameters &&
               props.taskDetails.parameters.map((param) => (
                 <li>
-                  {param.name} - Default
-                  {param.isSecret && " Secret"}:{" "}
-                  {param.defaultValue ? param.defaultValue : "N/A"}
+                  {param}
                 </li>
               ))}
           </ul>

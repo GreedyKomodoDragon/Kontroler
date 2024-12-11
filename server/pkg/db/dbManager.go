@@ -84,6 +84,20 @@ type TaskDetails struct {
 	Script        string      `json:"script,omitempty"`
 }
 
+type DagTaskDetails struct {
+	ID            int      `json:"id"`
+	Name          string   `json:"name"`
+	Command       []string `json:"command,omitempty"`
+	Args          []string `json:"args,omitempty"`
+	Image         string   `json:"image"`
+	Parameters    []string `json:"parameters"`
+	BackOffLimit  int      `json:"backOffLimit"`
+	IsConditional bool     `json:"isConditional"`
+	PodTemplate   string   `json:"podTemplate"`
+	RetryCodes    []int    `json:"retryCodes"`
+	Script        string   `json:"script,omitempty"`
+}
+
 type DashboardStats struct {
 	DAGCount          int                `json:"dag_count"`
 	SuccessfulDagRuns int                `json:"successful_dag_runs"`
@@ -114,7 +128,7 @@ type DbManager interface {
 	GetDagNames(ctx context.Context, term string, limit int) ([]*string, error)
 	GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error)
 	GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error)
-	GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error)
+	GetDagTasks(ctx context.Context, limit int, offset int) ([]*DagTaskDetails, error)
 	GetDagTaskPageCount(ctx context.Context, limit int) (int, error)
 
 	Close()

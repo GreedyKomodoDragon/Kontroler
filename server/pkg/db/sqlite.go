@@ -726,7 +726,7 @@ func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, tas
 	return task, nil
 }
 
-func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*TaskDetails, error) {
+func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*DagTaskDetails, error) {
 	// Query for the task details from the Tasks table
 	queryTask := `
 		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
@@ -742,9 +742,9 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 
 	defer rows.Close()
 
-	taskDetails := []*TaskDetails{}
+	taskDetails := []*DagTaskDetails{}
 	for rows.Next() {
-		var taskDetail TaskDetails
+		var taskDetail DagTaskDetails
 		var podTemplateJSON *string
 		var commandJSON string
 		var argsJSON string
@@ -790,44 +790,8 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 			return nil, err
 		}
 
-		placeholders := generateQuestionMarks(params)
-
-		queryParameters := fmt.Sprintf(`
-			SELECT parameter_id, name, isSecret, defaultValue
-			FROM DAG_Parameters
-			WHERE dag_id = (
-				SELECT dag_id
-				FROM DAG_Tasks
-				WHERE task_id = ?
-			) AND name IN (%s)
-		`, placeholders)
-
-		args := make([]interface{}, len(params)+1)
-		args[0] = taskDetail.ID
-		for i, param := range params {
-			args[i+1] = param
-		}
-
-		rows, err := s.db.QueryContext(ctx, queryParameters, args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query parameters: %w", err)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var param Parameter
-			if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
-				return nil, fmt.Errorf("failed to scan parameter row: %w", err)
-			}
-			taskDetail.Parameters = append(taskDetail.Parameters, param)
-		}
-
-		if rows.Err() != nil {
-			return nil, fmt.Errorf("error iterating parameter rows: %w", rows.Err())
-		}
-
+		taskDetail.Parameters = params
 		taskDetails = append(taskDetails, &taskDetail)
-
 	}
 
 	return taskDetails, nil
