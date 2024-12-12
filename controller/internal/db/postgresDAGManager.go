@@ -1045,7 +1045,7 @@ func (p *postgresDAGManager) getTaskDeletionData(ctx context.Context, tx pgx.Tx,
 	return taskDatas, nil
 }
 
-func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
+func (p *postgresDAGManager) DeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
 	// Begin transaction
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
@@ -1066,12 +1066,17 @@ func (p *postgresDAGManager) SoftDeleteDAG(ctx context.Context, name string, nam
 	for _, task := range taskData {
 		var count int
 		err = tx.QueryRow(ctx, `
-	SELECT COUNT(*)
-	FROM DAG_Tasks dt
-	JOIN DAGs d ON dt.dag_id = d.dag_id
-	WHERE dt.task_id = $1
-	  AND NOT (d.name = $2 AND d.namespace = $3);
-	`, task.TaskID, name, namespace).Scan(&count)
+		SELECT COUNT(DISTINCT (d.name, d.namespace))
+		FROM DAG_Tasks dt
+		JOIN DAGs d ON dt.dag_id = d.dag_id
+		WHERE 
+			dt.task_id IN (
+				SELECT task_id
+				FROM tasks
+				WHERE name = $1 AND namespace = $2
+			)
+			AND NOT (d.name = $3 AND d.namespace = $2);
+	`, task.TaskName, namespace, name).Scan(&count)
 		if err != nil {
 			return nil, err
 		}

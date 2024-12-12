@@ -652,7 +652,7 @@ func TestPostgresDAGManager_MarkPodStatus(t *testing.T) {
 	require.Equal(t, string(v1.PodSucceeded), status)
 }
 
-func TestPostgresDAGManager_SoftDeleteDag(t *testing.T) {
+func TestPostgresDAGManager_DeleteDag(t *testing.T) {
 	pool, err := utils.SetupPostgresContainer(context.Background())
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
@@ -666,12 +666,12 @@ func TestPostgresDAGManager_SoftDeleteDag(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testDAGManagerSoftDeleteDAG_Exists(t, dm)
-	testDAGManagerSoftDeleteDAG_Does_Not_Exist(t, dm)
-	testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t, dm)
+	testDAGManagerDeleteDAG_Exists(t, dm)
+	testDAGManagerDeleteDAG_Does_Not_Exist(t, dm)
+	testDAGManagerDeleteDAG_Noop_on_double_delete(t, dm)
 }
 
-func TestPostgresDAGManager_SoftDeleteDag_TaskRefs(t *testing.T) {
+func TestPostgresDAGManager_DeleteDag_TaskRefs(t *testing.T) {
 	pool, err := utils.SetupPostgresContainer(context.Background())
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
@@ -685,10 +685,10 @@ func TestPostgresDAGManager_SoftDeleteDag_TaskRefs(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
+	testDAGManagerDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
 }
 
-func TestPostgresDAGManager_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
+func TestPostgresDAGManager_DeleteDag_TaskRefs_Versioning(t *testing.T) {
 	pool, err := utils.SetupPostgresContainer(context.Background())
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
@@ -702,8 +702,8 @@ func TestPostgresDAGManager_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
-	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
+	testDAGManagerDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
+	testDAGManagerDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
 }
 
 func TestPostgresDAGManager_FindExistingDAGRun(t *testing.T) {

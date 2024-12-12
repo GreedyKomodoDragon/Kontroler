@@ -57,8 +57,8 @@ type DBDAGManager interface {
 	ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error)
 	MarkTaskAsFailed(ctx context.Context, taskRunId int) error
 	MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error
-	// Soft deletes the dag in database, and returns all the dagTasks no longer used
-	SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]string, error)
+	// Deletes the dag in database, and returns all the dagTasks no longer used
+	DeleteDAG(ctx context.Context, name string, namespace string) ([]string, error)
 	FindExistingDAGRun(ctx context.Context, name string) (bool, error)
 	GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error)
 	AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error
