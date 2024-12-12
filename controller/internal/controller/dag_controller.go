@@ -114,7 +114,7 @@ func (r *DAGReconciler) storeInDatabase(ctx context.Context, dag *kontrolerv1alp
 
 func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName types.NamespacedName) ([]string, error) {
 	log.Log.Info("reconcile deletion", "controller", "dag", "namespacedName.Name", namespacedName.Name, "namespacedName.Namespace", namespacedName.Namespace)
-	return r.DbManager.SoftDeleteDAG(ctx, namespacedName.Name, namespacedName.Namespace)
+	return r.DbManager.DeleteDAG(ctx, namespacedName.Name, namespacedName.Namespace)
 }
 
 // SetupWithManager sets up the controller with the Manager.
