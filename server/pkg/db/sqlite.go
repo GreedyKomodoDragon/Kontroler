@@ -608,7 +608,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDe
 			SELECT t.task_id, dat.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
 			FROM Tasks t
 			LEFT JOIN DAG_Tasks dat ON dat.task_id = t.task_id
-			WHERE t.task_id = ?;
+			WHERE dat.dag_task_id = ?;
 		`
 
 	if err := s.db.QueryRowContext(ctx, queryTask, taskId).Scan(
