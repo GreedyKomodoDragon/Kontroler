@@ -1237,24 +1237,23 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 
 	// Check if each task is still associated with other DAGs
 	var unusedTaskNames []string
-
 	for _, task := range taskData {
 		var count int
 		err = tx.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM (
-			SELECT DISTINCT d.name, d.namespace
-			FROM DAG_Tasks dt
-			JOIN DAGs d ON dt.dag_id = d.dag_id
-			WHERE 
-				dt.task_id in (
-					SELECT task_id
-					FROM tasks
-					WHERE name = ? and namespace = ?
-				) 
-				AND NOT(d.name = ? AND d.namespace = ?)
-		) AS distinct_combinations;
-		`, task.TaskName, namespace, name, namespace).Scan(&count)
+			SELECT COUNT(*)
+			FROM (
+				SELECT DISTINCT d.name, d.namespace
+				FROM DAG_Tasks dt
+				JOIN DAGs d ON dt.dag_id = d.dag_id
+				WHERE 
+					dt.task_id in (
+						SELECT task_id
+						FROM tasks
+						WHERE name = ? and namespace = ?
+					) 
+					AND NOT(d.name = ? AND d.namespace = ?)
+			) AS distinct_combinations;
+			`, task.TaskName, namespace, name, namespace).Scan(&count)
 		if err != nil {
 			return nil, err
 		}
@@ -1265,18 +1264,38 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 		}
 	}
 
-	rowsTasks, err := tx.QueryContext(ctx, `
-	SELECT t.task_id
-	FROM Tasks t
-	JOIN dag_tasks dt ON dt.task_id = t.task_id
-	LEFT JOIN dags d on dt.dag_id = d.dag_id
-	WHERE d.name = ? and t.inline = TRUE;
-	`, name)
-
+	// Delete the associated DAG_Run entries first
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM DAG_Run_Parameters
+		WHERE run_id IN (
+			SELECT run_id FROM DAG_Runs WHERE dag_id IN (SELECT dag_id FROM DAGs WHERE name = ? AND namespace = ?)
+		);
+		`, name, namespace)
 	if err != nil {
 		return nil, err
 	}
 
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM Task_Runs
+		WHERE run_id IN (
+			SELECT run_id FROM DAG_Runs WHERE dag_id IN (SELECT dag_id FROM DAGs WHERE name = ? AND namespace = ?)
+		);
+		`, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now delete any tasks associated with inline tasks in the DAG
+	rowsTasks, err := tx.QueryContext(ctx, `
+		SELECT t.task_id
+		FROM Tasks t
+		JOIN DAG_Tasks dt ON dt.task_id = t.task_id
+		LEFT JOIN DAGs d ON dt.dag_id = d.dag_id
+		WHERE d.name = ? AND t.inline = TRUE;
+		`, name)
+	if err != nil {
+		return nil, err
+	}
 	defer rowsTasks.Close()
 
 	taskIds := []interface{}{}
@@ -1293,30 +1312,49 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 		i++
 	}
 
-	// Get the latest version of the DAG
-	if _, err := tx.ExecContext(ctx, `
-	DELETE FROM DAGs
-	WHERE name = ? AND namespace = ?;
-	`, name, namespace); err != nil {
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM DAG_Runs
+		WHERE dag_id IN (SELECT dag_id FROM DAGs WHERE name = ? AND namespace = ?)
+		`, name, namespace)
+	if err != nil {
 		return nil, err
 	}
 
-	if len(taskIds) > 0 {
-		// Construct the query
-		query := fmt.Sprintf(`
-		DELETE FROM Tasks
-		WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
+	// Now, delete DAG_Tasks references to the DAG
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM DAG_Tasks
+		WHERE dag_id IN (SELECT dag_id FROM DAGs WHERE name = ? AND namespace = ?)
+		`, name, namespace)
+	if err != nil {
+		return nil, err
+	}
 
+	// Now, delete the DAG itself
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM DAGs
+		WHERE name = ? AND namespace = ?;
+		`, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optionally delete tasks that are no longer in use
+	if len(taskIds) > 0 {
+		query := fmt.Sprintf(`
+			DELETE FROM Tasks
+			WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
 		if _, err := tx.ExecContext(ctx, query, taskIds...); err != nil {
 			return nil, err
 		}
 	}
 
+	// Commit the transaction
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
 	return unusedTaskNames, nil
+
 }
 
 func (s *sqliteDAGManager) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {
