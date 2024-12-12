@@ -618,7 +618,7 @@ func Test_SQLite_DAGManager_MarkPodStatus(t *testing.T) {
 	require.Equal(t, string(v1.PodSucceeded), status)
 }
 
-func Test_SQLite_DAGManager_SoftDeleteDag(t *testing.T) {
+func Test_SQLite_DAGManager_DeleteDag(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -632,9 +632,18 @@ func Test_SQLite_DAGManager_SoftDeleteDag(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testDAGManagerSoftDeleteDAG_Exists(t, dm)
-	testDAGManagerSoftDeleteDAG_Does_Not_Exist(t, dm)
-	testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t, dm)
+	testDAGManagerDeleteDAG_Exists(t, dm)
+
+	count := 0
+	err = dbConn.QueryRowContext(context.Background(), `
+	SELECT count(*)
+	FROM Tasks t;
+	`).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+
+	testDAGManagerDeleteDAG_Does_Not_Exist(t, dm)
+	testDAGManagerDeleteDAG_Noop_on_double_delete(t, dm)
 }
 
 func Test_SQLite_DAGManager_FindExistingDAGRun(t *testing.T) {
@@ -889,7 +898,7 @@ func Test_Sqlite_Complex_Example(t *testing.T) {
 	testDAGManager_Complex_Dag(t, dm)
 }
 
-func Test_SQLite_SoftDeleteDag_TaskRefs(t *testing.T) {
+func Test_SQLite_DeleteDag_TaskRefs(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -903,10 +912,10 @@ func Test_SQLite_SoftDeleteDag_TaskRefs(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
+	testDAGManagerDeleteDAG_UsingTaskRefs_Not_Needed(t, dm)
 }
 
-func Test_SQLite_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
+func Test_SQLite_DeleteDag_TaskRefs_Versioning(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -920,8 +929,8 @@ func Test_SQLite_SoftDeleteDag_TaskRefs_Versioning(t *testing.T) {
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
 
-	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
-	testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
+	testDAGManagerDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t, dm)
+	testDAGManagerDeleteDAG_UsingTaskRefs_Old_Version_Needed(t, dm)
 }
 
 func Test_SQLite_CreateDAGRun_Sequential(t *testing.T) {

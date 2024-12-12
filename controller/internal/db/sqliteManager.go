@@ -1192,84 +1192,130 @@ func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, 
 	return tx.Commit()
 }
 
-func (s *sqliteDAGManager) SoftDeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	defer tx.Rollback()
-
-	var version int
-	// Get the latest version of the DAG
-	if err := tx.QueryRowContext(ctx, `
-	SELECT version
-	FROM DAGs
-	WHERE name = ? AND namespace = ?
-	ORDER BY version DESC;`, name, namespace).Scan(&version); err != nil {
-		return nil, err
-	}
-
+func (s *sqliteDAGManager) getTaskDeletionData(ctx context.Context, tx *sql.Tx, name, namespace string) ([]taskData, error) {
+	// Check for tasks associated with the specified DAG
 	rows, err := tx.QueryContext(ctx, `
 	SELECT DISTINCT(t.task_id), t.name, t.namespace
 	FROM Tasks t
 	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
 	JOIN DAGs d ON d.dag_id = dt.dag_id
-	WHERE d.name = ? AND d.namespace = ? AND d.version = ? AND t.inline = FALSE;
-	`, name, namespace, version)
+	WHERE d.name = ? AND d.namespace = ? AND t.inline = FALSE;
+	`, name, namespace)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var unusedTaskNames []string
-	taskData := []struct {
-		TaskID        int
-		TaskName      string
-		TaskNamespace string
-	}{}
+	taskDatas := []taskData{}
 	for rows.Next() {
 		var taskID int
 		var taskName, taskNamespace string
 		if err := rows.Scan(&taskID, &taskName, &taskNamespace); err != nil {
 			return nil, err
 		}
-		taskData = append(taskData, struct {
-			TaskID        int
-			TaskName      string
-			TaskNamespace string
-		}{TaskID: taskID, TaskName: taskName, TaskNamespace: taskNamespace})
+
+		taskDatas = append(taskDatas, taskData{TaskID: taskID, TaskName: taskName, TaskNamespace: taskNamespace})
 	}
+
+	return taskDatas, nil
+}
+
+func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
+	// Begin transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Rollback transaction if not committed
+	defer tx.Rollback()
+
+	taskData, err := s.getTaskDeletionData(ctx, tx, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if each task is still associated with other DAGs
+	var unusedTaskNames []string
 
 	for _, task := range taskData {
 		var count int
 		err = tx.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM DAG_Tasks dt
-		JOIN Tasks t ON dt.task_id = t.task_id
-		JOIN DAGs d ON dt.dag_id = d.dag_id
-		WHERE (t.name = ? AND t.namespace = ?) AND
-		      NOT (d.name = ? AND d.namespace = ? AND d.version = ?);
-		`, task.TaskName, task.TaskNamespace, name, namespace, version).Scan(&count)
+		FROM (
+			SELECT DISTINCT d.name, d.namespace
+			FROM DAG_Tasks dt
+			JOIN DAGs d ON dt.dag_id = d.dag_id
+			WHERE 
+				dt.task_id in (
+					SELECT task_id
+					FROM tasks
+					WHERE name = ? and namespace = ?
+				) 
+				AND NOT(d.name = ? AND d.namespace = ?)
+		) AS distinct_combinations;
+		`, task.TaskName, namespace, name, namespace).Scan(&count)
 		if err != nil {
 			return nil, err
 		}
 
+		// Add tasks that are no longer connected to any DAG
 		if count == 0 {
 			unusedTaskNames = append(unusedTaskNames, task.TaskName)
 		}
 	}
 
-	if err := s.setInactive(tx, name, namespace, version); err != nil {
+	rowsTasks, err := tx.QueryContext(ctx, `
+	SELECT t.task_id
+	FROM Tasks t
+	JOIN dag_tasks dt ON dt.task_id = t.task_id
+	LEFT JOIN dags d on dt.dag_id = d.dag_id
+	WHERE d.name = ? and t.inline = TRUE;
+	`, name)
+
+	if err != nil {
 		return nil, err
 	}
 
-	// Commit transaction
+	defer rowsTasks.Close()
+
+	taskIds := []interface{}{}
+	placeholders := []string{}
+	i := 0
+	for rowsTasks.Next() {
+		var taskId int
+		if err := rowsTasks.Scan(&taskId); err != nil {
+			return nil, err
+		}
+
+		taskIds = append(taskIds, taskId)
+		placeholders = append(placeholders, "?")
+		i++
+	}
+
+	// Get the latest version of the DAG
+	if _, err := tx.ExecContext(ctx, `
+	DELETE FROM DAGs
+	WHERE name = ? AND namespace = ?;
+	`, name, namespace); err != nil {
+		return nil, err
+	}
+
+	if len(taskIds) > 0 {
+		// Construct the query
+		query := fmt.Sprintf(`
+		DELETE FROM Tasks
+		WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
+
+		if _, err := tx.ExecContext(ctx, query, taskIds...); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
-	// Return the list of unused task IDs
 	return unusedTaskNames, nil
 }
 

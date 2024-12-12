@@ -644,7 +644,7 @@ func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManage
 
 }
 
-func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerDeleteDAG_UsingTaskRefs_Not_Needed(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Successful", func(t *testing.T) {
 		task := &v1alpha1.DagTask{
 			ObjectMeta: metav1.ObjectMeta{
@@ -711,14 +711,14 @@ func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Not_Needed(t *testing.T, dm db.DB
 		err := dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		tasks, err := dm.DeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
 		require.Equal(t, tasks[0], "retrieval_task")
 	})
 }
 
-func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Successful", func(t *testing.T) {
 		task := &v1alpha1.DagTask{
 			ObjectMeta: metav1.ObjectMeta{
@@ -785,14 +785,14 @@ func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Not_Needed(t *testing
 		err := dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		tasks, err := dm.DeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
-		require.Equal(t, tasks[0], 1)
+		require.Equal(t, "retrieval_task", tasks[0])
 	})
 }
 
-func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerDeleteDAG_UsingTaskRefs_Old_Version_Needed(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Successful", func(t *testing.T) {
 		task := &v1alpha1.DagTask{
 			ObjectMeta: metav1.ObjectMeta{
@@ -909,13 +909,13 @@ func testDAGManagerSoftDeleteDAG_UsingTaskRefs_Old_Version_Needed(t *testing.T, 
 		err = dm.InsertDAG(context.Background(), dagTwo, "default")
 		require.NoError(t, err)
 
-		tasks, err := dm.SoftDeleteDAG(context.Background(), dagTwo.Name, "default")
+		tasks, err := dm.DeleteDAG(context.Background(), dagTwo.Name, "default")
 		require.NoError(t, err)
 		require.Len(t, tasks, 0)
 	})
 }
 
-func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Successful", func(t *testing.T) {
 		task := &v1alpha1.DagTask{
 			ObjectMeta: metav1.ObjectMeta{
@@ -982,23 +982,23 @@ func testDAGManagerSoftDeleteDAG_Exists(t *testing.T, dm db.DBDAGManager) {
 		err := dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		tasks, err := dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		tasks, err := dm.DeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
 		require.Equal(t, "retrieval_task", tasks[0])
 	})
 }
 
-func testDAGManagerSoftDeleteDAG_Does_Not_Exist(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerDeleteDAG_Does_Not_Exist(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Does not exist", func(t *testing.T) {
-		tasks, err := dm.SoftDeleteDAG(context.Background(), "random name", "default")
+		tasks, err := dm.DeleteDAG(context.Background(), "random name", "default")
 		require.Nil(t, err)
 		require.Len(t, tasks, 0)
 	})
 
 }
 
-func testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t *testing.T, dm db.DBDAGManager) {
+func testDAGManagerDeleteDAG_Noop_on_double_delete(t *testing.T, dm db.DBDAGManager) {
 	t.Run("Successful Noop", func(t *testing.T) {
 		dag := &v1alpha1.DAG{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1027,10 +1027,10 @@ func testDAGManagerSoftDeleteDAG_Noop_on_double_delete(t *testing.T, dm db.DBDAG
 		err := dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		_, err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		_, err = dm.DeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 
-		_, err = dm.SoftDeleteDAG(context.Background(), dag.Name, "default")
+		_, err = dm.DeleteDAG(context.Background(), dag.Name, "default")
 		require.NoError(t, err)
 	})
 }
