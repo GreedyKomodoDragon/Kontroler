@@ -831,32 +831,28 @@ func (s *sqliteDAGManager) getNextRunnableTasks(ctx context.Context, tx *sql.Tx,
 	return s.getTasksByIds(ctx, tx, runnableTasks)
 }
 
-// Helper function to convert an integer slice to a string slice
-func intSliceToStringSlice(ints []int) []string {
-	var strs []string
-	for _, num := range ints {
-		strs = append(strs, fmt.Sprintf("%d", num))
-	}
-	return strs
-}
-
 func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskIds []int) ([]Task, [][]string, error) {
-	// Convert task IDs to a comma-separated string for the IN clause
-	taskIdsStr := fmt.Sprintf("(%s)", strings.Join(intSliceToStringSlice(taskIds), ","))
-
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
+	params := make([]string, len(taskIds))
+	args := make([]interface{}, len(taskIds))
+	for i, id := range taskIds {
+		params[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(`
 		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage
 		FROM Tasks t
 		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
-		WHERE dat.dag_task_id IN %s`, taskIdsStr))
+		WHERE dat.dag_task_id IN (%s)`, strings.Join(params, ","))
 
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	tasks := []Task{}
-	parameters := [][]string{}
+	tasks := make([]Task, 0, len(taskIds))
+	parameters := make([][]string, 0, len(taskIds))
+
 	for rows.Next() {
 		var task Task
 		var commandJSON string
@@ -883,7 +879,6 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		parameters = append(parameters, params)
 		tasks = append(tasks, task)
 	}
-
 	return tasks, parameters, nil
 }
 
