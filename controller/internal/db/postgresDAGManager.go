@@ -175,9 +175,9 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 		return fmt.Errorf("failed when getting hash: %w", err)
 	}
 
-	hashBytes := hashDagSpec(&dag.Spec)
-	if hashBytes == nil {
-		return fmt.Errorf("failed to create hash")
+	hashBytes, err := hashDagSpec(&dag.Spec)
+	if err != nil {
+		return err
 	}
 
 	hashValue := fmt.Sprintf("%x", hashBytes)
@@ -1243,9 +1243,9 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 		return err
 	}
 
-	hashBytes := hashDagTaskSpec(&task.Spec)
-	if hashBytes == nil {
-		return fmt.Errorf("failed to create hash")
+	hashBytes, err := hashDagTaskSpec(&task.Spec)
+	if err != nil {
+		return err
 	}
 
 	hashValue := fmt.Sprintf("%x", hashBytes)

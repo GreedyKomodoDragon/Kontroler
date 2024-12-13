@@ -137,7 +137,11 @@ func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs 
 		}
 
 		if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
-			controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo")
+			if updated := controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
+				log.Log.Error(fmt.Errorf("AddFinalizer failed"), "failed to add finalizer to dagTask", "taskRef", taskRef)
+				continue
+			}
+
 			if err := r.Update(ctx, &dagTask); err != nil {
 				log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", taskRef)
 			}
@@ -160,7 +164,12 @@ func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs 
 		}
 
 		if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
-			controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo")
+
+			if updated := controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
+				log.Log.Error(fmt.Errorf("RemoveFinalizer failed"), "failed to remove finalizer to dagTask", "taskRef", taskRef)
+				continue
+			}
+
 			if err := r.Update(ctx, &dagTask); err != nil {
 				log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", taskRef)
 			}
@@ -180,6 +189,7 @@ func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, da
 		controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
 		if err := r.Update(ctx, &dag); err != nil {
 			log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
+			return ctrl.Result{}, err
 		}
 	}
 
