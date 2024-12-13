@@ -1491,3 +1491,24 @@ func (s *sqliteDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs [
 
 	return taskMp, nil
 }
+
+func (s *sqliteDAGManager) DeleteTask(ctx context.Context, taskName, namespace string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		DELETE FROM Tasks
+		WHERE
+			name = ?
+		AND namespace = ?
+		AND inline = FALSE;
+	`, taskName, namespace); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
