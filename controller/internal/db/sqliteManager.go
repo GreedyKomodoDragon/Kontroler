@@ -327,9 +327,9 @@ func (s *sqliteDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, nam
 		return err
 	}
 
-	hashBytes := hashDagSpec(&dag.Spec)
-	if hashBytes == nil {
-		return fmt.Errorf("failed to create hash")
+	hashBytes, err := hashDagSpec(&dag.Spec)
+	if err != nil {
+		return err
 	}
 
 	hashValue := fmt.Sprintf("%x", hashBytes)
@@ -1410,9 +1410,9 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 		return err
 	}
 
-	hashBytes := hashDagTaskSpec(&task.Spec)
-	if hashBytes == nil {
-		return fmt.Errorf("failed to create hash")
+	hashBytes, err := hashDagTaskSpec(&task.Spec)
+	if err != nil {
+		return err
 	}
 
 	hashValue := fmt.Sprintf("%x", hashBytes)
