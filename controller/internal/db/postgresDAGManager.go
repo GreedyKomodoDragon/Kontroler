@@ -1297,3 +1297,24 @@ func (p *postgresDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs
 
 	return taskMp, nil
 }
+
+func (p *postgresDAGManager) DeleteTask(ctx context.Context, taskName, namespace string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM Tasks
+		WHERE
+			name = $1
+		AND namespace = $2
+		AND inline = FALSE;
+	`, taskName, namespace); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
