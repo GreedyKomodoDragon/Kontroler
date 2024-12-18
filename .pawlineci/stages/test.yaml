@@ -1,0 +1,4 @@
+test_job:
+  image: ubuntu:latest
+  script: |
+    echo "Testing APP_NAME"

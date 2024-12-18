@@ -1,0 +1,4 @@
+build_job:
+  image: ubuntu:latest
+  script:
+    - echo "Building APP_NAME"
