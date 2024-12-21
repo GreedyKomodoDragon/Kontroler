@@ -839,7 +839,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		args[i] = id
 	}
 	query := fmt.Sprintf(`
-		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage
+		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script
 		FROM Tasks t
 		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 		WHERE dat.dag_task_id IN (%s)`, strings.Join(params, ","))
@@ -859,7 +859,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		var argsJSON string
 		var paramsJson string
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJson, &task.ScriptInjectorImage); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJson, &task.ScriptInjectorImage, &task.Script); err != nil {
 			return nil, nil, err
 		}
 
