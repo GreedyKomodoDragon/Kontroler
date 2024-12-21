@@ -892,3 +892,20 @@ func TestPostgresDAGManager_CreateDAGRun_Sequential(t *testing.T) {
 
 	testDAGManager_CreateDagRun_Sequential(t, dm)
 }
+
+func TestPostgresDAGManager_CreateDAGRun_Scripts(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_CreateDagRun_Scripts(t, dm)
+}

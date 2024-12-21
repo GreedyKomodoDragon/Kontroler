@@ -65,7 +65,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 			},
 			"parameters": paramNames,
 			"conditional": map[string]interface{}{
-				"enabled":    len(t.RunAfter) != 0,
+				"enabled":    len(t.RetryCodes) != 0,
 				"retryCodes": t.RetryCodes,
 			},
 		}
