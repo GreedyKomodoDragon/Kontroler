@@ -2,3 +2,8 @@ test_job:
   image: ubuntu:latest
   script: |
     echo "Testing APP_NAME"
+
+test_job2:
+  image: ubuntu:latest
+  script: |
+    echo "Testing the second app APP_NAME"
