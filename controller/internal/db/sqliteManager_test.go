@@ -949,3 +949,20 @@ func Test_SQLite_CreateDAGRun_Sequential(t *testing.T) {
 
 	testDAGManager_CreateDagRun_Sequential(t, dm)
 }
+
+func Test_SQLite_CreateDAGRun_Scripts_Only(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_CreateDagRun_Scripts(t, dm)
+}

@@ -698,7 +698,7 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 
 	// Construct the query
 	query := fmt.Sprintf(`
-		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage
+		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script
 		FROM Tasks t
 		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 		WHERE dat.dag_task_id IN (%s)`, strings.Join(placeholders, ","))
@@ -717,7 +717,7 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 		var task Task
 		var params []string
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage, &task.Script); err != nil {
 			return nil, nil, err
 		}
 
