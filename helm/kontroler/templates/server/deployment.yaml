@@ -50,7 +50,7 @@ spec:
             value: {{ .Values.db.sqlite.cacheSize | quote }}
           - name: SQLITE_TEMP_STORE
             value: {{ .Values.db.sqlite.tempStore }}
-          {{ end }}
+          {{ else }}
           - name: DB_NAME
             value: {{ .Values.db.postgresql.name }}
           - name: DB_USER
@@ -60,6 +60,7 @@ spec:
               secretKeyRef:
                 name: {{ .Values.server.db.password.secret }}
                 key:  {{ .Values.server.db.password.key }}
+          {{ end }}
           {{ if .Values.server.db.ssl.mode }}
           - name: DB_SSL_MODE
             value: {{ .Values.server.db.ssl.mode }}

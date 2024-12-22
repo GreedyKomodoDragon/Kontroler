@@ -1,0 +1,9 @@
+test-job:
+  image: ubuntu:latest
+  script: |
+    echo "hello"
+
+test-job-b:
+  image: ubuntu:latest
+  script: |
+    echo "hello"

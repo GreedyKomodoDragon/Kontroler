@@ -1,0 +1,4 @@
+build-job:
+  image: ubuntu:latest
+  script: |
+    echo "hello building"
