@@ -600,7 +600,7 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 			WHERE name = $1
 			ORDER BY version DESC
 			LIMIT 1
-		) AND name = ANY($2)`
+		) AND name = ANY($2);`
 
 	rows, err := p.pool.Query(ctx, query, dagName, parameterNames)
 	if err != nil {
