@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS Task_Runs (
     task_id INTEGER NOT NULL,
     status VARCHAR(255) NOT NULL,
     attempts INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE,
     FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE
 );
 
@@ -330,7 +330,7 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 		var taskId, depId int
 
 		err := tx.QueryRow(ctx, `
-		SELECT dag_task_id 
+		SELECT dag_task_id
 		FROM DAG_Tasks 
 		WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, task.Name, version).Scan(&taskId)
 		if err != nil {
@@ -620,7 +620,7 @@ func (p *postgresDAGManager) getDependencyCounts(ctx context.Context, tx pgx.Tx,
 	rows, err := tx.Query(ctx, `
 		SELECT d.task_id, COUNT(d.depends_on_task_id)
 		FROM Dependencies d
-		JOIN DAG_Tasks dt ON d.task_id = dt.task_id
+		JOIN DAG_Tasks dt ON d.task_id = dt.dag_task_id
 		WHERE dt.dag_id = $1
 		GROUP BY d.task_id`, dagId)
 
@@ -649,7 +649,7 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 		JOIN Task_Runs tr ON d.depends_on_task_id = tr.task_id
 		WHERE tr.status = 'success'
 		AND d.task_id IN (
-			SELECT task_id 
+			SELECT dag_task_id
 			FROM DAG_Tasks 
 			WHERE dag_id = $1
 		)
@@ -925,7 +925,8 @@ func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exi
     SELECT EXISTS (
         SELECT 1
         FROM tasks t
-        INNER JOIN Task_Runs r ON t.task_id = r.task_id
+        JOIN DAG_Tasks dt ON t.task_id = dt.task_id
+        JOIN Task_Runs r ON dt.dag_task_id = r.task_id
         WHERE r.task_run_id = $1
           AND r.attempts <= t.backoffLimit
           AND (t.isConditional = FALSE OR $2 = ANY(t.retryCodes))
@@ -1212,7 +1213,11 @@ func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, 
 	if err := p.pool.QueryRow(ctx, `
 	SELECT t.script, t.scriptInjectorImage
 	FROM Tasks t
-	WHERE t.task_id = $1;
+	WHERE t.task_id = (
+		SELECT task_id
+		FROM DAG_Tasks
+		WHERE dag_task_id = $1
+		);
 	`, taskId).Scan(&script, &injectorImage); err != nil {
 		return nil, nil, err
 	}

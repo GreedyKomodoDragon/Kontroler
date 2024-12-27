@@ -909,3 +909,105 @@ func TestPostgresDAGManager_CreateDAGRun_Scripts(t *testing.T) {
 
 	testDAGManager_CreateDagRun_Scripts(t, dm)
 }
+
+func TestPostgresDAGManager_Multi_TaskRef(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	task := &v1alpha1.DagTask{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_task",
+		},
+		Spec: v1alpha1.DagTaskSpec{
+			Command:    []string{"echo", "hello"},
+			Args:       []string{"world"},
+			Image:      "busybox",
+			Parameters: []string{"param1"},
+			Backoff: v1alpha1.Backoff{
+				Limit: 3,
+			},
+			Conditional: v1alpha1.Conditional{
+				Enabled:    true,
+				RetryCodes: []int{500},
+			},
+		},
+	}
+	namespace := "test_namespace"
+	assert.NoError(t, dm.AddTask(context.Background(), task, namespace))
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Parameters: []v1alpha1.DagParameterSpec{
+				{Name: "param1", DefaultValue: "value1"},
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name: "task1",
+					TaskRef: &v1alpha1.TaskRef{
+						Name:    "test_task",
+						Version: 1,
+					},
+				},
+				{
+					Name: "task2",
+					TaskRef: &v1alpha1.TaskRef{
+						Name:    "test_task",
+						Version: 1,
+					},
+				},
+				{
+					Name: "task3",
+					TaskRef: &v1alpha1.TaskRef{
+						Name:    "test_task",
+						Version: 1,
+					},
+					RunAfter: []string{"task1", "task2"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	dagRun := &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}
+
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+	require.Len(t, tasks, 2)
+	require.ElementsMatch(t, []string{tasks[0].Name, tasks[1].Name}, []string{"task1", "task2"})
+
+	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
+	require.NoError(t, err)
+
+	tasksEmpty, err := dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
+	require.NoError(t, err)
+	require.Empty(t, tasksEmpty)
+
+	taskRun, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[1].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+}
