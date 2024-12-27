@@ -329,7 +329,7 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 
 	script, injector, err := t.dbManager.GetTaskScriptAndInjectorImage(ctx, taskId)
 	if err != nil {
-		log.Log.Error(fmt.Errorf("failed to get script and injector image"), "pod", pod.Name)
+		log.Log.Error(err, "GetTaskScriptAndInjectorImage failed", "pod", pod.Name)
 		return
 	}
 
