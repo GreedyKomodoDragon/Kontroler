@@ -57,38 +57,49 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 			}
 		}
 
-		task := map[string]interface{}{
-			"name":  t.Name,
-			"image": t.Image,
-			"backoff": map[string]interface{}{
-				"limit": t.BackoffLimit,
-			},
-			"parameters": paramNames,
-			"conditional": map[string]interface{}{
-				"enabled":    len(t.RetryCodes) != 0,
-				"retryCodes": t.RetryCodes,
-			},
-		}
-
-		// Only send over the command and args if no script has been provided
-		if t.Script == "" {
-			task["command"] = t.Command
-			task["args"] = t.Args
+		var task map[string]interface{}
+		if t.TaskRef != nil {
+			task = map[string]interface{}{
+				"name": t.Name,
+				"taskRef": map[string]interface{}{
+					"name":    t.TaskRef.Name,
+					"version": t.TaskRef.Version,
+				},
+			}
 		} else {
-			task["script"] = t.Script
+			task = map[string]interface{}{
+				"name":  t.Name,
+				"image": t.Image,
+				"backoff": map[string]interface{}{
+					"limit": t.BackoffLimit,
+				},
+				"parameters": paramNames,
+				"conditional": map[string]interface{}{
+					"enabled":    len(t.RetryCodes) != 0,
+					"retryCodes": t.RetryCodes,
+				},
+			}
+
+			// Only send over the command and args if no script has been provided
+			if t.Script == "" {
+				task["command"] = t.Command
+				task["args"] = t.Args
+			} else {
+				task["script"] = t.Script
+			}
+
+			if t.PodTemplate != "" {
+				var result map[string]interface{}
+				if err := json.Unmarshal([]byte(t.PodTemplate), &result); err != nil {
+					return err
+				}
+
+				task["podTemplate"] = result
+			}
 		}
 
 		if len(t.RunAfter) > 0 {
 			task["runAfter"] = t.RunAfter
-		}
-
-		if t.PodTemplate != "" {
-			var result map[string]interface{}
-			if err := json.Unmarshal([]byte(t.PodTemplate), &result); err != nil {
-				return err
-			}
-
-			task["podTemplate"] = result
 		}
 
 		tasks = append(tasks, task)
@@ -142,21 +153,21 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 
 	parameters := []interface{}{}
 
-	for _, p := range drForm.Parameters {
-		isSecret, ok := isSecretMap[p]
+	for k, v := range drForm.Parameters {
+		isSecret, ok := isSecretMap[k]
 		if !ok {
-			return fmt.Errorf("missing parameter: %s", p)
+			return fmt.Errorf("missing parameter: %s", k)
 		}
 
 		if isSecret {
 			parameters = append(parameters, SecretParameter{
-				Name:       p,
-				FromSecret: drForm.Parameters[p],
+				Name:       k,
+				FromSecret: v,
 			})
 		} else {
 			parameters = append(parameters, ValParameter{
-				Name:  p,
-				Value: drForm.Parameters[p],
+				Name:  k,
+				Value: v,
 			})
 		}
 	}

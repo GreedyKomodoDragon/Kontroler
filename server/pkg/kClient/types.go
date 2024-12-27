@@ -83,6 +83,12 @@ type TaskSpec struct {
 	RetryCodes   []int    `json:"retryCodes,omitempty"`
 	Parameters   []string `json:"parameters,omitempty"`
 	PodTemplate  string   `json:"podTemplate,omitempty"`
+	TaskRef      *TaskRef `json:"taskRef,omitempty"`
+}
+
+type TaskRef struct {
+	Name    string `json:"name"`
+	Version int    `json:"version"`
 }
 
 // DagFormObj represents the overall DAG form object.
