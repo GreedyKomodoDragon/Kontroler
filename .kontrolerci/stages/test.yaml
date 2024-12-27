@@ -1,9 +1,9 @@
 test-job:
-  image: ubuntu:latest
+  image: registry.access.redhat.com/ubi9/ubi@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
   script: |
     echo "hello"
 
 test-job-b:
-  image: ubuntu:latest
+  image: registry.access.redhat.com/ubi9/ubi@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
   script: |
     echo "hello"
