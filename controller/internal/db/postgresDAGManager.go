@@ -698,7 +698,7 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 
 	// Construct the query
 	query := fmt.Sprintf(`
-		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script
+		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate
 		FROM Tasks t
 		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 		WHERE dat.dag_task_id IN (%s)`, strings.Join(placeholders, ","))
@@ -716,9 +716,19 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 	for rows.Next() {
 		var task Task
 		var params []string
+		var podTemplateJSON sql.NullString
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage, &task.Script); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage, &task.Script, &podTemplateJSON); err != nil {
 			return nil, nil, err
+		}
+
+		if podTemplateJSON.Valid {
+			var podTemplate *v1alpha1.PodTemplateSpec
+			if err := json.Unmarshal([]byte(podTemplateJSON.String), &podTemplate); err != nil {
+				return nil, nil, err
+			}
+
+			task.PodTemplate = podTemplate
 		}
 
 		parameters = append(parameters, params)
