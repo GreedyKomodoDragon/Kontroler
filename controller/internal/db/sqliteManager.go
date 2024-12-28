@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS Task_Runs (
     task_id INTEGER NOT NULL,
     status VARCHAR(255) NOT NULL,
     attempts INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id),
+    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id),
     FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id)
 );
 
@@ -634,7 +634,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 	`, dagName)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get tasks: %v", err)
 	}
 
 	defer rows.Close()
@@ -678,7 +678,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string)
 			FROM DAG_Parameters
 			WHERE dag_id = ? and name = ?;
 			`, dagId, parameter).Scan(&param.IsSecret, &param.Value); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to get parameter '%s': %v", parameter, err)
 			}
 
 			task.Parameters = append(task.Parameters, param)
@@ -839,7 +839,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		args[i] = id
 	}
 	query := fmt.Sprintf(`
-		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script
+		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate
 		FROM Tasks t
 		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 		WHERE dat.dag_task_id IN (%s)`, strings.Join(params, ","))
@@ -858,8 +858,9 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		var commandJSON string
 		var argsJSON string
 		var paramsJson string
+		var podTemplateJSON *string
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJson, &task.ScriptInjectorImage, &task.Script); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJson, &task.ScriptInjectorImage, &task.Script, &podTemplateJSON); err != nil {
 			return nil, nil, err
 		}
 
@@ -877,6 +878,17 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		}
 
 		parameters = append(parameters, params)
+
+		if podTemplateJSON != nil {
+			var podTemplate *v1alpha1.PodTemplateSpec
+
+			if err := json.Unmarshal([]byte(*podTemplateJSON), &podTemplate); err != nil {
+				return nil, nil, err
+			}
+
+			task.PodTemplate = podTemplate
+		}
+
 		tasks = append(tasks, task)
 	}
 	return tasks, parameters, nil
@@ -916,7 +928,7 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 		JOIN Task_Runs tr ON d.depends_on_task_id = tr.task_id
 		WHERE tr.status = 'success'
 		AND d.task_id IN (
-			SELECT task_id 
+			SELECT dag_task_id
 			FROM DAG_Tasks 
 			WHERE dag_id = ?
 		)
@@ -953,7 +965,7 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT d.task_id, COUNT(d.depends_on_task_id)
 		FROM Dependencies d
-		JOIN DAG_Tasks dt ON d.task_id = dt.task_id
+		JOIN DAG_Tasks dt ON d.task_id = dt.dag_task_id
 		WHERE dt.dag_id = ?
 		GROUP BY d.task_id`, dagId)
 
@@ -1067,7 +1079,8 @@ func (s *sqliteDAGManager) ShouldRerun(ctx context.Context, taskRunID int, exitC
 	query := `
 	SELECT t.backoffLimit, t.isConditional, t.retryCodes, r.attempts
 	FROM tasks t
-	INNER JOIN Task_Runs r ON t.task_id = r.task_id
+	JOIN DAG_Tasks dt ON t.task_id = dt.task_id
+    JOIN Task_Runs r ON dt.dag_task_id = r.task_id
 	WHERE r.task_run_id = ?;
 	`
 
@@ -1374,7 +1387,11 @@ func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, ta
 	if err := s.db.QueryRowContext(ctx, `
 	SELECT t.script, t.scriptInjectorImage
 	FROM Tasks t
-	WHERE t.task_id = ?;
+	WHERE t.task_id = (
+		SELECT task_id
+		FROM DAG_Tasks
+		WHERE dag_task_id = ?
+		);;
 	`, taskId).Scan(&script, &injectorImage); err != nil {
 		return nil, nil, err
 	}
