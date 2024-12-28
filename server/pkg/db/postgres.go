@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -625,7 +624,7 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 
 	for _, paramName := range parameterNames {
 		if _, exists := results[paramName]; !exists {
-			return nil, errors.New(fmt.Sprintf("parameter '%s' does not exist", paramName))
+			return nil, fmt.Errorf("parameter '%s' does not exist", paramName)
 		}
 	}
 
