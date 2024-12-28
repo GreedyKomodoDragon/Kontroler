@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -545,7 +544,7 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 }
 
 func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error) {
-	placeholders := strings.Join(make([]string, len(parameterNames)), "?")
+	placeholders := strings.Repeat("?,", len(parameterNames)-1) + "?"
 
 	// Final query with placeholders
 	query := fmt.Sprintf(`
@@ -557,7 +556,7 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 			WHERE name = ?
 			ORDER BY version DESC
 			LIMIT 1
-		) AND name IN (%s)`, placeholders)
+		) AND name IN (%s);`, placeholders)
 
 	args := make([]interface{}, 0, len(parameterNames)+1)
 	args = append(args, dagName)
@@ -588,7 +587,7 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 
 	for _, paramName := range parameterNames {
 		if _, exists := results[paramName]; !exists {
-			return nil, errors.New(fmt.Sprintf("parameter '%s' does not exist", paramName))
+			return nil, fmt.Errorf("parameter '%s' does not exist", paramName)
 		}
 	}
 
