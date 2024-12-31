@@ -1,0 +1,47 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: backing-services
+
+profiles:
+  - name: minikube
+    activation:
+      - kubeContext: minikube
+    deploy:
+      helm:
+        releases:
+          - name: postgres
+            remoteChart: oci://registry-1.docker.io/bitnamicharts/postgresql
+            namespace: default
+            version: 16.3.4
+            createNamespace: true
+            setValues:
+              tls.enabled: true
+              tls.certificatesSecret: postgresql-tls
+              tls.certFilename: postgresql.crt
+              tls.certKeyFilename: postgresql.key
+
+          - name: minio
+            remoteChart: oci://registry-1.docker.io/bitnamicharts/minio
+            namespace: default
+            version: 14.10.3
+            createNamespace: true
+
+          - name: cert-manager
+            repo: https://charts.jetstack.io
+            remoteChart: cert-manager
+            namespace: cert-manager
+            createNamespace: true
+            version: v1.16.2
+            setValues:
+              crds.enabled: true
+
+    portForward:
+      - resourceType: service
+        resourceName: postgres
+        port: 5432
+        localPort: 5432
+      - resourceType: service
+        resourceName: minio
+        port: 9000
+        localPort: 9000
