@@ -544,7 +544,13 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 }
 
 func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error) {
-	placeholders := strings.Repeat("?,", len(parameterNames)-1) + "?"
+	placeholders := ""
+
+	if len(parameterNames) == 1 {
+		placeholders = "?"
+	} else if len(parameterNames) > 1 {
+		placeholders = strings.Repeat("?,", len(parameterNames)-1) + "?"
+	}
 
 	// Final query with placeholders
 	query := fmt.Sprintf(`
