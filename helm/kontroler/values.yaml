@@ -77,8 +77,8 @@ controller:
   db:
     user: postgres
     password:
-      secret: postgres-kontroler-password
-      key: password
+      secret: postgres-postgresql
+      key: postgres-password
     ssl:
       mode: require
       secret: postgresql-client-tls
@@ -124,8 +124,8 @@ server:
   db:
     user: postgres
     password:
-      secret: postgres-kontroler-password
-      key: password
+      secret: postgres-postgresql
+      key: postgres-password
     ssl:
       mode: require
       secret: postgresql-client-tls

@@ -11,6 +11,7 @@ import (
 	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
+	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/webhook"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -34,9 +35,10 @@ type taskWatcher struct {
 	taskAllocator TaskAllocator
 	lock          *sync.Mutex
 	logStore      object.LogStore
+	webhookChan   chan webhook.WebhookPayload
 }
 
-func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager, id string, logStore object.LogStore) (TaskWatcher, error) {
+func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager, id string, logStore object.LogStore, webhookChan chan webhook.WebhookPayload) (TaskWatcher, error) {
 	labelSelector := labels.Set(map[string]string{
 		"managed-by":     "kontroler",
 		"kontroler/type": "task",
@@ -63,6 +65,7 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 		taskAllocator: taskAllocator,
 		lock:          &sync.Mutex{},
 		logStore:      logStore,
+		webhookChan:   webhookChan,
 	}
 
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -137,7 +140,7 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 		return
 	}
 
-	// Check container readiness before starting log collection
+	// log collection
 	readyForLogCollection := false
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.State.Running != nil || containerStatus.State.Terminated != nil {
@@ -180,32 +183,16 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 		}()
 	}
 
-	// Ensure container status exists
-	if len(pod.Status.ContainerStatuses) == 0 {
-		log.Log.Info("no container status available", "podUID", pod.UID, "name", pod.Name, "event", event)
-		return
-	}
-
-	containerStatus := pod.Status.ContainerStatuses[0]
-	state := containerStatus.State
-
-	// Check if the container has terminated
-	if state.Terminated == nil {
-		return
-	}
-
-	terminatedState := state.Terminated
-	log.Log.Info("pod terminated", "podUID", pod.UID, "name", pod.Name, "event", event, "exitCode", terminatedState.ExitCode, "reason", terminatedState.Reason, "message", terminatedState.Message, "finishedAt", terminatedState.FinishedAt)
-
-	// Log specific success/failure
-	if terminatedState.ExitCode == 0 {
-		log.Log.Info("pod completed successfully", "podUID", pod.UID, "name", pod.Name, "event", event, "exitCode", terminatedState.ExitCode)
+	switch pod.Status.Phase {
+	case v1.PodSucceeded:
 		t.handleSuccessfulTaskRun(ctx, pod, taskRunId)
-		return
+	case v1.PodFailed:
+		t.handleFailedTaskRun(ctx, pod, taskRunId)
+	case v1.PodRunning:
+		t.handleStartedTaskRun(ctx, pod, taskRunId)
+	case v1.PodPending:
+		t.handlePendingTaskRun(ctx, pod, taskRunId)
 	}
-
-	log.Log.Info("pod failed", "podUID", pod.UID, "name", pod.Name, "exitCode", terminatedState.ExitCode, "reason", terminatedState.Reason)
-	t.handleFailedTaskRun(ctx, pod, taskRunId)
 }
 
 func (t *taskWatcher) handlePodDelete(obj interface{}) {
@@ -252,6 +239,8 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 		return
 	}
 	t.lock.Unlock()
+
+	t.sendWebhookNotification(pod, "success", runId)
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
@@ -303,6 +292,8 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 		return
 	}
 
+	container := pod.Spec.Containers[0]
+
 	if !ok {
 		log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 
@@ -310,10 +301,9 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 			log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
 		}
 
+		t.sendWebhookNotification(pod, "failed", dagRunId)
 		return
 	}
-
-	container := pod.Spec.Containers[0]
 
 	taskIdStr, ok := pod.Annotations["kontroler/task-id"]
 	if !ok {
@@ -407,4 +397,55 @@ func (t *taskWatcher) deletePod(ctx context.Context, pod *v1.Pod) error {
 	}
 
 	return nil
+}
+
+func (t *taskWatcher) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
+	log.Log.Info("task started", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+
+	// Get the run ID from the Pod
+	dagRunIdStr, ok := pod.Annotations["kontroler/dagRun-id"]
+	if !ok {
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/dagRun-id", "pod", pod.Name)
+		return
+	}
+
+	runId, err := strconv.Atoi(dagRunIdStr)
+	if err != nil {
+		log.Log.Error(err, "failed to parse dagRun-id", "podUId", pod.UID)
+		return
+	}
+
+	// Send webhook notification
+	t.sendWebhookNotification(pod, "started", runId)
+}
+
+func (t *taskWatcher) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
+	log.Log.Info("task pending", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+
+	// Get the run ID from the Pod
+	dagRunIdStr, ok := pod.Annotations["kontroler/dagRun-id"]
+	if !ok {
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/dagRun-id", "pod", pod.Name)
+		return
+	}
+
+	runId, err := strconv.Atoi(dagRunIdStr)
+	if err != nil {
+		log.Log.Error(err, "failed to parse dagRun-id", "podUId", pod.UID)
+		return
+	}
+
+	// Send webhook notification
+	t.sendWebhookNotification(pod, "pending", runId)
+}
+
+func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRunId int) {
+	t.webhookChan <- webhook.WebhookPayload{
+		Url: "http://kontroler-webhook-handler.default.svc.cluster.local:8080/webhook",
+		Data: webhook.TaskHookDetails{
+			Status:   status,
+			DagRunId: dagRunId,
+			TaskName: pod.Spec.Containers[0].Name,
+		},
+	}
 }
