@@ -40,6 +40,7 @@ import (
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
+	kontrolerWebhook "github.com/GreedyKomodoDragon/Kontroler/operator/internal/webhook"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -240,10 +241,25 @@ func main() {
 		setupLog.Info("log collection not enabled for s3")
 	}
 
+	webhookChannel := make(chan kontrolerWebhook.WebhookPayload, 10)
+	webhookManager := kontrolerWebhook.NewWebhookManager(webhookChannel)
+
+	// Create a cancellable context
+	webhookContext, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start the webhook manager in a separate goroutine
+	go func() {
+		if err := webhookManager.Listen(webhookContext); err != nil {
+			setupLog.Error(err, "webhook manager stopped")
+		}
+	}()
+
 	taskAllocator := dag.NewTaskAllocator(clientset, id)
 	watchers := make([]dag.TaskWatcher, len(namespacesSlice))
+
 	for i, namespace := range namespacesSlice {
-		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager, id, logStore)
+		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager, id, logStore, webhookChannel)
 		if err != nil {
 			setupLog.Error(err, "failed to create task watcher", "namespace", namespace)
 			os.Exit(1)
