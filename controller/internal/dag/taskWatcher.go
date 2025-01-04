@@ -240,7 +240,12 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 	}
 	t.lock.Unlock()
 
-	t.sendWebhookNotification(pod, "success", runId)
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
+	if err != nil {
+		log.Log.Error(err, "failed to get webhook details", "runId", runId)
+	} else if webhook.URL != "" {
+		t.sendWebhookNotification(pod, "success", runId, webhook.URL, webhook.VerifySSL)
+	}
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
@@ -301,7 +306,13 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 			log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
 		}
 
-		t.sendWebhookNotification(pod, "failed", dagRunId)
+		webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
+		if err != nil {
+			log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		} else if webhook.URL != "" {
+			t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
+		}
+
 		return
 	}
 
@@ -416,7 +427,12 @@ func (t *taskWatcher) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, tas
 	}
 
 	// Send webhook notification
-	t.sendWebhookNotification(pod, "started", runId)
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
+	if err != nil {
+		log.Log.Error(err, "failed to get webhook details", "runId", runId)
+	} else if webhook.URL != "" {
+		t.sendWebhookNotification(pod, "started", runId, webhook.URL, webhook.VerifySSL)
+	}
 }
 
 func (t *taskWatcher) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
@@ -436,12 +452,17 @@ func (t *taskWatcher) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, tas
 	}
 
 	// Send webhook notification
-	t.sendWebhookNotification(pod, "pending", runId)
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
+	if err != nil {
+		log.Log.Error(err, "failed to get webhook details", "runId", runId)
+	} else if webhook.URL != "" {
+		t.sendWebhookNotification(pod, "pending", runId, webhook.URL, webhook.VerifySSL)
+	}
 }
 
-func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRunId int) {
+func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRunId int, url string, verifySSL bool) {
 	t.webhookChan <- webhook.WebhookPayload{
-		Url: "http://kontroler-webhook-handler.default.svc.cluster.local:8080/webhook",
+		Url: url,
 		Data: webhook.TaskHookDetails{
 			Status:   status,
 			DagRunId: dagRunId,

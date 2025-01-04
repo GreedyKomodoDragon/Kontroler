@@ -1,0 +1,38 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag
+    app.kubernetes.io/instance: dag-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dag-sample-event-new
+spec:
+  webhook:
+    verifySSL: false
+    url: "http://kontroler-webhook-handler.default.svc.cluster.local:8080/webhook"
+  task:
+    - name: "random"
+      script: |
+        echo "hello"
+      image: "ubuntu:latest"
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-b"
+      script: |
+        echo "hello"
+      image: "ubuntu:latest"
+      runAfter: ["random"]
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-c"
+      script: |
+        echo "hello"
+      image: "ubuntu:latest"
+      runAfter: ["random"]
+      conditional:
+        enabled: true
+        retryCodes: [1]

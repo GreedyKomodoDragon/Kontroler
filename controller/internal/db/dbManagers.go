@@ -64,4 +64,5 @@ type DBDAGManager interface {
 	AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error
 	DeleteTask(ctx context.Context, taskName string, namespace string) error
 	GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error)
+	GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error)
 }
