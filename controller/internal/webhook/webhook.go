@@ -16,8 +16,9 @@ type WebhookManager interface {
 }
 
 type WebhookPayload struct {
-	Url  string
-	Data TaskHookDetails
+	Url       string
+	VerifySSL bool
+	Data      TaskHookDetails
 }
 
 type TaskHookDetails struct {
@@ -27,14 +28,16 @@ type TaskHookDetails struct {
 }
 
 type webhookManager struct {
-	webhookChan chan WebhookPayload
-	client      *http.Client
+	urlvalidator SSLVerifier
+	webhookChan  chan WebhookPayload
+	client       *http.Client
 }
 
 func NewWebhookManager(channel chan WebhookPayload) WebhookManager {
 	return &webhookManager{
-		webhookChan: channel,
-		client:      &http.Client{},
+		webhookChan:  channel,
+		client:       &http.Client{},
+		urlvalidator: NewSystemURLValidator(),
 	}
 }
 
@@ -66,6 +69,13 @@ func (w *webhookManager) Listen(ctx context.Context) error {
 			close(w.webhookChan)
 			return ctx.Err()
 		case payload := <-w.webhookChan:
+			if payload.VerifySSL {
+				if err := w.urlvalidator.VerifySSL(payload.Url); err != nil {
+					log.Log.Error(err, "invalid url", "url", payload.Url)
+					continue
+				}
+			}
+
 			bytes, err := json.Marshal(payload.Data)
 			if err != nil {
 				log.Log.Error(err, "Failed to marshal webhook payload:")
