@@ -7,11 +7,11 @@ import (
 	"net/url"
 )
 
-type systemURLValidator struct {
+type systemURLVerifier struct {
 	roots *x509.CertPool
 }
 
-func NewSystemURLValidator() UrlValidator {
+func NewSystemURLValidator() SSLVerifier {
 	// Load the system root pool
 	roots, err := x509.SystemCertPool()
 	if err != nil {
@@ -19,12 +19,12 @@ func NewSystemURLValidator() UrlValidator {
 		roots = x509.NewCertPool()
 	}
 
-	return &systemURLValidator{
+	return &systemURLVerifier{
 		roots: roots,
 	}
 }
 
-func (r *systemURLValidator) ValidateUrl(inputURL string) error {
+func (r *systemURLVerifier) VerifySSL(inputURL string) error {
 	parsedURL, err := url.Parse(inputURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %v", err)
