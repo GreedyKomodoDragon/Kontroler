@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS DAGs (
     active BOOLEAN NOT NULL,
     taskCount INTEGER NOT NULL,
     nexttime TIMESTAMP,
+	webhookUrl VARCHAR(255),
+	sslVerification BOOL,
     UNIQUE(name, version, namespace)
 );
 
@@ -379,9 +381,9 @@ func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alp
 
 	var dagID int
 	if err := tx.QueryRowContext(ctx, `
-	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount) 
-	VALUES (?, ?, ?, ?, ?, TRUE, ?, ?)
-	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification) 
+	VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?)
+	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL, dag.Spec.Webhook.VerifySSL).Scan(&dagID); err != nil {
 		return err
 	}
 
@@ -1391,7 +1393,7 @@ func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, ta
 		SELECT task_id
 		FROM DAG_Tasks
 		WHERE dag_task_id = ?
-		);;
+		);
 	`, taskId).Scan(&script, &injectorImage); err != nil {
 		return nil, nil, err
 	}
@@ -1523,4 +1525,23 @@ func (s *sqliteDAGManager) DeleteTask(ctx context.Context, taskName, namespace s
 	}
 
 	return tx.Commit()
+}
+
+func (s *sqliteDAGManager) GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error) {
+	webhook := &v1alpha1.Webhook{}
+
+	err := s.db.QueryRowContext(ctx, `
+	SELECT webhookUrl, sslVerification
+	FROM DAGs
+	WHERE dag_id = (
+		SELECT dag_id
+		FROM DAG_Runs
+		WHERE run_id = ?
+	);
+	`, dagRunID).Scan(&webhook.URL, &webhook.VerifySSL)
+	if err != nil {
+		return nil, err
+	}
+
+	return webhook, nil
 }
