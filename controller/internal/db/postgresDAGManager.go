@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS DAGs (
     active BOOL NOT NULL,
     taskCount INTEGER NOT NULL,
     nexttime TIMESTAMP,
+	webhookUrl VARCHAR(255),
+	sslVerification BOOL,
     UNIQUE(name, version, namespace)
 );
 
@@ -227,9 +229,9 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	var dagID int
 	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount) 
-	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7)
-	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task)).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification) 
+	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9)
+	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL, dag.Spec.Webhook.VerifySSL).Scan(&dagID); err != nil {
 		return fmt.Errorf("failed inserting DAG: %w", err)
 	}
 
@@ -1332,4 +1334,23 @@ func (p *postgresDAGManager) DeleteTask(ctx context.Context, taskName, namespace
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (p *postgresDAGManager) GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error) {
+	webhook := &v1alpha1.Webhook{}
+
+	err := p.pool.QueryRow(ctx, `
+	SELECT webhookUrl, sslVerification
+	FROM DAGs
+	WHERE dag_id = (
+		SELECT dag_id
+		FROM DAG_Runs
+		WHERE run_id = $1
+	);
+	`, dagRunID).Scan(&webhook.URL, &webhook.VerifySSL)
+	if err != nil {
+		return nil, err
+	}
+
+	return webhook, nil
 }

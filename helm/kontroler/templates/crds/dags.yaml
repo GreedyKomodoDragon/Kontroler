@@ -3136,6 +3136,16 @@ spec:
                   - name
                   type: object
                 type: array
+              webhook:
+                properties:
+                  url:
+                    type: string
+                  verifySSL:
+                    type: boolean
+                required:
+                - url
+                - verifySSL
+                type: object
             required:
             - task
             type: object

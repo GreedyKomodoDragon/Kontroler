@@ -115,6 +115,11 @@ type Conditional struct {
 	RetryCodes []int `json:"retryCodes"`
 }
 
+type Webhook struct {
+	URL       string `json:"url"`
+	VerifySSL bool   `json:"verifySSL"`
+}
+
 // DAGSpec defines the desired state of DAG
 type DAGSpec struct {
 	// +optional
@@ -122,6 +127,8 @@ type DAGSpec struct {
 	Task     []TaskSpec `json:"task"`
 	// +optional
 	Parameters []DagParameterSpec `json:"parameters,omitempty"`
+	// +optional
+	Webhook Webhook `json:"webhook,omitempty"`
 }
 
 // DAGStatus defines the observed state of DAG
