@@ -159,6 +159,12 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	}
 
+	dagRun.Status.DagRunId = runId
+	if err := r.Status().Update(ctx, &dagRun); err != nil {
+		log.Log.Error(err, "failed to update DagRun status with runID", "dag_id", dagRun.Spec.DagName)
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 

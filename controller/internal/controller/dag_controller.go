@@ -83,13 +83,13 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	refParams, err := r.DbManager.GetTaskRefsParameters(ctx, taskRefs)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed at GetTaskRefsParameters: %s", err.Error())
 	}
 
 	// Validate the DAG
 	if err := dag.ValidateDAG(refParams); err != nil {
 		// Return error if DAG is not valid
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to validate dag: %s", err.Error())
 	}
 
 	// Store the DAG object in the database
@@ -99,7 +99,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to store dag in db: %s", err.Error())
 	}
 
 	// Add Finialiser to DagTasks if they are used

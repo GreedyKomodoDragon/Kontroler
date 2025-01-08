@@ -269,7 +269,8 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		if err := kclient.CreateDagRun(c.Context(), dagrunForm, isSecretMap, dagrunForm.Namespace, kubClient); err != nil {
+		runId, err := kclient.CreateDagRun(c.Context(), dagrunForm, isSecretMap, dagrunForm.Namespace, kubClient)
+		if err != nil {
 			log.Error().Err(err).Msg("failed to create dagrun")
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": fmt.Sprintf("Failed to create DagRun: %v", err),
@@ -277,9 +278,8 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		}
 
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-			"message": "DagRun created successfully",
+			"runId": runId,
 		})
-
 	})
 
 }

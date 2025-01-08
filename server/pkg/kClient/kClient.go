@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -135,9 +137,9 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	return err
 }
 
-func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) error {
+func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) (int, error) {
 	if drForm.Name == "" {
-		return fmt.Errorf("cannot have an empty dagrun name")
+		return 0, fmt.Errorf("cannot have an empty dagrun name")
 	}
 
 	labels := map[string]string{
@@ -156,7 +158,7 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 	for k, v := range drForm.Parameters {
 		isSecret, ok := isSecretMap[k]
 		if !ok {
-			return fmt.Errorf("missing parameter: %s", k)
+			return 0, fmt.Errorf("missing parameter: %s", k)
 		}
 
 		if isSecret {
@@ -196,8 +198,21 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 		Object: dagRun,
 	}
 
-	_, err := client.Resource(gvr).Namespace(namespace).Create(ctx, customResource, metav1.CreateOptions{})
-	return err
+	if _, err := client.Resource(gvr).Namespace(namespace).Create(ctx, customResource, metav1.CreateOptions{}); err != nil {
+		return 0, err
+	}
+
+	runID, err := waitForRunID(ctx, client, namespace, drForm.RunName, 10*time.Second)
+	if err != nil {
+		return 0, err
+	}
+
+	runIDInt, err := strconv.Atoi(runID)
+	if err != nil {
+		return 0, err
+	}
+
+	return runIDInt, err
 }
 
 func NewClient() (dynamic.Interface, error) {
@@ -212,4 +227,33 @@ func NewClient() (dynamic.Interface, error) {
 	}
 
 	return dynClient, nil
+}
+
+func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (string, error) {
+	gvr := schema.GroupVersionResource{
+		Group:    "kontroler.greedykomodo",
+		Version:  "v1alpha1",
+		Resource: "dagruns",
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		dagRun, err := client.Resource(gvr).Namespace(namespace).Get(ctx, runName, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+
+		status, found, err := unstructured.NestedString(dagRun.Object, "status", "runID")
+		if err != nil {
+			return "", err
+		}
+
+		if found && status != "" {
+			return status, nil
+		}
+
+		time.Sleep(1 * time.Second) // Polling interval
+	}
+
+	return "", fmt.Errorf("timed out waiting for DagRun %s to be reconciled", runName)
 }

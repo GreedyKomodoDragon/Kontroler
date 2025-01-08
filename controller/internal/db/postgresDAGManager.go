@@ -249,14 +249,14 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 		version := getTaskVersion(&task)
 
 		if err := p.createDependencyConnection(ctx, tx, dagID, &task, version); err != nil {
-			return err
+			return fmt.Errorf("failed to create dependency connection: %s", err)
 		}
 	}
 
 	// Insert parameters and map them to the DAG
 	for _, parameter := range dag.Spec.Parameters {
 		if err := p.insertParameter(ctx, tx, dagID, &parameter); err != nil {
-			return err
+			return fmt.Errorf("failed to insert parameter '%s': %s", parameter.Name, err.Error())
 		}
 	}
 
@@ -285,7 +285,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to serialise podTemplate: %s", err.Error())
 		}
 
 		jsonValue = &json
@@ -314,14 +314,14 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		RETURNING task_id;`,
 			newUUID.String(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
 			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
-			return err
+			return fmt.Errorf("failed to insert line task: %s", err.Error())
 		}
 	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
 		VALUES ($1, $2, $3, $4)`, dagID, taskId, task.Name, version); err != nil {
-		return err
+		return fmt.Errorf("failed to insert dag task: %s", err.Error())
 	}
 
 	return nil

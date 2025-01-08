@@ -67,6 +67,11 @@ spec:
             type: object
           status:
             description: DagRunStatus defines the observed state of DagRun
+            properties:
+              dagRunId:
+                type: integer
+            required:
+            - dagRunId
             type: object
         type: object
     served: true
