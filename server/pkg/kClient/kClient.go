@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -146,7 +145,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	return err
 }
 
-func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) (int, error) {
+func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) (int64, error) {
 	if drForm.Name == "" {
 		return 0, fmt.Errorf("cannot have an empty dagrun name")
 	}
@@ -216,12 +215,7 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 		return 0, err
 	}
 
-	runIDInt, err := strconv.Atoi(runID)
-	if err != nil {
-		return 0, err
-	}
-
-	return runIDInt, err
+	return runID, err
 }
 
 func NewClient() (dynamic.Interface, error) {
@@ -238,7 +232,7 @@ func NewClient() (dynamic.Interface, error) {
 	return dynClient, nil
 }
 
-func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (string, error) {
+func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (int64, error) {
 	gvr := schema.GroupVersionResource{
 		Group:    "kontroler.greedykomodo",
 		Version:  "v1alpha1",
@@ -249,20 +243,20 @@ func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runN
 	for time.Now().Before(deadline) {
 		dagRun, err := client.Resource(gvr).Namespace(namespace).Get(ctx, runName, metav1.GetOptions{})
 		if err != nil {
-			return "", err
+			return 0, err
 		}
 
-		status, found, err := unstructured.NestedString(dagRun.Object, "status", "dagRunId")
+		status, found, err := unstructured.NestedInt64(dagRun.Object, "status", "dagRunId")
 		if err != nil {
-			return "", err
+			return 0, err
 		}
 
-		if found && status != "" {
+		if found && status != 0 {
 			return status, nil
 		}
 
 		time.Sleep(1 * time.Second) // Polling interval
 	}
 
-	return "", fmt.Errorf("timed out waiting for DagRun %s to be reconciled", runName)
+	return 0, fmt.Errorf("timed out waiting for DagRun %s to be reconciled", runName)
 }
