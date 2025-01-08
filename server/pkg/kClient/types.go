@@ -98,6 +98,12 @@ type DagFormObj struct {
 	Tasks      []TaskSpec         `json:"tasks"`
 	Parameters []DagParameterSpec `json:"parameters,omitempty"`
 	Namespace  string             `json:"namespace"`
+	Webhook    Webhook            `json:"webhook"`
+}
+
+type Webhook struct {
+	URL       string `json:"url"`
+	VerifySSL bool   `json:"verifySSL"`
 }
 
 type DagRunForm struct {
