@@ -39,7 +39,7 @@ db:
       retain: true
   postgresql:
     name: kontroler
-    endpoint: my-release-postgresql.default.svc.cluster.local:5432
+    endpoint: postgres-postgresql.default.svc.cluster.local:5432
 
 logStorage:
   enabled: true
