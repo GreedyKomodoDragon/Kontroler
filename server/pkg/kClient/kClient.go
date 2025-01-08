@@ -107,6 +107,18 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		tasks = append(tasks, task)
 	}
 
+	spec := map[string]interface{}{
+		"parameters": parameters,
+		"task":       tasks,
+	}
+
+	if dagForm.Webhook.URL != "" {
+		spec["webhook"] = map[string]interface{}{
+			"url":       dagForm.Webhook.URL,
+			"verifySSL": dagForm.Webhook.VerifySSL,
+		}
+	}
+
 	// Create the DAG object
 	dag := map[string]interface{}{
 		"apiVersion": "kontroler.greedykomodo/v1alpha1",
@@ -115,10 +127,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 			"labels": labels,
 			"name":   dagForm.Name,
 		},
-		"spec": map[string]interface{}{
-			"parameters": parameters,
-			"task":       tasks,
-		},
+		"spec": spec,
 	}
 
 	// Define the GVR (Group, Version, Resource) for your custom resource
@@ -243,7 +252,7 @@ func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runN
 			return "", err
 		}
 
-		status, found, err := unstructured.NestedString(dagRun.Object, "status", "runID")
+		status, found, err := unstructured.NestedString(dagRun.Object, "status", "dagRunId")
 		if err != nil {
 			return "", err
 		}
