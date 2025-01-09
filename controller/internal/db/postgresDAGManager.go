@@ -741,29 +741,54 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 }
 
 func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx, dagId int, tasks []Task, parameters [][]string) error {
-	for i := 0; i < len(tasks); i++ {
-		tasks[i].Parameters = []Parameter{}
-		for _, parameter := range parameters[i] {
-			param := Parameter{
-				Name: parameter,
-			}
+	// Build a map to store task parameters
+	taskParamMap := make(map[int][]Parameter)
 
-			err := tx.QueryRow(ctx, `
-			SELECT isSecret, defaultValue
-			FROM DAG_Parameters
-			WHERE dag_id = $1 and name = $2;
-			`, dagId, parameter).Scan(&param.IsSecret, &param.Value)
+	// Flatten parameters and associate them with task indices
+	var flattenedParams []string
+	taskIndices := make(map[string]int)
 
-			if err == pgx.ErrNoRows {
-				continue
-			}
-
-			if err != nil {
-				return err
-			}
-
-			tasks[i].Parameters = append(tasks[i].Parameters, param)
+	for i, taskParams := range parameters {
+		for _, param := range taskParams {
+			flattenedParams = append(flattenedParams, param)
+			taskIndices[param] = i
 		}
+	}
+
+	// Query all parameters in a single batch
+	rows, err := tx.Query(ctx, `
+		SELECT name, isSecret, defaultValue
+		FROM DAG_Parameters
+		WHERE dag_id = $1 AND name = ANY($2)
+	`, dagId, flattenedParams)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Map the results to their respective tasks
+	for rows.Next() {
+		var name string
+		var isSecret bool
+		var value string
+
+		err := rows.Scan(&name, &isSecret, &value)
+		if err != nil {
+			return err
+		}
+
+		// Find the task index from the taskIndices map
+		taskIdx := taskIndices[name]
+		taskParamMap[taskIdx] = append(taskParamMap[taskIdx], Parameter{
+			Name:     name,
+			IsSecret: isSecret,
+			Value:    value,
+		})
+	}
+
+	// Assign the collected parameters back to tasks
+	for i := range tasks {
+		tasks[i].Parameters = taskParamMap[i]
 	}
 
 	return nil
