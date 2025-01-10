@@ -83,7 +83,7 @@ func (w *webhookManager) Listen(ctx context.Context) error {
 			}
 
 			if err := w.SendWebhook(payload.Url, bytes); err != nil {
-				log.Log.Error(err, "failed to send webhook")
+				log.Log.Error(err, "failed to send webhook", "url", payload.Url)
 				continue
 			}
 
