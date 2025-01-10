@@ -462,7 +462,7 @@ func (t *taskWatcher) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, tas
 
 func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRunId int, url string, verifySSL bool) {
 	t.webhookChan <- webhook.WebhookPayload{
-		Url:       url,
+		URL:       url,
 		VerifySSL: verifySSL,
 		Data: webhook.TaskHookDetails{
 			Status:   status,
