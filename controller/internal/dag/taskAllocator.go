@@ -36,6 +36,10 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset, id string) TaskAllocator 
 
 func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
 	envs := t.CreateEnvs(task)
+	if envs == nil {
+		return "", fmt.Errorf("failed to create envs")
+	}
+
 	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, *envs, nil)
 }
 
@@ -44,6 +48,46 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 }
 
 func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
+	podSpec := t.createPodSpec(&task, envs, resources)
+
+	// Create pod metadata and pod object
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"managed-by":     "kontroler",
+				"kontroler/type": "task",
+				"kontroler/id":   t.id,
+			},
+			Annotations: map[string]string{
+				"kontroler/task-rid":  strconv.Itoa(taskRunId),
+				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
+				"kontroler/task-id":   strconv.Itoa(task.Id),
+			},
+			Finalizers: []string{"kontroler/logcollection"},
+		},
+		Spec: *podSpec,
+	}
+
+	// Attempt pod creation with retry on name collision
+	for i := 0; i < 5; i++ {
+		pod.ObjectMeta.Name = utils.GenerateRandomName()
+
+		createdPod, err := t.clientSet.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				continue
+			} else {
+				return "", err
+			}
+		}
+
+		return createdPod.UID, nil
+	}
+
+	return "", fmt.Errorf("failed to create pod due to naming collisions")
+}
+
+func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources *v1.ResourceRequirements) *v1.PodSpec {
 	podSpec := v1.PodSpec{
 		RestartPolicy: v1.RestartPolicyNever,
 		Volumes:       []v1.Volume{},
@@ -123,7 +167,7 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 
 	// Apply PodTemplate if provided
 	if task.PodTemplate != nil {
-		t.applyPodTemplate(&podSpec, &task)
+		t.applyPodTemplate(&podSpec, task)
 	}
 
 	// Override resources if provided
@@ -131,41 +175,7 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 		podSpec.Containers[0].Resources = *resources
 	}
 
-	// Create pod metadata and pod object
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				"managed-by":     "kontroler",
-				"kontroler/type": "task",
-				"kontroler/id":   t.id,
-			},
-			Annotations: map[string]string{
-				"kontroler/task-rid":  strconv.Itoa(taskRunId),
-				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
-				"kontroler/task-id":   strconv.Itoa(task.Id),
-			},
-			Finalizers: []string{"kontroler/logcollection"},
-		},
-		Spec: podSpec,
-	}
-
-	// Attempt pod creation with retry on name collision
-	for i := 0; i < 5; i++ {
-		pod.ObjectMeta.Name = utils.GenerateRandomName()
-
-		createdPod, err := t.clientSet.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
-		if err != nil {
-			if strings.Contains(err.Error(), "already exists") {
-				continue
-			} else {
-				return "", err
-			}
-		}
-
-		return createdPod.UID, nil
-	}
-
-	return "", fmt.Errorf("failed to create pod due to naming collisions")
+	return &podSpec
 }
 
 // Helper function to apply PodTemplate attributes to the pod spec
