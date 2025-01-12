@@ -16,6 +16,18 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+const (
+	labelManagedBy     = "managed-by"
+	labelKontrolerType = "kontroler/type"
+	labelKontrolerID   = "kontroler/id"
+
+	annotationTaskRID  = "kontroler/task-rid"
+	annotationDagRunID = "kontroler/dagRun-id"
+	annotationTaskID   = "kontroler/task-id"
+
+	finalizerLogCollection = "kontroler/logcollection"
+)
+
 type TaskAllocator interface {
 	AllocateTask(context.Context, db.Task, int, int, string) (types.UID, error)
 	AllocateTaskWithEnv(context.Context, db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements) (types.UID, error)
@@ -54,16 +66,16 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId,
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				"managed-by":     "kontroler",
-				"kontroler/type": "task",
-				"kontroler/id":   t.id,
+				labelManagedBy:     "kontroler",
+				labelKontrolerType: "task",
+				labelKontrolerID:   t.id,
 			},
 			Annotations: map[string]string{
-				"kontroler/task-rid":  strconv.Itoa(taskRunId),
-				"kontroler/dagRun-id": strconv.Itoa(dagRunId),
-				"kontroler/task-id":   strconv.Itoa(task.Id),
+				annotationTaskRID:  strconv.Itoa(taskRunId),
+				annotationDagRunID: strconv.Itoa(dagRunId),
+				annotationTaskID:   strconv.Itoa(task.Id),
 			},
-			Finalizers: []string{"kontroler/logcollection"},
+			Finalizers: []string{finalizerLogCollection},
 		},
 		Spec: *podSpec,
 	}
