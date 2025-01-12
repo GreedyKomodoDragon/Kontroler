@@ -41,42 +41,41 @@ func (d *dagscheduler) Run() {
 	tmr := time.NewTimer(time.Minute)
 	for {
 		<-tmr.C
-		log.Log.Info("timer up, begun looking for dags to run")
-
-		ctx := context.Background()
-		dagInfos, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
-		if err != nil {
-			log.Log.Error(err, "failed to find dags to start")
-			tmr.Reset(time.Minute)
-			continue
-		}
-
-		log.Log.Info("number of dags found", "count", len(dagInfos))
-		opts := v1.CreateOptions{}
-		for _, dagInfo := range dagInfos {
-
-			// Create DagRun Object Per Dag ID
-			// We create a DagRun Object as it allows dagRuns to be event driven as while as scheduled
-			log.Log.Info("attempting to create dagrun", "dagId", dagInfo.DagId)
-
-			// Generate a unique name for each DagRun using UUID
-			name := "dagrun-" + uuid.New().String()
-
-			dagRun := d.CreateDagRunObject(dagInfo, name)
-
-			// Create the DagRun
-			if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, dagRun, opts); err != nil {
-				log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo)
-				continue
-			}
-
-			log.Log.Info("DagRun created successfully", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
-
-		}
-
+		go d.processDags()
 		tmr.Reset(time.Minute)
 	}
 
+}
+
+func (d *dagscheduler) processDags() {
+	log.Log.Info("timer up, begun looking for dags to run")
+
+	ctx := context.Background()
+	dagInfos, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
+	if err != nil {
+		log.Log.Error(err, "failed to find dags to start")
+		return
+	}
+
+	log.Log.Info("number of dags found", "count", len(dagInfos))
+	opts := v1.CreateOptions{}
+	for _, dagInfo := range dagInfos {
+		go d.createDagRun(ctx, dagInfo, opts)
+	}
+}
+
+func (d *dagscheduler) createDagRun(ctx context.Context, dagInfo *db.DagInfo, opts v1.CreateOptions) {
+	log.Log.Info("attempting to create dagrun", "dagId", dagInfo.DagId)
+
+	name := "dagrun-" + uuid.New().String()
+	dagRun := d.CreateDagRunObject(dagInfo, name)
+
+	if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, dagRun, opts); err != nil {
+		log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo)
+		return
+	}
+
+	log.Log.Info("DagRun created successfully", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
 }
 
 // createDagRunObject constructs a DagRun object for the given dagInfo.
