@@ -106,18 +106,7 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 	}
 
 	if task.Script != "" {
-		vol := v1.Volume{
-			Name: "shared-scripts",
-			VolumeSource: v1.VolumeSource{
-				EmptyDir: &v1.EmptyDirVolumeSource{},
-			},
-		}
-
-		// We check as AllocateTaskWithEnv re-uses the mounts to avoid going to the database
-		// Downside is that it will create two volumes with the same values
-		if task.PodTemplate == nil || (task.PodTemplate != nil && !containsVolume(task.PodTemplate.Volumes, vol)) {
-			podSpec.Volumes = append(podSpec.Volumes, vol)
-		}
+		t.addScriptVolume(&podSpec, task)
 
 		scriptInjectorImage := task.ScriptInjectorImage
 		if scriptInjectorImage == "" {
@@ -166,15 +155,7 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 		}
 
 	} else {
-		podSpec.Containers = []v1.Container{
-			{
-				Name:    task.Name,
-				Image:   task.Image,
-				Command: task.Command,
-				Args:    task.Args,
-				Env:     envs,
-			},
-		}
+		t.addDefaultContainer(&podSpec, task, envs)
 	}
 
 	// Apply PodTemplate if provided
@@ -188,6 +169,31 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 	}
 
 	return &podSpec
+}
+
+func (t *taskAllocator) addScriptVolume(podSpec *v1.PodSpec, task *db.Task) {
+	vol := v1.Volume{
+		Name: "shared-scripts",
+		VolumeSource: v1.VolumeSource{
+			EmptyDir: &v1.EmptyDirVolumeSource{},
+		},
+	}
+
+	if task.PodTemplate == nil || !containsVolume(task.PodTemplate.Volumes, vol) {
+		podSpec.Volumes = append(podSpec.Volumes, vol)
+	}
+}
+
+func (t *taskAllocator) addDefaultContainer(podSpec *v1.PodSpec, task *db.Task, envs []v1.EnvVar) {
+	podSpec.Containers = []v1.Container{
+		{
+			Name:    task.Name,
+			Image:   task.Image,
+			Command: task.Command,
+			Args:    task.Args,
+			Env:     envs,
+		},
+	}
 }
 
 // Helper function to apply PodTemplate attributes to the pod spec
