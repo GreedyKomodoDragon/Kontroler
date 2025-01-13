@@ -324,7 +324,7 @@ func main() {
 
 	mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		log.Log.Info("Became the leader, starting the controller.")
-		go taskScheduler.Run()
+		go taskScheduler.Run(ctx)
 
 		for i := 0; i < len(namespacesSlice); i++ {
 			go watchers[i].StartWatching(closeChannels[i])
