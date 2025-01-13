@@ -1208,6 +1208,10 @@ func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
 						DefaultValue: "value",
 					},
 				},
+				Webhook: v1alpha1.Webhook{
+					URL:       "http://localhost:8080",
+					VerifySSL: false,
+				},
 				Task: []v1alpha1.TaskSpec{
 					{
 						Name:       "random",
