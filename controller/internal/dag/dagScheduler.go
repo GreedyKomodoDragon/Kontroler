@@ -4,13 +4,22 @@ import (
 	"context"
 	"time"
 
+	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
 	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
 	"github.com/google/uuid"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	apiVersion     = "kontroler.greedykomodo/v1alpha1"
+	kind           = "DagRun"
+	createdBy      = "app.kubernetes.io/created-by"
+	createdByValue = "konductor-operator"
 )
 
 // DagScheduler will every min run a check on the Database to determine if a dag should be started
@@ -79,7 +88,15 @@ func (d *dagscheduler) createDagRun(ctx context.Context, dagInfo *db.DagInfo, op
 	name := "dagrun-" + uuid.New().String()
 	dagRun := d.CreateDagRunObject(dagInfo, name)
 
-	if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, dagRun, opts); err != nil {
+	unstructuredDagRun, err := runtime.DefaultUnstructuredConverter.ToUnstructured(dagRun)
+	if err != nil {
+		log.Log.Error(err, "failed to convert DagRun to unstructured")
+		return
+	}
+
+	unstructuredObj := &unstructured.Unstructured{Object: unstructuredDagRun}
+
+	if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, unstructuredObj, opts); err != nil {
 		log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo)
 		return
 	}
@@ -87,22 +104,23 @@ func (d *dagscheduler) createDagRun(ctx context.Context, dagInfo *db.DagInfo, op
 	log.Log.Info("DagRun created successfully", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
 }
 
-// createDagRunObject constructs a DagRun object for the given dagInfo.
-func (d *dagscheduler) CreateDagRunObject(dagInfo *db.DagInfo, name string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "kontroler.greedykomodo/v1alpha1",
-			"kind":       "DagRun",
-			"metadata": map[string]interface{}{
-				"name": name,
-				"labels": map[string]string{
-					"app.kubernetes.io/created-by": "konductor-operator",
-				},
+// CreateDagRunObject constructs a DagRun object for the given dagInfo.
+func (d *dagscheduler) CreateDagRunObject(dagInfo *db.DagInfo, name string) *v1alpha1.DagRun {
+	return &v1alpha1.DagRun{
+		TypeMeta: v1.TypeMeta{
+			APIVersion: apiVersion,
+			Kind:       kind,
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      name,
+			Namespace: dagInfo.Namespace,
+			Labels: map[string]string{
+				createdBy: createdByValue,
 			},
-			"spec": map[string]interface{}{
-				"dagName":    dagInfo.DagName,
-				"parameters": []map[string]interface{}{},
-			},
+		},
+		Spec: v1alpha1.DagRunSpec{
+			DagName:    dagInfo.DagName,
+			Parameters: []v1alpha1.ParameterSpec{},
 		},
 	}
 }
