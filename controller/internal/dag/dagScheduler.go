@@ -16,7 +16,7 @@ import (
 // DagScheduler will every min run a check on the Database to determine if a dag should be started
 // For example, this could be based on a CronJob Schedule or a time window
 type DagScheduler interface {
-	Run()
+	Run(context.Context)
 }
 
 type dagscheduler struct {
@@ -37,20 +37,29 @@ func NewDagScheduler(dbManager db.DBDAGManager, dynamicClient dynamic.Interface)
 	}
 }
 
-func (d *dagscheduler) Run() {
+func (d *dagscheduler) Run(ctx context.Context) {
 	tmr := time.NewTimer(time.Minute)
-	for {
-		<-tmr.C
-		go d.processDags()
-		tmr.Reset(time.Minute)
-	}
+	defer tmr.Stop()
 
+	for {
+		select {
+		case <-ctx.Done():
+			log.Log.Info("shutting down dagscheduler")
+			return
+		case <-tmr.C:
+			go func() {
+				processCtx, cancel := context.WithCancel(ctx)
+				defer cancel()
+				d.processDags(processCtx)
+			}()
+			tmr.Reset(time.Minute)
+		}
+	}
 }
 
-func (d *dagscheduler) processDags() {
+func (d *dagscheduler) processDags(ctx context.Context) {
 	log.Log.Info("timer up, begun looking for dags to run")
 
-	ctx := context.Background()
 	dagInfos, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
 	if err != nil {
 		log.Log.Error(err, "failed to find dags to start")
