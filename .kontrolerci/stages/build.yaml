@@ -1,4 +1,18 @@
-build-job:
-  image: ubuntu:latest
+build-server:
+  image: greedykomodo/go-ubi:1.23.3
   script: |
-    echo "hello building"
+    cd server
+    go build -o main cmd/main.go
+
+build-controller:
+  image: greedykomodo/go-ubi:1.23.3
+  script: |
+    cd controller
+    go build -o main cmd/main.go
+
+build-ui:
+  image: node:alpine
+  script: |
+    cd ui
+    npm install --legacy-peer-deps
+    npm run build

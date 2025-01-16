@@ -26,7 +26,7 @@ func RandStringBytes(n int) string {
 	return string(b)
 }
 
-func Test_Sqlite_UpsertDAG(t *testing.T) {
+func Test_SQLite_UpsertDAG(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -111,7 +111,7 @@ func Test_Sqlite_UpsertDAG(t *testing.T) {
 	require.Equal(t, 2, version)
 }
 
-func Test_Sqlite_DAGManager_InsertDAG(t *testing.T) {
+func Test_SQLite_DAGManager_InsertDAG(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -145,7 +145,7 @@ func Test_Sqlite_DAGManager_InsertDAG(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Sqlite_DAGManager_CreateDAGRun(t *testing.T) {
+func Test_SQLite_DAGManager_CreateDAGRun(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -187,7 +187,7 @@ func Test_Sqlite_DAGManager_CreateDAGRun(t *testing.T) {
 	assert.NotEqual(t, 0, runID)
 }
 
-func Test_Sqlite_DAGManager_GetStartingTasks(t *testing.T) {
+func Test_SQLite_DAGManager_GetStartingTasks(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -234,7 +234,7 @@ func Test_Sqlite_DAGManager_GetStartingTasks(t *testing.T) {
 	require.Equal(t, tasks[0].Name, "task1")
 }
 
-func Test_Sqlite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
+func Test_SQLite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -284,7 +284,7 @@ func Test_Sqlite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
+func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -346,7 +346,7 @@ func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	require.Equal(t, tasks[0].Name, "task2")
 }
 
-func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
+func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -412,7 +412,7 @@ func Test_Sqlite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 	require.Empty(t, tasks)
 }
 
-func Test_Sqlite_DAGManager_MarkTaskAsStarted(t *testing.T) {
+func Test_SQLite_DAGManager_MarkTaskAsStarted(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -717,7 +717,7 @@ func Test_SQLite_InsertDag_TaskRef(t *testing.T) {
 	testDAGManagerInsertDag_TaskRef(t, dm)
 }
 
-func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
+func Test_SQLite_Task_Before_InsertDag_Two(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -896,7 +896,7 @@ func Test_SQLite_Task_Handle_Versions(t *testing.T) {
 	require.NotEmpty(t, tasks)
 }
 
-func Test_Sqlite_Task_Before_InsertDag(t *testing.T) {
+func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -982,7 +982,7 @@ func Test_Sqlite_Task_Before_InsertDag(t *testing.T) {
 	require.Empty(t, tasks)
 }
 
-func Test_Sqlite_Complex_Example(t *testing.T) {
+func Test_SQLite_Complex_Example(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 

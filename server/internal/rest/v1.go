@@ -2,10 +2,10 @@ package rest
 
 import (
 	"fmt"
-	"kontroler-server/pkg/auth"
-	"kontroler-server/pkg/db"
-	kclient "kontroler-server/pkg/kClient"
-	"kontroler-server/pkg/logs"
+	"kontroler-server/internal/auth"
+	"kontroler-server/internal/db"
+	kclient "kontroler-server/internal/kClient"
+	"kontroler-server/internal/logs"
 	"strconv"
 	"time"
 

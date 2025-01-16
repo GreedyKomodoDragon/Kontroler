@@ -1,9 +1,11 @@
-test-job:
-  image: registry.access.redhat.com/ubi9/ubi@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
+go-test-server:
+  image: greedykomodo/go-ubi:1.23.3
   script: |
-    echo "hello"
+    cd server
+    go test -v -run '^Test_SQLite' ./...
 
-test-job-b:
-  image: registry.access.redhat.com/ubi9/ubi@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
+go-test-controller:
+  image: greedykomodo/go-ubi:1.23.3
   script: |
-    echo "hello"
+    cd controller
+    go test -v -run '^Test_SQLite' ./...

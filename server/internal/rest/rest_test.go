@@ -1,8 +1,8 @@
 package rest_test
 
 import (
-	"kontroler-server/pkg/auth"
-	"kontroler-server/pkg/rest"
+	"kontroler-server/internal/auth"
+	"kontroler-server/internal/rest"
 	"testing"
 )
 
