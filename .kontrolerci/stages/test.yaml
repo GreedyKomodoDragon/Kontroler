@@ -1,3 +1,5 @@
+# We only run sqlite tests for now
+
 go-test-server:
   image: golang:1.23.3-bullseye
   script: |
