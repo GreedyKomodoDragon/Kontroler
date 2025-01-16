@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 

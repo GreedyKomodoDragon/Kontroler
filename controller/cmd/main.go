@@ -35,12 +35,12 @@ import (
 
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 
-	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
-	kontrolerWebhook "github.com/GreedyKomodoDragon/Kontroler/operator/internal/webhook"
+	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/controller"
+	"kontroler-controller/internal/dag"
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/object"
+	kontrolerWebhook "kontroler-controller/internal/webhook"
 	//+kubebuilder:scaffold:imports
 )
 

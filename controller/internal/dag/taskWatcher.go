@@ -8,10 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/webhook"
+	"kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/object"
+	"kontroler-controller/internal/webhook"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"

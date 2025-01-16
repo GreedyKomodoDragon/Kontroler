@@ -3,8 +3,8 @@ package dag_test
 import (
 	"testing"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"kontroler-controller/internal/dag"
+	"kontroler-controller/internal/db"
 )
 
 func FuzzCreateEnvs(f *testing.F) {

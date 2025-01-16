@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/utils"
+
 	"al.essio.dev/pkg/shellescape"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
