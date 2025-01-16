@@ -1,11 +1,11 @@
 build-server:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.3-bullseye
   script: |
     cd server
     go build -o main cmd/main.go
 
 build-controller:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.3-bullseye
   script: |
     cd controller
     go build -o main cmd/main.go

@@ -1,11 +1,11 @@
 go-test-server:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.3-bullseye
   script: |
     cd server
     go test -v -run '^Test_SQLite' ./...
 
 go-test-controller:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.3-bullseye
   script: |
     cd controller
     go test -v -run '^Test_SQLite' ./...
