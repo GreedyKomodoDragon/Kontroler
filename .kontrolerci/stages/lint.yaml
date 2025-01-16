@@ -15,4 +15,4 @@ go-lint-controller:
 npm-install:
   image: node:alpine
   script: |
-    echo "hello"
+    npm install --legacy-peer-deps
