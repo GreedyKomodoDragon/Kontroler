@@ -322,7 +322,7 @@ func main() {
 
 	stopCh := ctrl.SetupSignalHandler()
 
-	mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		log.Log.Info("Became the leader, starting the controller.")
 		go taskScheduler.Run(ctx)
 
@@ -335,7 +335,10 @@ func main() {
 
 		log.Log.Info("Losing leadership or shutting down, cleaning up...")
 		return nil
-	}))
+	})); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)
