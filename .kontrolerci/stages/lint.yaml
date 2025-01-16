@@ -1,12 +1,12 @@
 go-lint-server:
-  image: golang:1.23.3-bullseye
+  image: greedykomodo/go-ubi:1.23.3
   script: |
     cd server
     go mod download
     golangci-lint run
 
 go-lint-controller:
-  image: golang:1.23.3-bullseye
+  image: greedykomodo/go-ubi:1.23.3
   script: |
     cd controller
     go mod download
