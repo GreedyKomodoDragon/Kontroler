@@ -2,14 +2,14 @@ go-lint-server:
   image: greedykomodo/go-ubi:1.23.3
   script: |
     cd server
-    go mod download
+    go mod tidy
     golangci-lint run
 
 go-lint-controller:
   image: greedykomodo/go-ubi:1.23.3
   script: |
     cd controller
-    go mod download
+    go mod tidy
     golangci-lint run
 
 npm-install:
