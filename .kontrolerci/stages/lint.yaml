@@ -1,6 +1,7 @@
 go-lint-server:
   image: greedykomodo/go-ubi:1.23.3
   script: |
+    export GOPROXY=direct
     cd server
     go mod tidy
     golangci-lint run
@@ -8,6 +9,7 @@ go-lint-server:
 go-lint-controller:
   image: greedykomodo/go-ubi:1.23.3
   script: |
+    export GOPROXY=direct
     cd controller
     go mod tidy
     golangci-lint run
@@ -15,4 +17,5 @@ go-lint-controller:
 npm-install:
   image: node:alpine
   script: |
+    cd ui
     npm install --legacy-peer-deps
