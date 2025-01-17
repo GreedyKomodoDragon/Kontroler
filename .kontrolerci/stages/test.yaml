@@ -3,11 +3,15 @@
 go-test-server:
   image: golang:1.23.3-bullseye
   script: |
+    echo "Navigating to server directory"
     cd server
+    echo "Running go tests for SQLite"
     go test -v -run '^Test_SQLite' ./...
 
 go-test-controller:
   image: golang:1.23.3-bullseye
   script: |
+    echo "Navigating to controller directory"
     cd controller
+    echo "Running go tests for SQLite"
     go test -v -run '^Test_SQLite' ./...
