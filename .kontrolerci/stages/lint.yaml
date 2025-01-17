@@ -1,21 +1,21 @@
 go-lint-server:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.5-bullseye
   script: |
-    export GOPROXY=direct
     cd server
     go mod tidy
+    go install golangci-lint
     golangci-lint run
 
 go-lint-controller:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.5-bullseye
   script: |
-    export GOPROXY=direct
     cd controller
     go mod tidy
+    go install golangci-lint
     golangci-lint run
 
 npm-install:
-  image: node:alpine
+  image: golang:1.23.5-bullseye
   script: |
     cd ui
     echo "Installing npm dependencies"

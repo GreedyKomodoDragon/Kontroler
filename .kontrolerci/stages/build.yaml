@@ -1,14 +1,12 @@
 build-server:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.5-bullseye
   script: |
-    export GOPROXY=direct
     cd server
     go build -o main cmd/main.go
 
 build-controller:
-  image: greedykomodo/go-ubi:1.23.3
+  image: golang:1.23.5-bullseye
   script: |
-    export GOPROXY=direct
     cd controller
     go build -o main cmd/main.go
 
