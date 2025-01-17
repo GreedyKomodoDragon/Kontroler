@@ -3,7 +3,7 @@ go-lint-server:
   script: |
     cd server
     go mod tidy
-    go install golangci-lint
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.63.4
     golangci-lint run
 
 go-lint-controller:
@@ -11,11 +11,12 @@ go-lint-controller:
   script: |
     cd controller
     go mod tidy
-    go install golangci-lint
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.63.4
     golangci-lint run
 
 npm-install:
-  image: golang:1.23.5-bullseye
+  image: node:lts
   script: |
     cd ui
     echo "Installing npm dependencies"
+    npm install --legacy-peer-deps
