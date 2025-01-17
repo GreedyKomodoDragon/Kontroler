@@ -26,7 +26,7 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 		FROM DAGs
 		WHERE active = TRUE
 		ORDER BY dag_id DESC
-		LIMIT $1 OFFSET $2
+		LIMIT $1 OFFSET $2;
 		`, limit, offset)
 
 	if err != nil {
@@ -599,9 +599,9 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 			WHERE name = $1
 			ORDER BY version DESC
 			LIMIT 1
-		) AND name = ANY($2);`
+		);`
 
-	rows, err := p.pool.Query(ctx, query, dagName, parameterNames)
+	rows, err := p.pool.Query(ctx, query, dagName)
 	if err != nil {
 		return nil, err
 	}
