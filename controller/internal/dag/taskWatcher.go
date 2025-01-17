@@ -22,6 +22,10 @@ import (
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+var (
+	kontrolerTaskRunID = "kontroler/task-rid"
+)
+
 // Purpose of TaskWatcher is to listen for pods to finish and record results/trigger the next pods
 // Will also allocate new pods
 type TaskWatcher interface {
@@ -129,9 +133,9 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 	ctx := context.Background()
 	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
-	taskRunIdStr, ok := pod.Annotations["kontroler/task-rid"]
+	taskRunIdStr, ok := pod.Annotations[kontrolerTaskRunID]
 	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/task-rid", "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", kontrolerTaskRunID, "pod", pod.Name)
 		return
 	}
 
@@ -378,9 +382,9 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 }
 
 func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
-	taskRunIDStr, ok := pod.Annotations["kontroler/task-rid"]
+	taskRunIDStr, ok := pod.Annotations[kontrolerTaskRunID]
 	if !ok {
-		return fmt.Errorf("missing annotation kontroler/task-rid")
+		return fmt.Errorf("missing annotation: %s", kontrolerTaskRunID)
 	}
 
 	taskRunId, err := strconv.Atoi(taskRunIDStr)
