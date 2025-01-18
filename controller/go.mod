@@ -1,4 +1,4 @@
-module github.com/GreedyKomodoDragon/Kontroler/operator
+module kontroler-controller
 
 go 1.23
 

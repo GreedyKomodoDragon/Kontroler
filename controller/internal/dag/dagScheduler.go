@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db"
+
 	"github.com/google/uuid"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

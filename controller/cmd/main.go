@@ -35,12 +35,12 @@ import (
 
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 
-	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/controller"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
-	kontrolerWebhook "github.com/GreedyKomodoDragon/Kontroler/operator/internal/webhook"
+	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/controller"
+	"kontroler-controller/internal/dag"
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/object"
+	kontrolerWebhook "kontroler-controller/internal/webhook"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -322,7 +322,7 @@ func main() {
 
 	stopCh := ctrl.SetupSignalHandler()
 
-	mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		log.Log.Info("Became the leader, starting the controller.")
 		go taskScheduler.Run(ctx)
 
@@ -335,7 +335,10 @@ func main() {
 
 		log.Log.Info("Losing leadership or shutting down, cleaning up...")
 		return nil
-	}))
+	})); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
 
 	// Create a channel to listen for OS signals
 	quit := make(chan os.Signal, 1)

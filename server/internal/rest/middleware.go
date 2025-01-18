@@ -1,7 +1,7 @@
 package rest
 
 import (
-	"kontroler-server/pkg/auth"
+	"kontroler-server/internal/auth"
 	"strings"
 	"time"
 

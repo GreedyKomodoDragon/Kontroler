@@ -8,10 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/object"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/webhook"
+	"kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/object"
+	"kontroler-controller/internal/webhook"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -19,6 +20,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+var (
+	kontrolerTaskRunID = "kontroler/task-rid"
 )
 
 // Purpose of TaskWatcher is to listen for pods to finish and record results/trigger the next pods
@@ -128,9 +133,9 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 	ctx := context.Background()
 	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
-	taskRunIdStr, ok := pod.Annotations["kontroler/task-rid"]
+	taskRunIdStr, ok := pod.Annotations[kontrolerTaskRunID]
 	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/task-rid", "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", kontrolerTaskRunID, "pod", pod.Name)
 		return
 	}
 
@@ -377,9 +382,9 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 }
 
 func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
-	taskRunIDStr, ok := pod.Annotations["kontroler/task-rid"]
+	taskRunIDStr, ok := pod.Annotations[kontrolerTaskRunID]
 	if !ok {
-		return fmt.Errorf("missing annotation kontroler/task-rid")
+		return fmt.Errorf("missing annotation: %s", kontrolerTaskRunID)
 	}
 
 	taskRunId, err := strconv.Atoi(taskRunIDStr)

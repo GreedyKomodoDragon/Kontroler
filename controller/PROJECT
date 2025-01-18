@@ -9,7 +9,7 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: operator
-repo: github.com/GreedyKomodoDragon/Kontroler/operator
+repo: kontroler-controller
 resources:
 - api:
     crdVersion: v1
@@ -18,7 +18,7 @@ resources:
   domain: greedykomodo
   group: kontroler
   kind: Schedule
-  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
+  path: kontroler-controller/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -27,7 +27,7 @@ resources:
   domain: greedykomodo
   group: kontroler
   kind: DAG
-  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
+  path: kontroler-controller/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -36,7 +36,7 @@ resources:
   domain: greedykomodo
   group: kontroler
   kind: DagRun
-  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
+  path: kontroler-controller/api/v1alpha1
   version: v1alpha1
   webhooks:
     defaulting: true
@@ -49,6 +49,6 @@ resources:
   domain: greedykomodo
   group: kontroler
   kind: DagTask
-  path: github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1
+  path: kontroler-controller/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"kontroler-controller/api/v1alpha1"
 )
 
 func getTaskVersion(task *v1alpha1.TaskSpec) int {

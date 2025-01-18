@@ -1,4 +1,25 @@
-build-job:
-  image: ubuntu:latest
+build-server:
+  image: golang:1.23.5-bullseye
   script: |
-    echo "hello building"
+    echo "Navigating to server directory"
+    cd server
+    echo "Building server application"
+    go build -o main cmd/main.go
+
+build-controller:
+  image: golang:1.23.5-bullseye
+  script: |
+    echo "Navigating to controller directory"
+    cd controller
+    echo "Building controller application"
+    go build -o main cmd/main.go
+
+build-ui:
+  image: node:lts
+  script: |
+    echo "Navigating to ui directory"
+    cd ui
+    echo "Installing npm dependencies"
+    npm install --legacy-peer-deps
+    echo "Building UI application"
+    npm run build

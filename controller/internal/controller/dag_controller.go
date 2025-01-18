@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db"
 )
 
 // DAGReconciler reconciles a DAG object
