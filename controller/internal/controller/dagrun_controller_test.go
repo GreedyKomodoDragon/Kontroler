@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 )
 
 var _ = Describe("DagRun Controller", func() {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/utils"
+	"kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/utils"
+
 	cron "github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

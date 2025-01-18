@@ -16,9 +16,6 @@ issues:
 
   # Specify custom rules for excluding issues
   exclude-rules:
-    - path: "api/*" # Ignore long lines in API files
-      linters:
-        - lll
     - path: "internal/*" # Ignore duplication and long lines in internal files
       linters:
         - dupl

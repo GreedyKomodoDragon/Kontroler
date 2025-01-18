@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/test/utils"
+	"kontroler-controller/test/utils"
 )
 
 const namespace = "operator-system"

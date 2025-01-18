@@ -17,17 +17,18 @@ func NewPostgresManager(ctx context.Context, pool *pgxpool.Pool) (DbManager, err
 	return &postgresManager{
 		pool: pool,
 	}, nil
-
 }
 
+const ALL_DAG_METADATA_QUERY = `
+SELECT dag_id, name, version, schedule, active, nexttime
+FROM DAGs
+WHERE active = TRUE
+ORDER BY dag_id DESC
+LIMIT $1 OFFSET $2;
+`
+
 func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error) {
-	rows, err := p.pool.Query(ctx, `
-		SELECT dag_id, name, version, schedule, active, nexttime
-		FROM DAGs
-		WHERE active = TRUE
-		ORDER BY dag_id DESC
-		LIMIT $1 OFFSET $2
-		`, limit, offset)
+	rows, err := p.pool.Query(ctx, ALL_DAG_METADATA_QUERY, limit, offset)
 
 	if err != nil {
 		return nil, err
@@ -599,9 +600,9 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 			WHERE name = $1
 			ORDER BY version DESC
 			LIMIT 1
-		) AND name = ANY($2);`
+		);`
 
-	rows, err := p.pool.Query(ctx, query, dagName, parameterNames)
+	rows, err := p.pool.Query(ctx, query, dagName)
 	if err != nil {
 		return nil, err
 	}

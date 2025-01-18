@@ -2,7 +2,7 @@ package auth_test
 
 import (
 	"context"
-	"kontroler-server/pkg/auth"
+	"kontroler-server/internal/auth"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

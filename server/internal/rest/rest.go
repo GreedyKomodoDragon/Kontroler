@@ -4,9 +4,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"kontroler-server/pkg/auth"
-	"kontroler-server/pkg/db"
-	"kontroler-server/pkg/logs"
+	"kontroler-server/internal/auth"
+	"kontroler-server/internal/db"
+	"kontroler-server/internal/logs"
 	"os"
 	"unicode"
 

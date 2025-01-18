@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
+	"kontroler-controller/api/v1alpha1"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	cron "github.com/robfig/cron/v3"

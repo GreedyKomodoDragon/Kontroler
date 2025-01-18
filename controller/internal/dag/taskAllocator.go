@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
+	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/utils"
+
 	"al.essio.dev/pkg/shellescape"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -121,13 +122,13 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 				Name:  "script-copier",
 				Image: scriptInjectorImage,
 				Command: []string{
-					"bash", "-c", fmt.Sprintf(`printf %s > /tmp/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
-						chmod 555 /tmp/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`, shellescape.Quote(task.Script)),
+					"bash", "-c", fmt.Sprintf(`printf %s > /script/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
+						chmod 555 /script/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`, shellescape.Quote(task.Script)),
 				},
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      "shared-scripts",
-						MountPath: "/tmp",
+						MountPath: "/script",
 					},
 				},
 			},
@@ -137,14 +138,14 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 			{
 				Name:    task.Name,
 				Image:   task.Image,
-				Command: []string{"bash", "-c", "/tmp/my-script.sh"},
+				Command: []string{"bash", "-c", "/script/my-script.sh"},
 				Env:     envs,
 			},
 		}
 
 		mount := v1.VolumeMount{
 			Name:      "shared-scripts",
-			MountPath: "/tmp",
+			MountPath: "/script",
 			ReadOnly:  true,
 		}
 

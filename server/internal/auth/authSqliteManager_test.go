@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"kontroler-server/pkg/auth"
+	"kontroler-server/internal/auth"
 	"math/rand"
 	"testing"
 
@@ -38,7 +38,7 @@ func Test_SQLite_AuthManager(t *testing.T) {
 	test_Setup_AuthManager(t, authManager)
 }
 
-func Test_Sqlite_CreateAccount(t *testing.T) {
+func Test_SQLite_CreateAccount(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	dbSqlite, err := sql.Open("sqlite", dbPath)
@@ -158,7 +158,7 @@ func Test_SQLite_RevokeToken(t *testing.T) {
 	test_revoke_token(t, authManager, credentials)
 }
 
-func Test_Sqlite_TokenExpiration(t *testing.T) {
+func Test_SQLite_TokenExpiration(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 
 	dbSqlite, err := sql.Open("sqlite", dbPath)

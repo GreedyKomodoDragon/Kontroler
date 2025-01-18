@@ -24,10 +24,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	kontrolerv1alpha1 "github.com/GreedyKomodoDragon/Kontroler/operator/api/v1alpha1"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/dag"
-	"github.com/GreedyKomodoDragon/Kontroler/operator/internal/db"
+	"kontroler-controller/api/v1alpha1"
+	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/dag"
+	"kontroler-controller/internal/db"
 )
 
 // DagRunReconciler reconciles a DagRun object

@@ -1,9 +1,17 @@
-test-job:
-  image: registry.access.redhat.com/ubi9/ubi@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
-  script: |
-    echo "hello"
+# We only run sqlite tests for now
 
-test-job-b:
-  image: registry.access.redhat.com/ubi9/ubi@sha256:38791b293262ac2169eca2717e68e626a047d2b89fbd1da544db24ed0204efeb
+go-test-server:
+  image: golang:1.23.3-bullseye
   script: |
-    echo "hello"
+    echo "Navigating to server directory"
+    cd server
+    echo "Running go tests for SQLite"
+    go test -v -run '^Test_SQLite' ./...
+
+go-test-controller:
+  image: golang:1.23.3-bullseye
+  script: |
+    echo "Navigating to controller directory"
+    cd controller
+    echo "Running go tests for SQLite"
+    go test -v -run '^Test_SQLite' ./...
