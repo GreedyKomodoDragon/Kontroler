@@ -120,6 +120,20 @@ type Webhook struct {
 	VerifySSL bool   `json:"verifySSL"`
 }
 
+type PVC struct {
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes"`
+	// +optional
+	Selector         *metav1.LabelSelector        `json:"selector,omitempty"`
+	Resources        corev1.ResourceRequirements  `json:"resources,omitempty"`
+	StorageClassName *string                      `json:"storageClassName,omitempty"`
+	VolumeMode       *corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
+}
+
+type Workspace struct {
+	Enabled bool `json:"enable"`
+	PvcSpec PVC  `json:"pvc"`
+}
+
 // DAGSpec defines the desired state of DAG
 type DAGSpec struct {
 	// +optional
@@ -129,6 +143,8 @@ type DAGSpec struct {
 	Parameters []DagParameterSpec `json:"parameters,omitempty"`
 	// +optional
 	Webhook Webhook `json:"webhook,omitempty"`
+	// +optional
+	Workspace Workspace `json:"workspace,omitempty"`
 }
 
 // DAGStatus defines the observed state of DAG

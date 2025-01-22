@@ -16,6 +16,13 @@ import (
 	cron "github.com/robfig/cron/v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	_ "embed"
+)
+
+var (
+	//go:embed postgresSchema.sql
+	progresSchema string
 )
 
 type postgresDAGManager struct {
@@ -36,118 +43,7 @@ func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron
 
 func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	// Initialize the database schema
-	// TODO: Right-size the columns + select correct types
-	initSQL := `
-CREATE TABLE IF NOT EXISTS IdTable (
-    unique_id UUID DEFAULT gen_random_uuid() PRIMARY KEY
-);
-
-CREATE TABLE IF NOT EXISTS DAGs (
-    dag_id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    version INTEGER NOT NULL,
-    hash VARCHAR(64) NOT NULL,
-    schedule VARCHAR(255) NOT NULL,
-    namespace VARCHAR(63) NOT NULL,
-    active BOOL NOT NULL,
-    taskCount INTEGER NOT NULL,
-    nexttime TIMESTAMP,
-	webhookUrl VARCHAR(255),
-	sslVerification BOOL,
-    UNIQUE(name, version, namespace)
-);
-
-CREATE TABLE IF NOT EXISTS DAG_Parameters (
-    parameter_id SERIAL PRIMARY KEY,
-    dag_id INTEGER NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    isSecret BOOL NOT NULL,
-    defaultValue VARCHAR(255) NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS Tasks (
-    task_id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    command TEXT[],
-    args TEXT[],
-    image VARCHAR(255) NOT NULL,
-    parameters TEXT[],
-    backoffLimit BIGINT NOT NULL,
-    isConditional BOOL NOT NULL,
-    podTemplate JSONB,
-    retryCodes INTEGER[],
-    script TEXT NOT NULL,
-    scriptInjectorImage TEXT,
-    inline BOOL NOT NULL,
-    namespace VARCHAR(63) NOT NULL,
-    version INTEGER NOT NULL,
-    hash VARCHAR(64),
-    UNIQUE(name, version, namespace)
-);
-
-CREATE TABLE IF NOT EXISTS DAG_Tasks (
-    dag_task_id SERIAL PRIMARY KEY,
-    dag_id INTEGER NOT NULL,
-    task_id INTEGER NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    version INTEGER NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE,
-    FOREIGN KEY (task_id) REFERENCES Tasks(task_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS Dependencies (
-    task_id INTEGER NOT NULL,
-    depends_on_task_id INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE,
-    FOREIGN KEY (depends_on_task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS DAG_Runs (
-    run_id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    dag_id INTEGER NOT NULL,
-    status VARCHAR(255) NOT NULL,
-    successfulCount INTEGER NOT NULL,
-    failedCount INTEGER NOT NULL,
-    run_time TIMESTAMP NOT NULL,
-    FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE,
-    UNIQUE(name)
-);
-
-CREATE TABLE IF NOT EXISTS DAG_Run_Parameters (
-    param_id SERIAL PRIMARY KEY,
-    run_id INTEGER NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    value VARCHAR(255) NOT NULL,
-    isSecret BOOL NOT NULL,
-    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS Task_Runs (
-    task_run_id SERIAL PRIMARY KEY,
-    run_id INTEGER NOT NULL,
-    task_id INTEGER NOT NULL,
-    status VARCHAR(255) NOT NULL,
-    attempts INTEGER NOT NULL,
-    FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS Task_Pods (
-    Pod_UID VARCHAR(255) NOT NULL,
-    task_run_id INTEGER NOT NULL,
-    exitCode INTEGER,
-    name VARCHAR(255) NOT NULL,
-    status VARCHAR(255) NOT NULL,
-    namespace TEXT NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (Pod_UID),
-    FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id) ON DELETE CASCADE
-);
-`
-
-	if _, err := p.pool.Exec(ctx, initSQL); err != nil {
+	if _, err := p.pool.Exec(ctx, progresSchema); err != nil {
 		return err
 	}
 
@@ -230,10 +126,17 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 
 	var dagID int
 	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification) 
-	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9)
-	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL, dag.Spec.Webhook.VerifySSL).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification, workspaceEnabled) 
+	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9, $10)
+	RETURNING dag_id;`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL, dag.Spec.Webhook.VerifySSL, dag.Spec.Workspace.Enabled).Scan(&dagID); err != nil {
 		return fmt.Errorf("failed inserting DAG: %w", err)
+	}
+
+	// only insert workspace if enabled
+	if dag.Spec.Workspace.Enabled {
+		if err := p.insertWorkspace(ctx, tx, dagID, &dag.Spec.Workspace.PvcSpec); err != nil {
+			return fmt.Errorf("failed to insert workspace: %w", err)
+		}
 	}
 
 	// Insert all tasks into DAG_Tasks
@@ -275,6 +178,17 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	if _, err := tx.Exec(ctx, `
 	INSERT INTO DAG_Parameters (dag_id, name, isSecret, defaultValue) 
 	VALUES ($1, $2, $3, $4)`, dagID, parameter.Name, isSecret, value); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgresDAGManager) insertWorkspace(ctx context.Context, tx pgx.Tx, dagID int, workspace *v1alpha1.PVC) error {
+	// Insert the workspace
+	if _, err := tx.Exec(ctx, `
+	INSERT INTO DAG_Workspaces (dag_id, accessModes, selector, resources, storageClassName, volumeMode) 
+	VALUES ($1, $2, $3, $4, $5, $6);`, dagID, workspace.AccessModes, workspace.Selector, workspace.Resources, workspace.StorageClassName, workspace.VolumeMode); err != nil {
 		return err
 	}
 
@@ -364,15 +278,15 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 	return nil
 }
 
-func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
+func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, int, error) {
 	dagId, err := p.dagNameToDagId(ctx, dag.DagName)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	defer tx.Rollback(ctx)
@@ -383,9 +297,10 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
 	VALUES ($1, $2, 'running', 0, 0, NOW()) 
 	RETURNING run_id`, dagId, name).Scan(&dagRunID); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
+	// TODO: batch this
 	for _, param := range parameters {
 		value := param.Value
 		if param.FromSecret != "" {
@@ -393,15 +308,15 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		}
 
 		if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return dagRunID, nil
+	return dagRunID, dagId, nil
 }
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
@@ -839,9 +754,10 @@ func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, t
 }
 
 type DagInfo struct {
-	DagId     int
-	DagName   string
-	Namespace string
+	DagId            int
+	DagName          string
+	Namespace        string
+	WorkspaceEnabled bool
 }
 
 func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
@@ -852,9 +768,8 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 
 	defer tx.Rollback(ctx)
 
-	// TDOD: Maybe able to cut this down
 	rows, err := tx.Query(ctx, `
-        SELECT dag_id, name, schedule, namespace
+        SELECT dag_id, name, schedule, namespace, workspaceEnabled
         FROM DAGs
         WHERE nexttime <= NOW() AND schedule != '' AND active = TRUE;
     `)
@@ -871,13 +786,15 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 		var name string
 		var schedule string
 		var namespace string
-		if err := rows.Scan(&dagId, &name, &schedule, &namespace); err != nil {
+		var workEnabled bool
+		if err := rows.Scan(&dagId, &name, &schedule, &namespace, &workEnabled); err != nil {
 			return nil, err
 		}
 
 		namespaces = append(namespaces, &DagInfo{
-			DagName:   name,
-			Namespace: namespace,
+			DagName:          name,
+			Namespace:        namespace,
+			WorkspaceEnabled: workEnabled,
 		})
 
 		schedules = append(schedules, schedule)
@@ -887,6 +804,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 		return nil, err
 	}
 
+	batch := &pgx.Batch{}
 	for i, schedule := range schedules {
 		// Parse the cron expression
 		sched, err := p.parser.Parse(schedule)
@@ -897,15 +815,16 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 		// Get the next occurrence of the scheduled time
 		nextTime := sched.Next(time.Now())
 
-		if _, err := tx.Exec(ctx, `
-		UPDATE DAGs 
-		SET nextTime = $1 
-		WHERE dag_id = $2;`, nextTime, namespaces[i].DagId); err != nil {
-			return nil, err
-		}
-
+		batch.Queue(`
+            UPDATE DAGs 
+            SET nextTime = $1 
+            WHERE dag_id = $2;`, nextTime, namespaces[i].DagId)
 	}
 
+	br := tx.SendBatch(ctx, batch)
+	if err := br.Close(); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -1379,4 +1298,23 @@ func (p *postgresDAGManager) GetWebhookDetails(ctx context.Context, dagRunID int
 	}
 
 	return webhook, nil
+}
+
+func (p *postgresDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error) {
+	pvc := &v1alpha1.PVC{}
+
+	err := p.pool.QueryRow(ctx, `
+    SELECT accessModes, selector, storageClassName, volumeMode, resources
+    FROM DAG_Workspaces
+    WHERE dag_id = $1;
+    `, dagId).Scan(&pvc.AccessModes, &pvc.Selector, &pvc.StorageClassName, &pvc.VolumeMode, &pvc.Resources)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return pvc, nil
 }

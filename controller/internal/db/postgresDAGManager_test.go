@@ -175,7 +175,7 @@ func TestPostgresDAGManager_CreateDAGRun(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 }
@@ -273,7 +273,7 @@ func TestPostgresDAGManager_MarkDAGRunOutcome(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	err = dm.MarkDAGRunOutcome(context.Background(), runID, "success")
@@ -325,7 +325,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
@@ -395,7 +395,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
@@ -451,7 +451,7 @@ func TestPostgresDAGManager_MarkTaskAsStarted(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	taskID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -833,7 +833,7 @@ func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
@@ -989,7 +989,7 @@ func TestPostgresDAGManager_Multi_TaskRef(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	require.NoError(t, err)
 
 	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")

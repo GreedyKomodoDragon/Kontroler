@@ -546,15 +546,15 @@ func (s *sqliteDAGManager) setInactive(tx *sql.Tx, name string, namespace string
 	return nil
 }
 
-func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error) {
+func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, int, error) {
 	dagId, err := s.dagNameToDagId(ctx, dag.DagName)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	defer tx.Rollback()
@@ -565,7 +565,7 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
 	VALUES (?, ?, 'running', 0, 0, datetime('now')) 
 	RETURNING run_id`, dagId, name).Scan(&dagRunID); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	for _, param := range parameters {
@@ -575,15 +575,15 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 		}
 
 		if _, err := tx.Exec("INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES (?, ?, ?, ?);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return dagRunID, nil
+	return dagRunID, dagId, nil
 }
 
 func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (int, error) {
@@ -1545,4 +1545,8 @@ func (s *sqliteDAGManager) GetWebhookDetails(ctx context.Context, dagRunID int) 
 	}
 
 	return webhook, nil
+}
+
+func (s *sqliteDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error) {
+	return nil, nil
 }

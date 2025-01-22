@@ -141,7 +141,7 @@ func testDAGManagerIncrementAttempts_IncrementAttempts(t *testing.T, dm db.DBDAG
 			DagName: "test_dag",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -181,7 +181,7 @@ func testDAGManagerIncrementAttempts_MultipleIncrements(t *testing.T, dm db.DBDA
 			DagName: "test_dag",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_2", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name_2", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 2)
@@ -395,7 +395,7 @@ func testDAGManagerShouldRerun_MatchingExitCode(t *testing.T, dm db.DBDAGManager
 			DagName: "test_dag",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -442,7 +442,7 @@ func testDAGManagerShouldRerun_MisMatchCode(t *testing.T, dm db.DBDAGManager) {
 			DagName: "test_dag__MisMatchCode",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_MisMatchCode", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name_MisMatchCode", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -489,7 +489,7 @@ func testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t *testing.T, dm db.DB
 			DagName: "test_dag_ValidCodeButNoAttemptsLeft",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_ValidCodeButNoAttemptsLeft", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name_ValidCodeButNoAttemptsLeft", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -536,7 +536,7 @@ func testDAGManagerMarkTaskAsFailed_Normal(t *testing.T, dm db.DBDAGManager) {
 			DagName: "test_dag_Normal",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -582,7 +582,7 @@ func testDAGManagerMarkPodStatus_Insert(t *testing.T, dm db.DBDAGManager) {
 			DagName: "test_dag_Normal",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -628,7 +628,7 @@ func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManage
 			DagName: "test_dag_Normal_twice",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal_twice", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name_Normal_twice", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 2)
@@ -1070,7 +1070,7 @@ func testDAGManagerFindExistingDAGRun_Exists(t *testing.T, dm db.DBDAGManager) {
 		}
 
 		dagrunName := "test_dag_exists_run"
-		_, err = dm.CreateDAGRun(context.Background(), dagrunName, dagRun, map[string]v1alpha1.ParameterSpec{})
+		_, _, err = dm.CreateDAGRun(context.Background(), dagrunName, dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		ok, err := dm.FindExistingDAGRun(context.Background(), dagrunName)
@@ -1490,7 +1490,7 @@ func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
 			DagName: "dag-sample-long",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 		require.NoError(t, err)
 
 		tasks, err := dm.GetStartingTasks(context.Background(), "dag-sample-long")
@@ -1568,7 +1568,7 @@ func testDAGManager_CreateDagRun_Sequential(t *testing.T, dm db.DBDAGManager) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 
@@ -1595,7 +1595,7 @@ func testDAGManager_CreateDagRun_Sequential(t *testing.T, dm db.DBDAGManager) {
 	require.NoError(t, err)
 	require.Len(t, taskTwoFollowingTasks, 0)
 
-	runIDTwo, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runIDTwo, _, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, runIDTwo)
 
@@ -1649,7 +1649,7 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, _, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 
@@ -1679,7 +1679,7 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 	require.NoError(t, err)
 	require.Len(t, taskTwoFollowingTasks, 0)
 
-	runIDTwo, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runIDTwo, _, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{})
 	assert.NoError(t, err)
 	assert.Equal(t, 2, runIDTwo)
 
