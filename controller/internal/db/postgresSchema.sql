@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS DAG_Runs (
     successfulCount INTEGER NOT NULL,
     failedCount INTEGER NOT NULL,
     run_time TIMESTAMP NOT NULL,
+    pvcName VARCHAR(255),
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE,
     UNIQUE(name)
 );

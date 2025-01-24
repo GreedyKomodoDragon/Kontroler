@@ -546,15 +546,15 @@ func (s *sqliteDAGManager) setInactive(tx *sql.Tx, name string, namespace string
 	return nil
 }
 
-func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, int, error) {
+func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error) {
 	dagId, err := s.dagNameToDagId(ctx, dag.DagName)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	defer tx.Rollback()
@@ -562,10 +562,10 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 	// Map the task to the DAG
 	var dagRunID int
 	if err := tx.QueryRowContext(ctx, `
-	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
-	VALUES (?, ?, 'running', 0, 0, datetime('now')) 
-	RETURNING run_id`, dagId, name).Scan(&dagRunID); err != nil {
-		return 0, 0, err
+	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time, pvcName) 
+	VALUES (?, ?, 'running', 0, 0, datetime('now'), ?) 
+	RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
+		return 0, err
 	}
 
 	for _, param := range parameters {
@@ -575,15 +575,15 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 		}
 
 		if _, err := tx.Exec("INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES (?, ?, ?, ?);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-			return 0, 0, err
+			return 0, err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return dagRunID, dagId, nil
+	return dagRunID, nil
 }
 
 func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (int, error) {
@@ -1062,17 +1062,17 @@ func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string)
 	return parameters, nil
 }
 
-func (s *sqliteDAGManager) DagExists(ctx context.Context, dagName string) (bool, error) {
+func (s *sqliteDAGManager) DagExists(ctx context.Context, dagName string) (bool, int, error) {
 	dagId := -1
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT dag_id
 		FROM DAGs
 		WHERE name = ?
 	`, dagName).Scan(&dagId); err != nil && err != sql.ErrNoRows {
-		return false, err
+		return false, -1, err
 	}
 
-	return dagId != -1, nil
+	return dagId != -1, dagId, nil
 }
 
 func (s *sqliteDAGManager) ShouldRerun(ctx context.Context, taskRunID int, exitCode int32) (bool, error) {

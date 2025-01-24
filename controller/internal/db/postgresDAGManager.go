@@ -278,15 +278,15 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 	return nil
 }
 
-func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, int, error) {
+func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error) {
 	dagId, err := p.dagNameToDagId(ctx, dag.DagName)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	defer tx.Rollback(ctx)
@@ -294,10 +294,10 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	// Map the task to the DAG
 	var dagRunID int
 	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time) 
-	VALUES ($1, $2, 'running', 0, 0, NOW()) 
-	RETURNING run_id`, dagId, name).Scan(&dagRunID); err != nil {
-		return 0, 0, err
+	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time, pvcName) 
+	VALUES ($1, $2, 'running', 0, 0, NOW(), $3) 
+	RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
+		return 0, err
 	}
 
 	// TODO: batch this
@@ -308,15 +308,15 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		}
 
 		if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-			return 0, 0, err
+			return 0, err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return dagRunID, dagId, nil
+	return dagRunID, nil
 }
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
@@ -864,17 +864,17 @@ func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagName strin
 	return parameters, nil
 }
 
-func (p *postgresDAGManager) DagExists(ctx context.Context, dagName string) (bool, error) {
+func (p *postgresDAGManager) DagExists(ctx context.Context, dagName string) (bool, int, error) {
 	dagId := -1
 	if err := p.pool.QueryRow(ctx, `
 		SELECT dag_id
 		FROM DAGs
 		WHERE name = $1
 	`, dagName).Scan(&dagId); err != nil && err != pgx.ErrNoRows {
-		return false, err
+		return false, -1, err
 	}
 
-	return dagId != -1, nil
+	return dagId != -1, dagId, nil
 }
 
 func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error) {

@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	corev1 "k8s.io/api/core/v1"
@@ -69,7 +68,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// check if dag exists
-	ok, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)
+	ok, dagId, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)
 	if err != nil {
 		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
@@ -121,12 +120,6 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// If you get here the parameter is invalid due to secret/value mismatch
 	}
 
-	runId, dagId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Name, &dagRun.Spec, paramMap)
-	if err != nil {
-		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagName)
-		return ctrl.Result{}, err
-	}
-
 	// fetch pvc details from db
 	pvc, err := r.DbManager.GetWorkspacePVCTemplate(ctx, dagId)
 	if err != nil {
@@ -134,14 +127,20 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// var pvcName string
+	var pvcName *string
 	if pvc != nil {
 		name, err := r.createPVC(ctx, &dagRun, pvc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		fmt.Println("created pvc:", name)
+		pvcName = &name
+	}
+
+	runId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Name, &dagRun.Spec, paramMap, pvcName)
+	if err != nil {
+		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagName)
+		return ctrl.Result{}, err
 	}
 
 	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagName)
@@ -204,6 +203,10 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcName,
 			Namespace: dagRun.Namespace,
+			// added to make sure no one accidentally deletes the PVC
+			Finalizers: []string{
+				"kontroler.greedykomodo/pvc.finalizer",
+			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes:      pvcTemplate.AccessModes,
@@ -212,12 +215,6 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 			StorageClassName: pvcTemplate.StorageClassName,
 			VolumeMode:       pvcTemplate.VolumeMode,
 		},
-	}
-
-	// Set the owner reference to the DagRun object
-	if err := controllerutil.SetControllerReference(dagRun, pvc, r.Scheme); err != nil {
-		log.Log.Error(err, "failed to SetControllerReference", "pvc", pvc)
-		return "", err
 	}
 
 	// Create the PVC
