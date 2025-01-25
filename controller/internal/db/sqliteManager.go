@@ -107,7 +107,19 @@ CREATE TABLE IF NOT EXISTS DAGs (
     nexttime TIMESTAMP,
 	webhookUrl VARCHAR(255),
 	sslVerification BOOL,
+	workspaceEnabled BOOL,
     UNIQUE(name, version, namespace)
+);
+
+CREATE TABLE IF NOT EXISTS DAG_Workspaces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dag_id INTEGER NOT NULL,
+    accessModes TEXT[],
+    selector TEXT,
+    resources TEXT,
+    storageClassName TEXT,
+    volumeMode TEXT,
+	FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
 );
 
 -- DAG_Parameters table
@@ -169,6 +181,7 @@ CREATE TABLE IF NOT EXISTS DAG_Runs (
     successfulCount INTEGER NOT NULL,
     failedCount INTEGER NOT NULL,
     run_time TIMESTAMP NOT NULL,
+	pvcName VARCHAR(255),
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id),
     UNIQUE(name)
 );
@@ -605,7 +618,7 @@ func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (
 	return dagId, nil
 }
 
-func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
+func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {
 	rows, err := s.db.Query(`
 	SELECT 
 		dt.dag_task_id,

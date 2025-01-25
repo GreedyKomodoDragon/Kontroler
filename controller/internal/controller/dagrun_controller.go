@@ -143,7 +143,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagName)
+	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagName, runId)
 	if err != nil {
 		log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err

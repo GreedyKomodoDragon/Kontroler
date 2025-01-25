@@ -70,7 +70,13 @@ func testDAGManagerInsertDag_TaskRef(t *testing.T, dm db.DBDAGManager) {
 
 		require.NoError(t, dm.InsertDAG(context.Background(), dag, namespace))
 
-		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+		runId, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+			DagName:    "test_dag",
+			Parameters: []v1alpha1.ParameterSpec{},
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.Nil(t, err)
+
+		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runId)
 		require.NoError(t, err)
 		require.NotEmpty(t, tasks)
 		require.Len(t, tasks, 2)
@@ -1493,7 +1499,7 @@ func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
 		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
-		tasks, err := dm.GetStartingTasks(context.Background(), "dag-sample-long")
+		tasks, err := dm.GetStartingTasks(context.Background(), "dag-sample-long", 1)
 		require.NoError(t, err)
 		require.NotEmpty(t, tasks)
 		require.Len(t, tasks, 1)
@@ -1572,7 +1578,7 @@ func testDAGManager_CreateDagRun_Sequential(t *testing.T, dm db.DBDAGManager) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -1599,7 +1605,7 @@ func testDAGManager_CreateDagRun_Sequential(t *testing.T, dm db.DBDAGManager) {
 	assert.NoError(t, err)
 	assert.Equal(t, 2, runIDTwo)
 
-	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasksTwo)
 	require.Len(t, tasksTwo, 1)
@@ -1653,7 +1659,7 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -1683,7 +1689,7 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 	assert.NoError(t, err)
 	assert.Equal(t, 2, runIDTwo)
 
-	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasksTwo)
 	require.Len(t, tasksTwo, 1)

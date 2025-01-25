@@ -20,6 +20,7 @@ type Task struct {
 	PodTemplate         *v1alpha1.PodTemplateSpec
 	Script              string
 	ScriptInjectorImage string
+	pvcName             *string
 }
 
 type Parameter struct {
@@ -44,7 +45,7 @@ type DBDAGManager interface {
 	// Create the update to show that a new DAG has been started
 	CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error)
 	// Get all the tasks in the DAG that do not have any dependencies
-	GetStartingTasks(ctx context.Context, dagName string) ([]Task, error)
+	GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error)
 	// Add an update to show the task has been started
 	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
 	// Mark the outcome of the taskRun

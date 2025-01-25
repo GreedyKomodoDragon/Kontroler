@@ -221,7 +221,13 @@ func TestPostgresDAGManager_GetStartingTasks(t *testing.T) {
 	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	_, err = dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+		DagName:    "test_dag",
+		Parameters: []v1alpha1.ParameterSpec{},
+	}, map[string]v1alpha1.ParameterSpec{}, nil)
+	assert.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tasks)
 	assert.Len(t, tasks, 1)
@@ -328,7 +334,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tasks)
 	assert.Len(t, tasks, 1)
@@ -398,7 +404,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -836,7 +842,7 @@ func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -992,7 +998,7 @@ func TestPostgresDAGManager_Multi_TaskRef(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -1009,6 +1015,30 @@ func TestPostgresDAGManager_Multi_TaskRef(t *testing.T) {
 	require.NoError(t, err)
 
 	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasks)
+
+	// create second dag run
+	runID2, err := dm.CreateDAGRun(context.Background(), "name2", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
+	require.NoError(t, err)
+
+	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag", 2)
+	require.NoError(t, err)
+	require.NotEmpty(t, tasksTwo)
+	require.Len(t, tasksTwo, 2)
+	require.ElementsMatch(t, []string{tasksTwo[0].Name, tasksTwo[1].Name}, []string{"task1", "task2"})
+
+	tasRunID2, err := dm.MarkTaskAsStarted(context.Background(), runID2, tasksTwo[0].Id)
+	require.NoError(t, err)
+
+	tasksEmpty2, err := dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID2)
+	require.NoError(t, err)
+	require.Empty(t, tasksEmpty2)
+
+	taskRun2, err := dm.MarkTaskAsStarted(context.Background(), runID2, tasksTwo[1].Id)
+	require.NoError(t, err)
+
+	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), taskRun2)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 }

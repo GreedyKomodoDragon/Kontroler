@@ -319,7 +319,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	return dagRunID, nil
 }
 
-func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string) ([]Task, error) {
+func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {
 	rows, err := p.pool.Query(ctx, `
 	SELECT 
 		dt.dag_task_id,
@@ -330,11 +330,14 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		t.parameters, 
 		t.podTemplate, 
 		dt.dag_id, 
-		t.script
+		t.script,
+		dr.pvcName
 	FROM 
 		Tasks t
 	JOIN 
 		DAG_Tasks dt ON t.task_id = dt.task_id
+	JOIN 
+        DAG_Runs dr ON dt.dag_id = dr.dag_id
 	LEFT JOIN 
 		Dependencies d ON dt.dag_task_id = d.task_id
 	LEFT JOIN 
@@ -347,8 +350,9 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 			WHERE name = $1
 			ORDER BY version DESC
 			LIMIT 1
-		);
-	`, dagName)
+		)
+		AND dr.run_id = $2;
+	`, dagName, dagrun)
 
 	if err != nil {
 		return nil, err
@@ -363,8 +367,9 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		var podTemplateJSON sql.NullString
 		var script sql.NullString
 		var dagId int
+		var pvcName sql.NullString
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &script); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &script, &pvcName); err != nil {
 			return nil, err
 		}
 
@@ -390,10 +395,29 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 			if err := json.Unmarshal([]byte(podTemplateJSON.String), &podTemplate); err != nil {
 				return nil, err
 			}
+		} else {
+			podTemplate = &v1alpha1.PodTemplateSpec{}
 		}
 
 		if script.Valid {
 			task.Script = script.String
+		}
+
+		// auto inject workspace if workspace is enabled
+		if pvcName.Valid {
+			podTemplate.Volumes = append(podTemplate.Volumes, v1.Volume{
+				Name: "workspace",
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvcName.String,
+					},
+				},
+			})
+
+			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1.VolumeMount{
+				Name:      "workspace",
+				MountPath: "/workspace",
+			})
 		}
 
 		task.PodTemplate = podTemplate
@@ -505,7 +529,7 @@ func (p *postgresDAGManager) getNextRunnableTasks(ctx context.Context, tx pgx.Tx
 		return nil, nil, err
 	}
 
-	return p.getTasksByIds(ctx, tx, runnableTasks)
+	return p.getTasksByIds(ctx, tx, runnableTasks, runId)
 }
 
 func (p *postgresDAGManager) getRunnableTasks(ctx context.Context, tx pgx.Tx, dependencyCounts, metDependencies map[int]int, taskRunId int) ([]int, error) {
@@ -575,7 +599,7 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 			SELECT task_id 
 			FROM Task_Runs 
 			WHERE
-				status IN ('running', 'success')
+				status IN ('running', 'success', 'failed')
 			AND run_id = $2
 		)
 		AND tr.run_id = $2
@@ -600,7 +624,7 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 	return metDependencies, nil
 }
 
-func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskIds []int) ([]Task, [][]string, error) {
+func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskIds []int, dagrunId int) ([]Task, [][]string, error) {
 	// Ensure there are task IDs to query
 	if len(taskIds) == 0 {
 		return []Task{}, [][]string{}, nil
@@ -608,18 +632,24 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 
 	// Dynamically generate placeholders for the task IDs
 	placeholders := []string{}
-	args := []interface{}{}
+	args := []interface{}{
+		dagrunId,
+	}
 	for i, id := range taskIds {
-		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1)) // Create placeholders like $1, $2, ...
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+2)) // Create placeholders like $1, $2, ...
 		args = append(args, id)
 	}
 
 	// Construct the query
 	query := fmt.Sprintf(`
-		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate
+		SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate, dr.pvcName
 		FROM Tasks t
 		JOIN DAG_Tasks dat ON dat.task_id = t.task_id
-		WHERE dat.dag_task_id IN (%s)`, strings.Join(placeholders, ","))
+		JOIN DAG_Runs dr ON dat.dag_id = dr.dag_id
+		WHERE 
+			dr.run_id = $1
+		AND
+			dat.dag_task_id IN (%s);`, strings.Join(placeholders, ","))
 
 	// Execute the query
 	rows, err := tx.Query(ctx, query, args...)
@@ -635,19 +665,39 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 		var task Task
 		var params []string
 		var podTemplateJSON sql.NullString
+		var pvcName sql.NullString
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage, &task.Script, &podTemplateJSON); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &params, &task.ScriptInjectorImage, &task.Script, &podTemplateJSON, &pvcName); err != nil {
 			return nil, nil, err
 		}
 
+		var podTemplate *v1alpha1.PodTemplateSpec
 		if podTemplateJSON.Valid {
-			var podTemplate *v1alpha1.PodTemplateSpec
 			if err := json.Unmarshal([]byte(podTemplateJSON.String), &podTemplate); err != nil {
 				return nil, nil, err
 			}
-
-			task.PodTemplate = podTemplate
+		} else {
+			podTemplate = &v1alpha1.PodTemplateSpec{}
 		}
+
+		// auto inject workspace if workspace is enabled
+		if pvcName.Valid {
+			podTemplate.Volumes = append(podTemplate.Volumes, v1.Volume{
+				Name: "workspace",
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvcName.String,
+					},
+				},
+			})
+
+			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1.VolumeMount{
+				Name:      "workspace",
+				MountPath: "/workspace",
+			})
+		}
+
+		task.PodTemplate = podTemplate
 
 		parameters = append(parameters, params)
 		tasks = append(tasks, task)

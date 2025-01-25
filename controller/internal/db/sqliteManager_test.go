@@ -228,7 +228,7 @@ func Test_SQLite_DAGManager_GetStartingTasks(t *testing.T) {
 	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -331,7 +331,7 @@ func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tasks)
 	assert.Len(t, tasks, 1)
@@ -399,7 +399,7 @@ func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -774,7 +774,7 @@ func Test_SQLite_Task_Before_InsertDag_Two(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -876,7 +876,7 @@ func Test_SQLite_Task_Handle_Versions(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -953,7 +953,7 @@ func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
