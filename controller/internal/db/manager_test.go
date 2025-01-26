@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -1701,4 +1702,172 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 	tasksSecondTwo, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunIDTwo)
 	require.NoError(t, err)
 	require.Len(t, tasksSecondTwo, 2)
+}
+
+func testDAGManager_Workspace_full(t *testing.T, dm db.DBDAGManager) {
+	storageClassName := "standard"
+	block := v1.PersistentVolumeBlock
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: true,
+				PvcSpec: v1alpha1.PVC{
+					StorageClassName: &storageClassName,
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						v1.ReadWriteOnce,
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							// storage
+							v1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+					VolumeMode: &block,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test",
+						},
+					},
+				},
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	pvc, err := dm.GetWorkspacePVCTemplate(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotNil(t, pvc)
+	require.Equal(t, storageClassName, *pvc.StorageClassName)
+	require.Equal(t, v1.ReadWriteOnce, pvc.AccessModes[0])
+	require.Equal(t, v1.PersistentVolumeBlock, *pvc.VolumeMode)
+	require.Equal(t, resource.MustParse("1Gi"), pvc.Resources.Requests[v1.ResourceStorage])
+	require.Equal(t, "test", pvc.Selector.MatchLabels["app"])
+}
+
+// no selector included
+func testDAGManager_Workspace_non_optional_only(t *testing.T, dm db.DBDAGManager) {
+	storageClassName := "standard"
+	block := v1.PersistentVolumeBlock
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: true,
+				PvcSpec: v1alpha1.PVC{
+					StorageClassName: &storageClassName,
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						v1.ReadWriteOnce,
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							// storage
+							v1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+					VolumeMode: &block,
+				},
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	pvc, err := dm.GetWorkspacePVCTemplate(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotNil(t, pvc)
+	require.Equal(t, storageClassName, *pvc.StorageClassName)
+	require.Equal(t, v1.ReadWriteOnce, pvc.AccessModes[0])
+	require.Equal(t, v1.PersistentVolumeBlock, *pvc.VolumeMode)
+	require.Equal(t, resource.MustParse("1Gi"), pvc.Resources.Requests[v1.ResourceStorage])
+	require.Nil(t, pvc.Selector)
+}
+
+func testDAGManager_Workspace_disabled(t *testing.T, dm db.DBDAGManager) {
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: false,
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	pvc, err := dm.GetWorkspacePVCTemplate(context.Background(), 1)
+	require.NoError(t, err)
+	require.Nil(t, pvc)
 }

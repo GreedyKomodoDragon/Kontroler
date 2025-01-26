@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS DAGs (
 CREATE TABLE IF NOT EXISTS DAG_Workspaces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dag_id INTEGER NOT NULL,
-    accessModes TEXT[],
+    accessModes TEXT,
     selector TEXT,
     resources TEXT,
     storageClassName TEXT,
@@ -401,6 +401,13 @@ func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alp
 		return err
 	}
 
+	// only insert workspace if enabled
+	if dag.Spec.Workspace.Enabled {
+		if err := s.insertWorkspace(ctx, tx, dagID, &dag.Spec.Workspace.PvcSpec); err != nil {
+			return fmt.Errorf("failed to insert workspace: %w", err)
+		}
+	}
+
 	// Insert tasks and map them to the DAG
 	for _, task := range dag.Spec.Task {
 		version := getTaskVersion(&task)
@@ -424,6 +431,37 @@ func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alp
 		if err := s.insertParameter(tx, dagID, &parameter); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (s *sqliteDAGManager) insertWorkspace(ctx context.Context, tx *sql.Tx, dagID int, workspace *v1alpha1.PVC) error {
+	accessModesJSON, err := json.Marshal(workspace.AccessModes)
+	if err != nil {
+		return err
+	}
+
+	selectorJSON, err := json.Marshal(workspace.Selector)
+	if err != nil {
+		return err
+	}
+
+	resourcesJSON, err := json.Marshal(workspace.Resources)
+	if err != nil {
+		return err
+	}
+
+	volumeModeJSON, err := json.Marshal(workspace.VolumeMode)
+	if err != nil {
+		return err
+	}
+
+	// Insert the workspace
+	if _, err := tx.ExecContext(ctx, `
+	INSERT INTO DAG_Workspaces (dag_id, accessModes, selector, resources, storageClassName, volumeMode) 
+	VALUES (?, ?, ?, ?, ?, ?);`, dagID, accessModesJSON, selectorJSON, resourcesJSON, workspace.StorageClassName, volumeModeJSON); err != nil {
+		return err
 	}
 
 	return nil
@@ -952,7 +990,7 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 			SELECT task_id 
 			FROM Task_Runs 
 			WHERE
-				status IN ('running', 'success')
+				status IN ('running', 'success', 'failed')
 			AND run_id = ?
 		)
 		AND tr.run_id = ?
@@ -1560,6 +1598,58 @@ func (s *sqliteDAGManager) GetWebhookDetails(ctx context.Context, dagRunID int) 
 	return webhook, nil
 }
 
+// CREATE TABLE IF NOT EXISTS DAG_Workspaces (
+//     id INTEGER PRIMARY KEY AUTOINCREMENT,
+//     dag_id INTEGER NOT NULL,
+//     accessModes TEXT[],
+//     selector TEXT,
+//     resources TEXT,
+//     storageClassName TEXT,
+//     volumeMode TEXT,
+// 	FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id)
+// );
+
 func (s *sqliteDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error) {
-	return nil, nil
+	pvc := &v1alpha1.PVC{}
+
+	var selectorJSON, resourcesJSON, accessModesJSON, volumeModeJSON sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+    SELECT accessModes, selector, storageClassName, volumeMode, resources
+    FROM DAG_Workspaces
+    WHERE dag_id = ?;
+    `, dagId).Scan(&accessModesJSON, &selectorJSON, &pvc.StorageClassName, &volumeModeJSON, &resourcesJSON)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if accessModesJSON.Valid {
+		if err := json.Unmarshal([]byte(accessModesJSON.String), &pvc.AccessModes); err != nil {
+			return nil, err
+		}
+	}
+
+	if volumeModeJSON.Valid {
+		if err := json.Unmarshal([]byte(volumeModeJSON.String), &pvc.VolumeMode); err != nil {
+			return nil, err
+		}
+	}
+
+	if selectorJSON.Valid {
+		if err := json.Unmarshal([]byte(selectorJSON.String), &pvc.Selector); err != nil {
+			return nil, err
+		}
+	}
+
+	if resourcesJSON.Valid {
+		if err := json.Unmarshal([]byte(resourcesJSON.String), &pvc.Resources); err != nil {
+			return nil, err
+		}
+	}
+
+	return pvc, nil
 }
