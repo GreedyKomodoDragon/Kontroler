@@ -42,6 +42,8 @@ export default function DagViz(props: DagVizProps) {
         return "#3B82F6"; // bg-blue-500
       case "pending":
         return "#6B7280"; // bg-neutral-500
+      case "suspended":
+        return "#FCD928"; // yellow
       default:
         return "#EF4444"; // bg-red-500
     }

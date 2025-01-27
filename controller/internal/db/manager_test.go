@@ -1871,3 +1871,62 @@ func testDAGManager_Workspace_disabled(t *testing.T, dm db.DBDAGManager) {
 	require.NoError(t, err)
 	require.Nil(t, pvc)
 }
+
+func testDAGManager_MarkConnectingTasksAsSuspended_single(t *testing.T, dm db.DBDAGManager) {
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: false,
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task4",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task3"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	runId, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}, map[string]v1alpha1.ParameterSpec{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, runId)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runId)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+
+	taskRunId, err := dm.MarkTaskAsStarted(context.Background(), runId, tasks[0].Id)
+	require.NoError(t, err)
+	require.Equal(t, 1, taskRunId)
+
+	require.NoError(t, dm.MarkTaskAsFailed(context.Background(), taskRunId))
+	require.NoError(t, dm.MarkConnectingTasksAsSuspended(context.Background(), 1, tasks[0].Id))
+}

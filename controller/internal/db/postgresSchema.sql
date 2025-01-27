@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS DAG_Runs (
     status VARCHAR(255) NOT NULL,
     successfulCount INTEGER NOT NULL,
     failedCount INTEGER NOT NULL,
+    suspendedCount INTEGER NOT NULL,
     run_time TIMESTAMP NOT NULL,
     pvcName VARCHAR(255),
     FOREIGN KEY (dag_id) REFERENCES DAGs(dag_id) ON DELETE CASCADE,
@@ -103,7 +104,8 @@ CREATE TABLE IF NOT EXISTS Task_Runs (
     status VARCHAR(255) NOT NULL,
     attempts INTEGER NOT NULL,
     FOREIGN KEY (task_id) REFERENCES DAG_Tasks(dag_task_id) ON DELETE CASCADE,
-    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE
+    FOREIGN KEY (run_id) REFERENCES DAG_Runs(run_id) ON DELETE CASCADE,
+    UNIQUE(run_id, task_id)
 );
 
 CREATE TABLE IF NOT EXISTS Task_Pods (

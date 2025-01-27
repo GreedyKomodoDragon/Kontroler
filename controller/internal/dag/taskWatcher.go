@@ -318,6 +318,11 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 			t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
 		}
 
+		// mark connecting tasks as suspended
+		if err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId); err != nil {
+			log.Log.Error(err, "failed to mark connecting tasks as suspended", "taskRunId", taskRunId)
+		}
+
 		return
 	}
 

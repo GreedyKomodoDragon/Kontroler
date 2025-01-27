@@ -68,4 +68,6 @@ type DBDAGManager interface {
 	GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error)
 	GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error)
 	GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error)
+	// CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
+	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) error
 }

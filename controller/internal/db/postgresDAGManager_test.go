@@ -1093,3 +1093,28 @@ func TestPostgresDAGManager_Workspace_disabled(t *testing.T) {
 
 	testDAGManager_Workspace_disabled(t, dm)
 }
+
+func TestPostgresDAGManager_MarkConnectingTasksAsSuspended_Single(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_MarkConnectingTasksAsSuspended_single(t, dm)
+
+	var suspendedCount int
+	err = pool.QueryRow(context.Background(), `
+	SELECT suspendedCount
+	FROM DAG_Runs
+	WHERE run_id = 1;`).Scan(&suspendedCount)
+	require.NoError(t, err)
+	require.Equal(t, 3, suspendedCount)
+}

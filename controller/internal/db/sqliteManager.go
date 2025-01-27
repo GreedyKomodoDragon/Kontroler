@@ -613,8 +613,8 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 	// Map the task to the DAG
 	var dagRunID int
 	if err := tx.QueryRowContext(ctx, `
-	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, run_time, pvcName) 
-	VALUES (?, ?, 'running', 0, 0, datetime('now'), ?) 
+	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, suspendedCount, run_time, pvcName) 
+	VALUES (?, ?, 'running', 0, 0, 0, datetime('now'), ?) 
 	RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
 		return 0, err
 	}
@@ -1652,4 +1652,8 @@ func (s *sqliteDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId in
 	}
 
 	return pvc, nil
+}
+
+func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) error {
+	return nil
 }
