@@ -1374,135 +1374,66 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback(ctx)
 
-	rows, err := tx.Query(ctx, `
-		SELECT 
-			d.task_id
-		FROM 
-			Task_Runs tr
-		JOIN 
-			DAG_Tasks dt ON tr.task_id = dt.dag_task_id
-		JOIN 
-			Dependencies d ON dt.dag_task_id = d.depends_on_task_id
-		WHERE 
-			tr.task_run_id = $1;
-	`, taskRunId)
-	if err != nil {
-		return err
-	}
-
-	defer rows.Close()
-
-	var dependentTasks []int
-	for rows.Next() {
-		var taskID int
-		if err := rows.Scan(&taskID); err != nil {
-			return fmt.Errorf("failed to scan row: %w", err)
-		}
-		dependentTasks = append(dependentTasks, taskID)
-	}
-
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("rows error: %w", err)
-	}
-
+	stack := []int{taskRunId} // Stack for DFS traversal
 	updates := 0
-	for _, taskID := range dependentTasks {
-		var taskRunID int
-		err := tx.QueryRow(ctx, `
-			INSERT INTO Task_Runs (run_id, task_id, status, attempts)
-			VALUES ($1, $2, 'suspended', 0)
-			ON CONFLICT (run_id, task_id) DO NOTHING
-			RETURNING task_run_id;
-		`, dagRunId, taskID).Scan(&taskRunID)
 
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				continue // No new row inserted due to conflict
-			}
-			return fmt.Errorf("failed to insert task run: %w", err)
-		}
+	for len(stack) > 0 {
+		currentTaskRunID := stack[len(stack)-1]
+		stack = stack[:len(stack)-1] // Pop from stack
 
-		updates++
-
-		// TODO fix recursive call
-		additionalUpdates, err := p.markConnectingTasksAsSuspended(ctx, tx, dagRunId, taskRunID)
+		rows, err := tx.Query(ctx, `
+			SELECT d.task_id
+			FROM Task_Runs tr
+			JOIN DAG_Tasks dt ON tr.task_id = dt.dag_task_id
+			JOIN Dependencies d ON dt.dag_task_id = d.depends_on_task_id
+			WHERE tr.task_run_id = $1;
+		`, currentTaskRunID)
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
-		updates += additionalUpdates
+		var dependentTasks []int
+		for rows.Next() {
+			var taskID int
+			if err := rows.Scan(&taskID); err != nil {
+				return fmt.Errorf("failed to scan row: %w", err)
+			}
+			dependentTasks = append(dependentTasks, taskID)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("rows error: %w", err)
+		}
+
+		for _, taskID := range dependentTasks {
+			var taskRunID int
+			err := tx.QueryRow(ctx, `
+				INSERT INTO Task_Runs (run_id, task_id, status, attempts)
+				VALUES ($1, $2, 'suspended', 0)
+				ON CONFLICT (run_id, task_id) DO NOTHING
+				RETURNING task_run_id;
+			`, dagRunId, taskID).Scan(&taskRunID)
+
+			if err != nil {
+				if err == pgx.ErrNoRows {
+					continue // No new row inserted due to conflict
+				}
+				return fmt.Errorf("failed to insert task run: %w", err)
+			}
+
+			updates++
+			stack = append(stack, taskRunID) // Push to stack for further processing
+		}
 	}
 
 	if _, err := tx.Exec(ctx, `
-			UPDATE DAG_Runs 
-			SET suspendedCount = suspendedCount + $1
-			WHERE run_id = $2;`, updates, dagRunId); err != nil {
+		UPDATE DAG_Runs 
+		SET suspendedCount = suspendedCount + $1
+		WHERE run_id = $2;`, updates, dagRunId); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
-}
-
-func (p *postgresDAGManager) markConnectingTasksAsSuspended(ctx context.Context, tx pgx.Tx, dagRunId, taskRunId int) (int, error) {
-	rows, err := tx.Query(ctx, `
-		SELECT 
-			d.task_id
-		FROM 
-			Task_Runs tr
-		JOIN 
-			DAG_Tasks dt ON tr.task_id = dt.dag_task_id
-		JOIN 
-			Dependencies d ON dt.dag_task_id = d.depends_on_task_id
-		WHERE 
-			tr.task_run_id = $1;
-	`, taskRunId)
-	if err != nil {
-		return 0, err
-	}
-
-	defer rows.Close()
-
-	var dependentTasks []int
-	for rows.Next() {
-		var taskID int
-		if err := rows.Scan(&taskID); err != nil {
-			return 0, fmt.Errorf("failed to scan row: %w", err)
-		}
-		dependentTasks = append(dependentTasks, taskID)
-	}
-
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("rows error: %w", err)
-	}
-
-	updates := 0
-	for _, taskID := range dependentTasks {
-		var taskRunID int
-		err := tx.QueryRow(ctx, `
-			INSERT INTO Task_Runs (run_id, task_id, status, attempts)
-			VALUES ($1, $2, 'suspended', 0)
-			ON CONFLICT (run_id, task_id) DO NOTHING
-			RETURNING task_run_id;
-		`, dagRunId, taskID).Scan(&taskRunID)
-
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				continue // No new row inserted due to conflict
-			}
-			return 0, fmt.Errorf("failed to insert task run: %w", err)
-		}
-
-		updates++
-		additionalUpdates, err := p.markConnectingTasksAsSuspended(ctx, tx, dagRunId, taskRunID)
-		if err != nil {
-			return 0, err
-		}
-
-		updates += additionalUpdates
-	}
-
-	return updates, nil
 }
