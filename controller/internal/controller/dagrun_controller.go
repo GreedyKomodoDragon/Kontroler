@@ -223,6 +223,6 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 		return "", err
 	}
 
-	log.Log.Info("PVC created successfully", "pvc", pvc)
+	log.Log.Info("PVC created successfully", "pvc", pvc.Name)
 	return pvcName, nil
 }

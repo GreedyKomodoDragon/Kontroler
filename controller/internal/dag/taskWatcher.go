@@ -254,6 +254,32 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
+	// if len(tasks) == 0 {
+	// 	// check if all tasks are done
+	// 	allTasksDone, err := t.dbManager.CheckIfAllTasksDone(ctx, runId)
+	// 	if err != nil {
+	// 		log.Log.Error(err, "failed to check if all tasks are done", "runId", runId)
+	// 		return
+	// 	}
+
+	// 	if !allTasksDone {
+	// 		return
+	// 	}
+
+	// 	// search for PVC and remove it
+	// 	for _, volumes := range pod.Spec.Volumes {
+	// 		if volumes.Name == "workspace" && volumes.PersistentVolumeClaim != nil {
+	// 			if err := t.removePVC(ctx, volumes.PersistentVolumeClaim.ClaimName, pod.Namespace); err != nil {
+	// 				log.Log.Error(err, "failed to remove PVC", "pvcName", volumes.PersistentVolumeClaim.ClaimName)
+	// 			}
+
+	// 			break
+	// 		}
+	// 	}
+
+	// 	return
+	// }
+
 	// TODO: Using a channel + Goroutines Workers for scaling out pods quicker
 	for _, task := range tasks {
 		taskRunId, err := t.dbManager.MarkTaskAsStarted(ctx, runId, task.Id)
@@ -480,4 +506,23 @@ func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRun
 			TaskName: pod.Spec.Containers[0].Name,
 		},
 	}
+}
+
+func (t *taskWatcher) removePVC(ctx context.Context, pvcName, namespace string) error {
+	// Fetch the PVC
+	pvc, err := t.clientSet.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvcName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Remove finalizers
+	pvc.Finalizers = []string{}
+
+	// Update the PVC
+	_, err = t.clientSet.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, pvc, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return t.clientSet.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvcName, metav1.DeleteOptions{})
 }

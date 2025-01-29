@@ -1369,7 +1369,7 @@ func (p *postgresDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId 
 	return pvc, nil
 }
 
-func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskId int) error {
+func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -1388,7 +1388,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 			Dependencies d ON dt.dag_task_id = d.depends_on_task_id
 		WHERE 
 			tr.task_run_id = $1;
-	`, taskId)
+	`, taskRunId)
 	if err != nil {
 		return err
 	}
@@ -1410,21 +1410,25 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 
 	updates := 0
 	for _, taskID := range dependentTasks {
-		result, err := tx.Exec(ctx, `
+		var taskRunID int
+		err := tx.QueryRow(ctx, `
 			INSERT INTO Task_Runs (run_id, task_id, status, attempts)
 			VALUES ($1, $2, 'suspended', 0)
-			ON CONFLICT (run_id, task_id) DO NOTHING;
-		`, dagRunId, taskID)
+			ON CONFLICT (run_id, task_id) DO NOTHING
+			RETURNING task_run_id;
+		`, dagRunId, taskID).Scan(&taskRunID)
+
 		if err != nil {
+			if err == pgx.ErrNoRows {
+				continue // No new row inserted due to conflict
+			}
 			return fmt.Errorf("failed to insert task run: %w", err)
 		}
 
-		if result.RowsAffected() > 0 {
-			updates++
-		}
+		updates++
 
 		// TODO fix recursive call
-		additionalUpdates, err := p.markConnectingTasksAsSuspended(ctx, tx, dagRunId, taskID)
+		additionalUpdates, err := p.markConnectingTasksAsSuspended(ctx, tx, dagRunId, taskRunID)
 		if err != nil {
 			return err
 		}
@@ -1442,7 +1446,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	return tx.Commit(ctx)
 }
 
-func (p *postgresDAGManager) markConnectingTasksAsSuspended(ctx context.Context, tx pgx.Tx, dagRunId, taskId int) (int, error) {
+func (p *postgresDAGManager) markConnectingTasksAsSuspended(ctx context.Context, tx pgx.Tx, dagRunId, taskRunId int) (int, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT 
 			d.task_id
@@ -1454,7 +1458,7 @@ func (p *postgresDAGManager) markConnectingTasksAsSuspended(ctx context.Context,
 			Dependencies d ON dt.dag_task_id = d.depends_on_task_id
 		WHERE 
 			tr.task_run_id = $1;
-	`, taskId)
+	`, taskRunId)
 	if err != nil {
 		return 0, err
 	}
@@ -1476,21 +1480,23 @@ func (p *postgresDAGManager) markConnectingTasksAsSuspended(ctx context.Context,
 
 	updates := 0
 	for _, taskID := range dependentTasks {
-		result, err := tx.Exec(ctx, `
+		var taskRunID int
+		err := tx.QueryRow(ctx, `
 			INSERT INTO Task_Runs (run_id, task_id, status, attempts)
 			VALUES ($1, $2, 'suspended', 0)
-			ON CONFLICT (run_id, task_id) DO NOTHING;
-		`, dagRunId, taskID)
+			ON CONFLICT (run_id, task_id) DO NOTHING
+			RETURNING task_run_id;
+		`, dagRunId, taskID).Scan(&taskRunID)
+
 		if err != nil {
+			if err == pgx.ErrNoRows {
+				continue // No new row inserted due to conflict
+			}
 			return 0, fmt.Errorf("failed to insert task run: %w", err)
 		}
 
-		if result.RowsAffected() > 0 {
-			updates++
-		}
-
-		// TODO fix recursive call
-		additionalUpdates, err := p.markConnectingTasksAsSuspended(ctx, tx, dagRunId, taskID)
+		updates++
+		additionalUpdates, err := p.markConnectingTasksAsSuspended(ctx, tx, dagRunId, taskRunID)
 		if err != nil {
 			return 0, err
 		}
