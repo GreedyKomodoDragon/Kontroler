@@ -1455,3 +1455,21 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 
 	return tx.Commit(ctx)
 }
+
+func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
+	var taskCount, successCount, failedCount, suspendedCount int
+	err := p.pool.QueryRow(ctx, `
+        SELECT 
+            (SELECT COUNT(*) FROM DAG_Tasks WHERE dag_id = dr.dag_id) as task_count,
+            dr.successfulCount,
+            dr.failedCount,
+            dr.suspendedCount
+        FROM DAG_Runs dr
+        WHERE dr.run_id = $1;
+    `, dagRunID).Scan(&taskCount, &successCount, &failedCount, &suspendedCount)
+	if err != nil {
+		return false, err
+	}
+
+	return taskCount == successCount+failedCount+suspendedCount, nil
+}

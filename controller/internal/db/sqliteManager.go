@@ -1657,3 +1657,7 @@ func (s *sqliteDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId in
 func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) error {
 	return nil
 }
+
+func (s *sqliteDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
+	return false, nil
+}
