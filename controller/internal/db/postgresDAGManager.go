@@ -1376,62 +1376,80 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	}
 	defer tx.Rollback(ctx)
 
-	stack := []int{taskRunId} // Stack for DFS traversal
-	updates := 0
+	// Fetch all dependencies in one query
+	dependencyRows, err := tx.Query(ctx, `
+		SELECT d.depends_on_task_id, d.task_id
+		FROM Dependencies d
+		JOIN DAG_Tasks dt ON d.depends_on_task_id = dt.dag_task_id
+		WHERE dt.dag_id = (
+			SELECT dag_id
+			FROM DAG_Runs
+			WHERE run_id = $1
+		);
+	`, dagRunId)
+	if err != nil {
+		return err
+	}
+
+	// Store dependencies in a map for fast lookups
+	dependencies := make(map[int][]int)
+	for dependencyRows.Next() {
+		var parentTaskID, dependentTaskID int
+		if err := dependencyRows.Scan(&parentTaskID, &dependentTaskID); err != nil {
+			dependencyRows.Close()
+			return fmt.Errorf("failed to scan dependency row: %w", err)
+		}
+		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
+	}
+
+	dependencyRows.Close()
+
+	var startingTaskID int
+	if err := tx.QueryRow(ctx, `
+		SELECT task_id
+		FROM Task_Runs
+		WHERE task_run_id = $1;
+	`, taskRunId).Scan(&startingTaskID); err != nil {
+		return err
+	}
+
+	// DFS using stack
+	stack := []int{startingTaskID}
+	var updates [][]interface{}
+	seen := make(map[int]bool)
 
 	for len(stack) > 0 {
-		currentTaskRunID := stack[len(stack)-1]
-		stack = stack[:len(stack)-1] // Pop from stack
+		currentTaskID := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
 
-		rows, err := tx.Query(ctx, `
-			SELECT d.task_id
-			FROM Task_Runs tr
-			JOIN DAG_Tasks dt ON tr.task_id = dt.dag_task_id
-			JOIN Dependencies d ON dt.dag_task_id = d.depends_on_task_id
-			WHERE tr.task_run_id = $1;
-		`, currentTaskRunID)
-		if err != nil {
-			return err
+		if seen[currentTaskID] {
+			continue
 		}
-		defer rows.Close()
+		seen[currentTaskID] = true
 
-		var dependentTasks []int
-		for rows.Next() {
-			var taskID int
-			if err := rows.Scan(&taskID); err != nil {
-				return fmt.Errorf("failed to scan row: %w", err)
+		if dependentTasks, exists := dependencies[currentTaskID]; exists {
+			for _, taskID := range dependentTasks {
+				updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
+				stack = append(stack, taskID)
 			}
-			dependentTasks = append(dependentTasks, taskID)
-		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("rows error: %w", err)
-		}
-
-		for _, taskID := range dependentTasks {
-			var taskRunID int
-			err := tx.QueryRow(ctx, `
-				INSERT INTO Task_Runs (run_id, task_id, status, attempts)
-				VALUES ($1, $2, 'suspended', 0)
-				ON CONFLICT (run_id, task_id) DO NOTHING
-				RETURNING task_run_id;
-			`, dagRunId, taskID).Scan(&taskRunID)
-
-			if err != nil {
-				if err == pgx.ErrNoRows {
-					continue // No new row inserted due to conflict
-				}
-				return fmt.Errorf("failed to insert task run: %w", err)
-			}
-
-			updates++
-			stack = append(stack, taskRunID) // Push to stack for further processing
 		}
 	}
 
+	// Batch Insert using CopyFrom
+	if len(updates) > 0 {
+		columns := []string{"run_id", "task_id", "status", "attempts"}
+		copySrc := pgx.CopyFromRows(updates)
+		_, err := tx.CopyFrom(ctx, pgx.Identifier{"task_runs"}, columns, copySrc)
+		if err != nil {
+			return fmt.Errorf("failed to bulk insert task runs: %w", err)
+		}
+	}
+
+	// Update DAG Runs count
 	if _, err := tx.Exec(ctx, `
 		UPDATE DAG_Runs 
 		SET suspendedCount = suspendedCount + $1
-		WHERE run_id = $2;`, updates, dagRunId); err != nil {
+		WHERE run_id = $2;`, len(updates), dagRunId); err != nil {
 		return err
 	}
 
