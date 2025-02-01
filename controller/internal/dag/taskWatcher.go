@@ -255,7 +255,7 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
 	if len(tasks) == 0 {
-		complete, err := t.checkIfDagRunIsComplete(ctx, runId, pod)
+		complete, err := t.checkIfDagRunIsComplete(ctx, runId)
 		if err != nil {
 			log.Log.Error(err, "failed to check if dag run is complete", "runId", runId)
 			return
@@ -322,40 +322,8 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	container := pod.Spec.Containers[0]
 
 	if !ok {
-		log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
-
-		if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
-			log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
-		}
-
-		webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
-		if err != nil {
-			log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
-		} else if webhook.URL != "" {
-			t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
-		}
-
-		// mark connecting tasks as suspended
-		// return tasks that are marked as suspended
-		if err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId); err != nil {
-			log.Log.Error(err, "failed to mark connecting tasks as suspended", "taskRunId", taskRunId)
-		}
-
-		complete, err := t.checkIfDagRunIsComplete(ctx, dagRunId, pod)
-		if err != nil {
-			log.Log.Error(err, "failed to check if dag run is complete", "runId", dagRunId)
-			return
-		}
-
-		if !complete {
-			return
-		}
-
-		if err := t.deletePVC(ctx, pod); err != nil {
-			log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", dagRunId, "status", pod.Status.Phase)
-		}
+		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId)
 		return
-
 	}
 
 	taskIdStr, ok := pod.Annotations["kontroler/task-id"]
@@ -439,6 +407,41 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 	}
 
 	return nil
+}
+
+func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {
+	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+
+	if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
+		log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
+	}
+
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+	} else if webhook.URL != "" {
+		t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
+	}
+
+	// mark connecting tasks as suspended
+	// return tasks that are marked as suspended
+	if err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId); err != nil {
+		log.Log.Error(err, "failed to mark connecting tasks as suspended", "taskRunId", taskRunId)
+	}
+
+	complete, err := t.checkIfDagRunIsComplete(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if dag run is complete", "runId", dagRunId)
+		return
+	}
+
+	if !complete {
+		return
+	}
+
+	if err := t.deletePVC(ctx, pod); err != nil {
+		log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", dagRunId, "status", pod.Status.Phase)
+	}
 }
 
 func (t *taskWatcher) deletePod(ctx context.Context, pod *v1.Pod) error {
@@ -539,7 +542,7 @@ func (t *taskWatcher) deletePVC(ctx context.Context, pod *v1.Pod) error {
 	return nil
 }
 
-func (t *taskWatcher) checkIfDagRunIsComplete(ctx context.Context, runId int, pod *v1.Pod) (bool, error) {
+func (t *taskWatcher) checkIfDagRunIsComplete(ctx context.Context, runId int) (bool, error) {
 	// check if all tasks are done
 	allTasksDone, err := t.dbManager.CheckIfAllTasksDone(ctx, runId)
 	if err != nil {

@@ -228,7 +228,12 @@ func Test_SQLite_DAGManager_GetStartingTasks(t *testing.T) {
 	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
+	runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}, map[string]v1alpha1.ParameterSpec{}, nil)
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runID)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -1119,4 +1124,29 @@ func Test_SQLite_Workspace_disabled(t *testing.T) {
 	require.NoError(t, err)
 
 	testDAGManager_Workspace_disabled(t, dm)
+}
+
+func Test_SQLite__MarkConnectingTasksAsSuspended_Single(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_MarkConnectingTasksAsSuspended_single(t, dm)
+
+	var suspendedCount int
+	err = dbConn.QueryRow(`
+	SELECT suspendedCount
+	FROM DAG_Runs
+	WHERE run_id = 1;`).Scan(&suspendedCount)
+	require.NoError(t, err)
+	require.Equal(t, 3, suspendedCount)
 }
