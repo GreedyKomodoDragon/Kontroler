@@ -254,6 +254,23 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
+	if len(tasks) == 0 {
+		complete, err := t.checkIfDagRunIsComplete(ctx, runId)
+		if err != nil {
+			log.Log.Error(err, "failed to check if dag run is complete", "runId", runId)
+			return
+		}
+
+		if !complete {
+			return
+		}
+
+		if err := t.deletePVC(ctx, pod); err != nil {
+			log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", runId, "status", pod.Status.Phase)
+		}
+		return
+	}
+
 	// TODO: Using a channel + Goroutines Workers for scaling out pods quicker
 	for _, task := range tasks {
 		taskRunId, err := t.dbManager.MarkTaskAsStarted(ctx, runId, task.Id)
@@ -305,19 +322,7 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	container := pod.Spec.Containers[0]
 
 	if !ok {
-		log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
-
-		if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
-			log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
-		}
-
-		webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
-		if err != nil {
-			log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
-		} else if webhook.URL != "" {
-			t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
-		}
-
+		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId)
 		return
 	}
 
@@ -404,6 +409,41 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 	return nil
 }
 
+func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {
+	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+
+	if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
+		log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
+	}
+
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+	} else if webhook.URL != "" {
+		t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
+	}
+
+	// mark connecting tasks as suspended
+	// return tasks that are marked as suspended
+	if err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId); err != nil {
+		log.Log.Error(err, "failed to mark connecting tasks as suspended", "taskRunId", taskRunId)
+	}
+
+	complete, err := t.checkIfDagRunIsComplete(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if dag run is complete", "runId", dagRunId)
+		return
+	}
+
+	if !complete {
+		return
+	}
+
+	if err := t.deletePVC(ctx, pod); err != nil {
+		log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", dagRunId, "status", pod.Status.Phase)
+	}
+}
+
 func (t *taskWatcher) deletePod(ctx context.Context, pod *v1.Pod) error {
 	backgroundDeletion := metav1.DeletePropagationBackground
 	if err := t.clientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
@@ -475,4 +515,40 @@ func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRun
 			TaskName: pod.Spec.Containers[0].Name,
 		},
 	}
+}
+
+func (t *taskWatcher) deletePVC(ctx context.Context, pod *v1.Pod) error {
+	for _, volumes := range pod.Spec.Volumes {
+		if volumes.PersistentVolumeClaim != nil && volumes.Name == "workspace" {
+			// Fetch the PVC
+			pvc, err := t.clientSet.CoreV1().PersistentVolumeClaims(pod.Namespace).Get(ctx, volumes.PersistentVolumeClaim.ClaimName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+
+			// Remove finalizers
+			pvc.Finalizers = []string{}
+
+			// Update the PVC
+			_, err = t.clientSet.CoreV1().PersistentVolumeClaims(pod.Namespace).Update(ctx, pvc, metav1.UpdateOptions{})
+			if err != nil {
+				return err
+			}
+
+			return t.clientSet.CoreV1().PersistentVolumeClaims(pod.Namespace).Delete(ctx, volumes.PersistentVolumeClaim.ClaimName, metav1.DeleteOptions{})
+		}
+	}
+
+	return nil
+}
+
+func (t *taskWatcher) checkIfDagRunIsComplete(ctx context.Context, runId int) (bool, error) {
+	// check if all tasks are done
+	allTasksDone, err := t.dbManager.CheckIfAllTasksDone(ctx, runId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if all tasks are done", "runId", runId)
+		return false, nil
+	}
+
+	return allTasksDone, nil
 }

@@ -20,6 +20,7 @@ type Task struct {
 	PodTemplate         *v1alpha1.PodTemplateSpec
 	Script              string
 	ScriptInjectorImage string
+	pvcName             *string
 }
 
 type Parameter struct {
@@ -42,9 +43,9 @@ type DBDAGManager interface {
 	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
 	InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error
 	// Create the update to show that a new DAG has been started
-	CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec) (int, error)
+	CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error)
 	// Get all the tasks in the DAG that do not have any dependencies
-	GetStartingTasks(ctx context.Context, dagName string) ([]Task, error)
+	GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error)
 	// Add an update to show the task has been started
 	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
 	// Mark the outcome of the taskRun
@@ -54,7 +55,7 @@ type DBDAGManager interface {
 	// Update the DAGRun to show the overall outcome
 	MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error
 	GetDagParameters(ctx context.Context, dagName string) (map[string]*Parameter, error)
-	DagExists(ctx context.Context, dagName string) (bool, error)
+	DagExists(ctx context.Context, dagName string) (bool, int, error)
 	ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error)
 	MarkTaskAsFailed(ctx context.Context, taskRunId int) error
 	MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error
@@ -66,4 +67,7 @@ type DBDAGManager interface {
 	DeleteTask(ctx context.Context, taskName string, namespace string) error
 	GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error)
 	GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error)
+	GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error)
+	CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
+	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) error
 }

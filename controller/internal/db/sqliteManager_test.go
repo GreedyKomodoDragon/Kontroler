@@ -183,7 +183,7 @@ func Test_SQLite_DAGManager_CreateDAGRun(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 }
@@ -228,7 +228,12 @@ func Test_SQLite_DAGManager_GetStartingTasks(t *testing.T) {
 	err = dm.InsertDAG(context.Background(), dag, "default")
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}, map[string]v1alpha1.ParameterSpec{}, nil)
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runID)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -278,7 +283,7 @@ func Test_SQLite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
 	err = dm.MarkDAGRunOutcome(context.Background(), runID, "success")
@@ -328,10 +333,10 @@ func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tasks)
 	assert.Len(t, tasks, 1)
@@ -396,10 +401,10 @@ func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -449,7 +454,7 @@ func Test_SQLite_DAGManager_MarkTaskAsStarted(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
 	taskID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -771,10 +776,10 @@ func Test_SQLite_Task_Before_InsertDag_Two(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -873,10 +878,10 @@ func Test_SQLite_Task_Handle_Versions(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -950,10 +955,10 @@ func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 2)
@@ -1068,4 +1073,80 @@ func Test_SQLite_CreateDAGRun_Scripts_Only(t *testing.T) {
 	require.NoError(t, err)
 
 	testDAGManager_CreateDagRun_Scripts(t, dm)
+}
+
+func Test_SQLite_Workspace_full(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_Workspace_full(t, dm)
+}
+
+func Test_SQLite_Workspace_non_optional_only(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_Workspace_non_optional_only(t, dm)
+}
+
+func Test_SQLite_Workspace_disabled(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_Workspace_disabled(t, dm)
+}
+
+func Test_SQLite__MarkConnectingTasksAsSuspended_Single(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_MarkConnectingTasksAsSuspended_single(t, dm)
+
+	var suspendedCount int
+	err = dbConn.QueryRow(`
+	SELECT suspendedCount
+	FROM DAG_Runs
+	WHERE run_id = 1;`).Scan(&suspendedCount)
+	require.NoError(t, err)
+	require.Equal(t, 3, suspendedCount)
 }

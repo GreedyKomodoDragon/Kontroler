@@ -1,0 +1,169 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag
+    app.kubernetes.io/instance: dag-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dag-sample-long
+spec:
+  parameters:
+    - name: first
+      defaultFromSecret: secret-name
+    - name: second
+      defaultValue: value
+  workspace:
+    enable: true
+    pvc:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: standard
+      volumeMode: Filesystem
+  task:
+    - name: "random"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      backoff:
+        limit: 5
+      parameters:
+        - second
+      conditional:
+        enabled: true
+        retryCodes: [1]
+      podTemplate:
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "791m"
+    - name: "random-b"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+      parameters:
+        - first
+        - second
+    - name: "random-c"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-d"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-e"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random-d"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-f"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random-e"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-g"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random-f"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-h"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random-e"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-i"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random-c"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
+    - name: "random-j"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo 'Hello, World!'; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      runAfter: ["random-b"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true
+        retryCodes: [1]
