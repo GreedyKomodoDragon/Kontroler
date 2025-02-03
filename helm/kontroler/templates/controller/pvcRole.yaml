@@ -1,0 +1,39 @@
+{{ if .Values.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-pvc-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: kontroler
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - create
+  - get
+  - list
+  - delete
+  - watch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/instance: manager-rolebinding-pvc
+    app.kubernetes.io/name: clusterrolebinding-pvc
+    app.kubernetes.io/part-of: kontroler
+  name: operator-manager-rolebinding-pvc
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: operator-pvc-operator
+subjects:
+- kind: ServiceAccount
+  name: operator-controller-manager
+  namespace: {{ .Release.Namespace }}
+{{ end }}

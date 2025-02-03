@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -70,7 +71,13 @@ func testDAGManagerInsertDag_TaskRef(t *testing.T, dm db.DBDAGManager) {
 
 		require.NoError(t, dm.InsertDAG(context.Background(), dag, namespace))
 
-		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+		runId, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+			DagName:    "test_dag",
+			Parameters: []v1alpha1.ParameterSpec{},
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.Nil(t, err)
+
+		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runId)
 		require.NoError(t, err)
 		require.NotEmpty(t, tasks)
 		require.Len(t, tasks, 2)
@@ -141,7 +148,7 @@ func testDAGManagerIncrementAttempts_IncrementAttempts(t *testing.T, dm db.DBDAG
 			DagName: "test_dag",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -181,7 +188,7 @@ func testDAGManagerIncrementAttempts_MultipleIncrements(t *testing.T, dm db.DBDA
 			DagName: "test_dag",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_2", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name_2", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 2)
@@ -348,14 +355,14 @@ func testDAGManagerDagExists(t *testing.T, dm db.DBDAGManager) {
 			},
 		}
 
-		ok, err := dm.DagExists(context.Background(), "test_dag")
+		ok, _, err := dm.DagExists(context.Background(), "test_dag")
 		require.False(t, ok)
 		require.Nil(t, err)
 
 		err = dm.InsertDAG(context.Background(), dag, "default")
 		require.NoError(t, err)
 
-		ok, err = dm.DagExists(context.Background(), "test_dag")
+		ok, _, err = dm.DagExists(context.Background(), "test_dag")
 		require.True(t, ok)
 		require.Nil(t, err)
 
@@ -395,7 +402,7 @@ func testDAGManagerShouldRerun_MatchingExitCode(t *testing.T, dm db.DBDAGManager
 			DagName: "test_dag",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -442,7 +449,7 @@ func testDAGManagerShouldRerun_MisMatchCode(t *testing.T, dm db.DBDAGManager) {
 			DagName: "test_dag__MisMatchCode",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_MisMatchCode", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name_MisMatchCode", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -489,7 +496,7 @@ func testDAGManagerShouldRerun_ValidCodeButNoAttemptsLeft(t *testing.T, dm db.DB
 			DagName: "test_dag_ValidCodeButNoAttemptsLeft",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_ValidCodeButNoAttemptsLeft", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name_ValidCodeButNoAttemptsLeft", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -536,7 +543,7 @@ func testDAGManagerMarkTaskAsFailed_Normal(t *testing.T, dm db.DBDAGManager) {
 			DagName: "test_dag_Normal",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -582,7 +589,7 @@ func testDAGManagerMarkPodStatus_Insert(t *testing.T, dm db.DBDAGManager) {
 			DagName: "test_dag_Normal",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 1)
@@ -628,7 +635,7 @@ func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManage
 			DagName: "test_dag_Normal_twice",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal_twice", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name_Normal_twice", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		taskRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, 2)
@@ -1070,7 +1077,7 @@ func testDAGManagerFindExistingDAGRun_Exists(t *testing.T, dm db.DBDAGManager) {
 		}
 
 		dagrunName := "test_dag_exists_run"
-		_, err = dm.CreateDAGRun(context.Background(), dagrunName, dagRun, map[string]v1alpha1.ParameterSpec{})
+		_, err = dm.CreateDAGRun(context.Background(), dagrunName, dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
 		ok, err := dm.FindExistingDAGRun(context.Background(), dagrunName)
@@ -1490,10 +1497,10 @@ func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
 			DagName: "dag-sample-long",
 		}
 
-		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+		runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 		require.NoError(t, err)
 
-		tasks, err := dm.GetStartingTasks(context.Background(), "dag-sample-long")
+		tasks, err := dm.GetStartingTasks(context.Background(), "dag-sample-long", 1)
 		require.NoError(t, err)
 		require.NotEmpty(t, tasks)
 		require.Len(t, tasks, 1)
@@ -1568,11 +1575,11 @@ func testDAGManager_CreateDagRun_Sequential(t *testing.T, dm db.DBDAGManager) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -1595,11 +1602,11 @@ func testDAGManager_CreateDagRun_Sequential(t *testing.T, dm db.DBDAGManager) {
 	require.NoError(t, err)
 	require.Len(t, taskTwoFollowingTasks, 0)
 
-	runIDTwo, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runIDTwo, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, runIDTwo)
 
-	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasksTwo)
 	require.Len(t, tasksTwo, 1)
@@ -1649,11 +1656,11 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 		DagName: "test_dag",
 	}
 
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, runID)
 
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasks)
 	require.Len(t, tasks, 1)
@@ -1679,11 +1686,11 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 	require.NoError(t, err)
 	require.Len(t, taskTwoFollowingTasks, 0)
 
-	runIDTwo, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{})
+	runIDTwo, err := dm.CreateDAGRun(context.Background(), "nametwo", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, runIDTwo)
 
-	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag")
+	tasksTwo, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
 	require.NoError(t, err)
 	require.NotEmpty(t, tasksTwo)
 	require.Len(t, tasksTwo, 1)
@@ -1695,4 +1702,231 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 	tasksSecondTwo, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunIDTwo)
 	require.NoError(t, err)
 	require.Len(t, tasksSecondTwo, 2)
+}
+
+func testDAGManager_Workspace_full(t *testing.T, dm db.DBDAGManager) {
+	storageClassName := "standard"
+	block := v1.PersistentVolumeBlock
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: true,
+				PvcSpec: v1alpha1.PVC{
+					StorageClassName: &storageClassName,
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						v1.ReadWriteOnce,
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							// storage
+							v1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+					VolumeMode: &block,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test",
+						},
+					},
+				},
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	pvc, err := dm.GetWorkspacePVCTemplate(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotNil(t, pvc)
+	require.Equal(t, storageClassName, *pvc.StorageClassName)
+	require.Equal(t, v1.ReadWriteOnce, pvc.AccessModes[0])
+	require.Equal(t, v1.PersistentVolumeBlock, *pvc.VolumeMode)
+	require.Equal(t, resource.MustParse("1Gi"), pvc.Resources.Requests[v1.ResourceStorage])
+	require.Equal(t, "test", pvc.Selector.MatchLabels["app"])
+}
+
+// no selector included
+func testDAGManager_Workspace_non_optional_only(t *testing.T, dm db.DBDAGManager) {
+	storageClassName := "standard"
+	block := v1.PersistentVolumeBlock
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: true,
+				PvcSpec: v1alpha1.PVC{
+					StorageClassName: &storageClassName,
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						v1.ReadWriteOnce,
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							// storage
+							v1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+					VolumeMode: &block,
+				},
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	pvc, err := dm.GetWorkspacePVCTemplate(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotNil(t, pvc)
+	require.Equal(t, storageClassName, *pvc.StorageClassName)
+	require.Equal(t, v1.ReadWriteOnce, pvc.AccessModes[0])
+	require.Equal(t, v1.PersistentVolumeBlock, *pvc.VolumeMode)
+	require.Equal(t, resource.MustParse("1Gi"), pvc.Resources.Requests[v1.ResourceStorage])
+	require.Nil(t, pvc.Selector)
+}
+
+func testDAGManager_Workspace_disabled(t *testing.T, dm db.DBDAGManager) {
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: false,
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	pvc, err := dm.GetWorkspacePVCTemplate(context.Background(), 1)
+	require.NoError(t, err)
+	require.Nil(t, pvc)
+}
+
+func testDAGManager_MarkConnectingTasksAsSuspended_single(t *testing.T, dm db.DBDAGManager) {
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Workspace: v1alpha1.Workspace{
+				Enabled: false,
+			},
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:   "task1",
+					Script: "echo Hello",
+					Image:  "busybox",
+				},
+				{
+					Name:     "task2",
+					Script:   "echo Hello",
+					Image:    "busybox",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task3",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task1"},
+				},
+				{
+					Name:     "task4",
+					Script:   "echo Hello",
+					Image:    "alpine:latest",
+					RunAfter: []string{"task3"},
+				},
+			},
+		},
+	}
+
+	err := dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	runId, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+		DagName: "test_dag",
+	}, map[string]v1alpha1.ParameterSpec{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, runId)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runId)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+
+	taskRunId, err := dm.MarkTaskAsStarted(context.Background(), runId, tasks[0].Id)
+	require.NoError(t, err)
+	require.Equal(t, 1, taskRunId)
+
+	require.NoError(t, dm.MarkTaskAsFailed(context.Background(), taskRunId))
+	require.NoError(t, dm.MarkConnectingTasksAsSuspended(context.Background(), 1, tasks[0].Id))
 }
