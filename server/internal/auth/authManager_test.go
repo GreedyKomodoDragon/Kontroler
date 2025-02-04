@@ -16,7 +16,7 @@ func test_Setup_AuthManager(t *testing.T, authManager auth.AuthManager) {
 	})
 }
 
-func test_CreateAccount_Valid(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
+func test_CreateAccount_Valid(t *testing.T, authManager auth.AuthManager, credentials *auth.CreateAccountReq) {
 	t.Run("Success Path create account", func(t *testing.T) {
 		err := authManager.InitialiseDatabase(context.Background())
 		require.NoError(t, err)
@@ -26,7 +26,7 @@ func test_CreateAccount_Valid(t *testing.T, authManager auth.AuthManager, creden
 	})
 }
 
-func test_CreateAccount_UsernameAlreadyExists(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
+func test_CreateAccount_UsernameAlreadyExists(t *testing.T, authManager auth.AuthManager, credentials *auth.CreateAccountReq) {
 	t.Run("Failed Dup account", func(t *testing.T) {
 		// Create the first account
 		err := authManager.CreateAccount(context.Background(), credentials)
@@ -40,10 +40,15 @@ func test_CreateAccount_UsernameAlreadyExists(t *testing.T, authManager auth.Aut
 
 }
 
-func test_valid_login(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
+func test_valid_login(t *testing.T, authManager auth.AuthManager, createAccountReq *auth.CreateAccountReq) {
 	t.Run("valid login for account", func(t *testing.T) {
-		err := authManager.CreateAccount(context.Background(), credentials)
+		err := authManager.CreateAccount(context.Background(), createAccountReq)
 		require.NoError(t, err)
+
+		credentials := &auth.Credentials{
+			Username: createAccountReq.Username,
+			Password: createAccountReq.Password,
+		}
 
 		token, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
@@ -59,26 +64,36 @@ func test_invalid_login(t *testing.T, authManager auth.AuthManager, credentials 
 	})
 }
 
-func test_is_valid_login(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
+func test_is_valid_login(t *testing.T, authManager auth.AuthManager, createAccountReq *auth.CreateAccountReq) {
 	t.Run("is valid login for account", func(t *testing.T) {
-		err := authManager.CreateAccount(context.Background(), credentials)
+		err := authManager.CreateAccount(context.Background(), createAccountReq)
 		require.NoError(t, err)
+
+		credentials := &auth.Credentials{
+			Username: createAccountReq.Username,
+			Password: createAccountReq.Password,
+		}
 
 		token, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
-		id, err := authManager.IsValidLogin(context.Background(), token)
+		id, _, err := authManager.IsValidLogin(context.Background(), token)
 		require.NoError(t, err)
 		require.NotEmpty(t, id)
 	})
 }
 
-func test_revoke_token(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
+func test_revoke_token(t *testing.T, authManager auth.AuthManager, createAccountReq *auth.CreateAccountReq) {
 	t.Run("is valid login and revoke for account", func(t *testing.T) {
 		// Create account and login to get token
-		err := authManager.CreateAccount(context.Background(), credentials)
+		err := authManager.CreateAccount(context.Background(), createAccountReq)
 		require.NoError(t, err)
+
+		credentials := &auth.Credentials{
+			Username: createAccountReq.Username,
+			Password: createAccountReq.Password,
+		}
 
 		token, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
@@ -89,22 +104,27 @@ func test_revoke_token(t *testing.T, authManager auth.AuthManager, credentials *
 		require.NoError(t, err)
 
 		// Check if the token is invalid after revocation
-		id, err := authManager.IsValidLogin(context.Background(), token)
+		id, _, err := authManager.IsValidLogin(context.Background(), token)
 		require.Error(t, err)
 		require.Empty(t, id)
 	})
 }
 
-func test_change_password(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
+func test_change_password(t *testing.T, authManager auth.AuthManager, createAccountReq *auth.CreateAccountReq) {
 	t.Run("changing password", func(t *testing.T) {
-		err := authManager.CreateAccount(context.Background(), credentials)
+		err := authManager.CreateAccount(context.Background(), createAccountReq)
 		require.NoError(t, err)
+
+		credentials := &auth.Credentials{
+			Username: createAccountReq.Username,
+			Password: createAccountReq.Password,
+		}
 
 		token, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
-		id, err := authManager.IsValidLogin(context.Background(), token)
+		id, _, err := authManager.IsValidLogin(context.Background(), token)
 		require.NoError(t, err)
 		require.NotEmpty(t, id)
 
@@ -127,7 +147,7 @@ func test_change_password(t *testing.T, authManager auth.AuthManager, credential
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
-		id, err = authManager.IsValidLogin(context.Background(), token)
+		id, _, err = authManager.IsValidLogin(context.Background(), token)
 		require.NoError(t, err)
 		require.NotEmpty(t, id)
 	})

@@ -156,24 +156,49 @@ export async function getDagParameters({
   return result.data.parameters;
 }
 
+class DagRunError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DagRunError';
+  }
+}
+
 export async function createDagRun(
   name: string,
   parameters: { [x: string]: string },
   namespace: string,
   runName: string
 ): Promise<void> {
-  await axios.post(
-    `${getApiUrl()}/api/v1/dag/run/create`,
-    {
-      name,
-      parameters,
-      namespace,
-      runName,
-    },
-    {
-      withCredentials: true,
+  try {
+    await axios.post(
+      `${getApiUrl()}/api/v1/dag/run/create`,
+      {
+        name,
+        parameters,
+        namespace,
+        runName,
+      },
+      {
+        withCredentials: true,
+      }
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new DagRunError('Authentication required. Please log in.');
+        case 403:
+          throw new DagRunError("You do not have permission to create DAG runs, must be at least an 'Editor'");
+        case 404:
+          throw new DagRunError(`DAG '${name}' not found in namespace '${namespace}'.`);
+        case 500:
+          throw new DagRunError('Server error occurred while creating DAG run.');
+        default:
+          throw new DagRunError(error.message || 'Failed to create DAG run.');
+      }
     }
-  );
+    throw new DagRunError('Network error occurred while creating DAG run.');
+  }
 }
 
 export async function getDagTasks({

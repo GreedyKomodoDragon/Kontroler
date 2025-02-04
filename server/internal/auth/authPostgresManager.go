@@ -36,6 +36,7 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			username VARCHAR(255) UNIQUE NOT NULL,
 			password_hash TEXT NOT NULL,
+			role VARCHAR(255) NOT NULL DEFAULT 'viewer',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
@@ -68,8 +69,8 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 
 	if count == 0 {
 		createDefaultAccountSQL := `
-			INSERT INTO accounts (username, password_hash) 
-			VALUES ($1, crypt($2, gen_salt('bf')));
+			INSERT INTO accounts (username, password_hash, role) 
+			VALUES ($1, crypt($2, gen_salt('bf')), 'Admin');
 		`
 
 		// TODO: move out adminpassword to a ENV
@@ -81,11 +82,11 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 	return nil
 }
 
-func (a *authPostgresManager) CreateAccount(ctx context.Context, credentials *Credentials) error {
+func (a *authPostgresManager) CreateAccount(ctx context.Context, credentials *CreateAccountReq) error {
 	if _, err := a.pool.Exec(ctx, `
-		INSERT INTO accounts (username, password_hash) 
-		VALUES ($1, crypt($2, gen_salt('bf')))
-	`, credentials.Username, credentials.Password); err != nil {
+		INSERT INTO accounts (username, password_hash, role) 
+		VALUES ($1, crypt($2, gen_salt('bf')), $3)
+	`, credentials.Username, credentials.Password, credentials.Role); err != nil {
 		return fmt.Errorf("failed to create account: %v", err)
 	}
 
@@ -94,12 +95,13 @@ func (a *authPostgresManager) CreateAccount(ctx context.Context, credentials *Cr
 
 func (a *authPostgresManager) Login(ctx context.Context, credentials *Credentials) (string, error) {
 	var accountId uuid.UUID
+	var role string
 
 	if err := a.pool.QueryRow(ctx, `
-		SELECT id 
+		SELECT id, role
 		FROM accounts 
 		WHERE username = $1 AND password_hash = crypt($2, password_hash)
-	`, credentials.Username, credentials.Password).Scan(&accountId); err != nil {
+	`, credentials.Username, credentials.Password).Scan(&accountId, &role); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", fmt.Errorf("invalid credentials")
 		}
@@ -114,6 +116,7 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 		"exp":        expires.Unix(),
 		"iat":        now.Unix(),
 		"jti":        uuid.New().String(),
+		"role":       role,
 	})
 
 	signedToken, err := token.SignedString(a.secretKey)
@@ -131,7 +134,7 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 	return signedToken, nil
 }
 
-func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString string) (string, error) {
+func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString string) (string, string, error) {
 	// Parse and verify the JWT token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Ensure that the token method is HMAC
@@ -142,9 +145,22 @@ func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString stri
 	})
 
 	if err != nil || !token.Valid {
-		return "", fmt.Errorf("invalid token")
+		return "", "", fmt.Errorf("invalid token")
 	}
 
+	// Extract claims from the token
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", fmt.Errorf("invalid token claims")
+	}
+
+	// Get the role from the token claims
+	role, ok := claims["role"].(string)
+	if !ok {
+		return "", "", fmt.Errorf("role not found in token")
+	}
+
+	// Query the database to check token validity and get user info
 	var revoked bool
 	var accountId uuid.UUID
 	if err := a.pool.QueryRow(ctx, `
@@ -153,15 +169,16 @@ func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString stri
 		WHERE token = $1 AND expires_at > NOW()
 	`, tokenString).Scan(&revoked, &accountId); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", fmt.Errorf("invalid or expired token")
+			return "", "", fmt.Errorf("invalid or expired token")
 		}
-		return "", fmt.Errorf("failed to query token: %v", err)
+		return "", "", fmt.Errorf("failed to query token: %v", err)
 	}
 
 	if revoked {
-		return "", fmt.Errorf("token has been revoked")
+		return "", "", fmt.Errorf("token has been revoked")
 	}
 
+	// Fetch the username associated with the account ID
 	var username string
 	if err := a.pool.QueryRow(ctx, `
 		SELECT username
@@ -169,12 +186,13 @@ func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString stri
 		WHERE id = $1
 	`, accountId).Scan(&username); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", fmt.Errorf("could not found username")
+			return "", "", fmt.Errorf("could not find username")
 		}
-		return "", fmt.Errorf("failed to query for username: %v", err)
+		return "", "", fmt.Errorf("failed to query for username: %v", err)
 	}
 
-	return username, nil
+	// Return both username and role
+	return username, role, nil
 }
 
 func (a *authPostgresManager) RevokeToken(ctx context.Context, tokenString string) error {
@@ -191,7 +209,7 @@ func (a *authPostgresManager) RevokeToken(ctx context.Context, tokenString strin
 
 func (a *authPostgresManager) GetUsers(ctx context.Context, limit, offset int) ([]*User, error) {
 	rows, err := a.pool.Query(ctx, `
-	SELECT username
+	SELECT username, role
 	FROM accounts
 	ORDER BY created_at DESC
 	LIMIT $1 OFFSET $2;
@@ -206,11 +224,9 @@ func (a *authPostgresManager) GetUsers(ctx context.Context, limit, offset int) (
 	users := []*User{}
 	for rows.Next() {
 		user := User{}
-		if err := rows.Scan(&user.Username); err != nil {
+		if err := rows.Scan(&user.Username, &user.Role); err != nil {
 			return nil, err
 		}
-
-		user.Role = "Admin"
 
 		users = append(users, &user)
 	}
@@ -238,7 +254,7 @@ func (a *authPostgresManager) GetUserPageCount(ctx context.Context, limit int) (
 
 func (a *authPostgresManager) DeleteUser(ctx context.Context, user string) error {
 	if user == "admin" {
-		return fmt.Errorf("Cannot delete the admin account")
+		return fmt.Errorf("cannot delete the admin account")
 	}
 
 	if _, err := a.pool.Exec(ctx, `

@@ -73,7 +73,7 @@ func CreateTLSConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func ValidateCredentials(req auth.Credentials) error {
+func ValidateCredentials(req auth.CreateAccountReq) error {
 	if len(req.Username) < 3 || len(req.Username) > 100 {
 		return fmt.Errorf("username must be between 3 and 100 characters long")
 	}
@@ -104,6 +104,10 @@ func ValidateCredentials(req auth.Credentials) error {
 
 	if !hasLetter {
 		return fmt.Errorf("password must contain at least one letter")
+	}
+
+	if req.Role != "admin" && req.Role != "editor" && req.Role != "viewer" {
+		return fmt.Errorf("role must be either Admin, editor, or Viewer")
 	}
 
 	return nil

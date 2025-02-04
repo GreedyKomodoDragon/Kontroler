@@ -17,9 +17,10 @@ const (
 func FuzzAPIFuzzing(f *testing.F) {
 	f.Fuzz(func(t *testing.T, name, password string) {
 		// Create a new request with the fuzzed input
-		body := auth.Credentials{
+		body := auth.CreateAccountReq{
 			Username: name,
 			Password: password,
+			Role:     "viewer",
 		}
 
 		bBody, err := json.Marshal(body)

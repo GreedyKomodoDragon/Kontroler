@@ -78,29 +78,30 @@ func Test_Postgres_CreateAccount(t *testing.T) {
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 
-	credentials := &auth.Credentials{
+	createAccountReq := &auth.CreateAccountReq{
 		Username: "testuser",
 		Password: "testpassword",
+		Role:     "viewer",
 	}
 
-	test_CreateAccount_Valid(t, authManager, credentials)
+	test_CreateAccount_Valid(t, authManager, createAccountReq)
 
 	// Verify the account was created
 	var passwordHash string
-	err = pool.QueryRow(context.Background(), `SELECT password_hash FROM accounts WHERE username = $1`, credentials.Username).Scan(&passwordHash)
+	err = pool.QueryRow(context.Background(), `SELECT password_hash FROM accounts WHERE username = $1`, createAccountReq.Username).Scan(&passwordHash)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, passwordHash)
 
-	credentials = &auth.Credentials{
+	createAccountReq = &auth.CreateAccountReq{
 		Username: "randomUser",
 		Password: "testpassword",
 	}
 
-	test_CreateAccount_UsernameAlreadyExists(t, authManager, credentials)
+	test_CreateAccount_UsernameAlreadyExists(t, authManager, createAccountReq)
 
 	var count int
-	err = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM accounts WHERE username = $1`, credentials.Username).Scan(&count)
+	err = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM accounts WHERE username = $1`, createAccountReq.Username).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "Expected exactly one account with the username")
 }
@@ -115,14 +116,15 @@ func Test_Postgres_Login(t *testing.T) {
 	err = authManager.InitialiseDatabase(context.Background())
 	require.NoError(t, err)
 
-	credentials := &auth.Credentials{
+	createAccountReq := &auth.CreateAccountReq{
 		Username: "testuser",
 		Password: "testpassword",
+		Role:     "viewer",
 	}
 
-	test_valid_login(t, authManager, credentials)
+	test_valid_login(t, authManager, createAccountReq)
 
-	credentials = &auth.Credentials{
+	credentials := &auth.Credentials{
 		Username: "ailsjdilasd",
 		Password: "laksjdhlas",
 	}
@@ -140,12 +142,13 @@ func Test_Postgres_IsValidLogin(t *testing.T) {
 	err = authManager.InitialiseDatabase(context.Background())
 	require.NoError(t, err)
 
-	credentials := &auth.Credentials{
+	createAccountReq := &auth.CreateAccountReq{
 		Username: "testuser",
 		Password: "testpassword",
+		Role:     "viewer",
 	}
 
-	test_is_valid_login(t, authManager, credentials)
+	test_is_valid_login(t, authManager, createAccountReq)
 }
 
 func Test_Postgres_RevokeToken(t *testing.T) {
@@ -158,12 +161,13 @@ func Test_Postgres_RevokeToken(t *testing.T) {
 	err = authManager.InitialiseDatabase(context.Background())
 	require.NoError(t, err)
 
-	credentials := &auth.Credentials{
+	createAccountReq := &auth.CreateAccountReq{
 		Username: "testuser",
 		Password: "testpassword",
+		Role:     "viewer",
 	}
 
-	test_revoke_token(t, authManager, credentials)
+	test_revoke_token(t, authManager, createAccountReq)
 }
 
 func Test_Postgres_TokenExpiration(t *testing.T) {
@@ -176,13 +180,19 @@ func Test_Postgres_TokenExpiration(t *testing.T) {
 	err = authManager.InitialiseDatabase(context.Background())
 	require.NoError(t, err)
 
-	credentials := &auth.Credentials{
+	createAccountReq := &auth.CreateAccountReq{
 		Username: "testuser",
 		Password: "testpassword",
+		Role:     "viewer",
+	}
+
+	credentials := &auth.Credentials{
+		Username: createAccountReq.Username,
+		Password: createAccountReq.Password,
 	}
 
 	// Create the account and login to get a token
-	err = authManager.CreateAccount(context.Background(), credentials)
+	err = authManager.CreateAccount(context.Background(), createAccountReq)
 	require.NoError(t, err)
 
 	token, err := authManager.Login(context.Background(), credentials)
@@ -198,7 +208,7 @@ func Test_Postgres_TokenExpiration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Validate the expired token
-	id, err := authManager.IsValidLogin(context.Background(), token)
+	id, _, err := authManager.IsValidLogin(context.Background(), token)
 	assert.Error(t, err, "expected token to be invalid due to expiration")
 	require.Empty(t, id)
 }
@@ -213,10 +223,11 @@ func Test_Postgres_ChangePassword(t *testing.T) {
 	err = authManager.InitialiseDatabase(context.Background())
 	require.NoError(t, err)
 
-	credentials := &auth.Credentials{
+	createAccountReq := &auth.CreateAccountReq{
 		Username: "testuser",
 		Password: "testpassword",
+		Role:     "viewer",
 	}
 
-	test_change_password(t, authManager, credentials)
+	test_change_password(t, authManager, createAccountReq)
 }
