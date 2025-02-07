@@ -12,7 +12,7 @@ type Credentials struct {
 type CreateAccountReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-	Role     string `json:"role"`
+	Role     string `json:"role" enums:"admin,editor,viewer"`
 }
 
 type ChangeCredentials struct {

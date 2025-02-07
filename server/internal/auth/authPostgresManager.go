@@ -70,7 +70,7 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 	if count == 0 {
 		createDefaultAccountSQL := `
 			INSERT INTO accounts (username, password_hash, role) 
-			VALUES ($1, crypt($2, gen_salt('bf')), 'Admin');
+			VALUES ($1, crypt($2, gen_salt('bf')), 'admin');
 		`
 
 		// TODO: move out adminpassword to a ENV

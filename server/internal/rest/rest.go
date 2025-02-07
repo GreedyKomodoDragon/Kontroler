@@ -107,7 +107,7 @@ func ValidateCredentials(req auth.CreateAccountReq) error {
 	}
 
 	if req.Role != "admin" && req.Role != "editor" && req.Role != "viewer" {
-		return fmt.Errorf("role must be either Admin, editor, or Viewer")
+		return fmt.Errorf("role must be either admin, editor, or viewer")
 	}
 
 	return nil

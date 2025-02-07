@@ -244,7 +244,7 @@ func (a *authSqliteManager) GetUsers(ctx context.Context, limit int, offset int)
 }
 
 func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string) (string, string, error) {
-	// Parse the JWT token
+	// Parse and verify the JWT token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Ensure that the token method is HMAC
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -255,6 +255,18 @@ func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string
 
 	if err != nil || !token.Valid {
 		return "", "", fmt.Errorf("invalid token")
+	}
+
+	// Extract claims from the token
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", fmt.Errorf("invalid token claims")
+	}
+
+	// Get the role from the token claims
+	role, ok := claims["role"].(string)
+	if !ok {
+		return "", "", fmt.Errorf("role not found in token")
 	}
 
 	// Query the token details from the database
@@ -289,18 +301,19 @@ func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string
 		return "", "", fmt.Errorf("failed to query for username: %v", err)
 	}
 
-	return username, "", nil
+	return username, role, nil
 }
 
 func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials) (string, error) {
 	var accountId string
 	var storedPasswordHash string
+	var role string
 
 	if err := a.db.QueryRowContext(ctx, `
-		SELECT id, password_hash 
+		SELECT id, password_hash, role
 		FROM accounts 
 		WHERE username = ?;
-	`, credentials.Username).Scan(&accountId, &storedPasswordHash); err != nil {
+	`, credentials.Username).Scan(&accountId, &storedPasswordHash, &role); err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid credentials")
 		}
@@ -319,6 +332,7 @@ func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials)
 		"exp":        expires.Unix(),
 		"iat":        now.Unix(),
 		"jti":        uuid.New().String(),
+		"role":       role,
 	})
 
 	signedToken, err := token.SignedString(a.secretKey)

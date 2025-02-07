@@ -93,6 +93,24 @@ func TestValidateCredentials(t *testing.T) {
 			expectError:  true,
 			errorMessage: "password must use only letter or number characters",
 		},
+		{
+			name: "Invalid role",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "ValidPassword123",
+				Role:     "invalid_role"},
+			expectError:  true,
+			errorMessage: "role must be either admin, editor, or viewer",
+		},
+		{
+			name: "Empty role",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "ValidPassword123",
+				Role:     ""},
+			expectError:  true,
+			errorMessage: "role must be either admin, editor, or viewer",
+		},
 	}
 
 	for _, test := range tests {

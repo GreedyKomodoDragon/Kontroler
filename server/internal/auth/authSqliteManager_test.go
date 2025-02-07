@@ -69,7 +69,7 @@ func Test_Sqlite_CreateAccount(t *testing.T) {
 	require.NotEmpty(t, passwordHash)
 
 	createAccountReq = &auth.CreateAccountReq{
-		Username: "testuser",
+		Username: "testuser2",
 		Password: "testpassword",
 	}
 
