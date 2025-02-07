@@ -9,64 +9,107 @@ import (
 func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
 		name         string
-		credentials  auth.Credentials
+		credentials  auth.CreateAccountReq
 		expectError  bool
 		errorMessage string
 	}{
 		// Valid cases
 		{
-			name:        "Valid username and password",
-			credentials: auth.Credentials{"ValidUser1", "Password123"},
+			name: "Valid username and password",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser1",
+				Password: "Password123",
+				Role:     "viewer"},
 			expectError: false,
 		},
 		{
-			name:        "Valid length",
-			credentials: auth.Credentials{"AReallyLongUsernameThatLessThaCharsLongWhichIsValid12345", "ValidPassword123"},
+			name: "Valid length",
+			credentials: auth.CreateAccountReq{
+				Username: "AReallyLongUsernameThatLessThaCharsLongWhichIsValid12345",
+				Password: "ValidPassword123",
+				Role:     "viewer"},
 			expectError: false,
 		},
 
 		// Invalid username cases
 		{
 			name:         "Username too short",
-			credentials:  auth.Credentials{"ab", "ValidPassword123"},
+			credentials:  auth.CreateAccountReq{Username: "ab", Password: "ValidPassword123", Role: "viewer"},
 			expectError:  true,
 			errorMessage: "username must be between 3 and 100 characters long",
 		},
 		{
-			name:         "Username too long",
-			credentials:  auth.Credentials{"ThisIsAVeryLongUsernameThatExceedsOneHundredCharactersAndIsUsedToTestTheUsernameValidationHskajdklsajdj", "ValidPassword123"},
+			name: "Username too long",
+			credentials: auth.CreateAccountReq{
+				Username: "ThisIsAVeryLongUsernameThatExceedsOneHundredCharactersAndIsUsedToTestTheUsernameValidationHskajdklsajdj",
+				Password: "ValidPassword123",
+				Role:     "viewer",
+			},
 			expectError:  true,
 			errorMessage: "username must be between 3 and 100 characters long",
 		},
 		{
-			name:         "Username starts with a number",
-			credentials:  auth.Credentials{"1InvalidUser", "Password123"},
+			name: "Username starts with a number",
+			credentials: auth.CreateAccountReq{
+				Username: "1InvalidUser",
+				Password: "Password123",
+				Role:     "viewer"},
 			expectError:  true,
 			errorMessage: "username must start with a letter",
 		},
 		{
-			name:         "Username contains invalid characters",
-			credentials:  auth.Credentials{"Invalid@User", "Password123"},
+			name: "Username contains invalid characters",
+			credentials: auth.CreateAccountReq{
+				Username: "Invalid@User",
+				Password: "Password123",
+				Role:     "viewer"},
 			expectError:  true,
 			errorMessage: "username must use only letter or number characters",
 		},
 		{
-			name:         "Password too short",
-			credentials:  auth.Credentials{"ValidUser", "short"},
+			name: "Password too short",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "short",
+				Role:     "viewer"},
 			expectError:  true,
 			errorMessage: "password must be at least 8 characters long",
 		},
 		{
-			name:         "Password without letters",
-			credentials:  auth.Credentials{"ValidUser", "12345678"},
+			name: "Password without letters",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "12345678",
+				Role:     "viewer"},
 			expectError:  true,
 			errorMessage: "password must contain at least one letter",
 		},
 		{
-			name:         "Password contains invalid characters",
-			credentials:  auth.Credentials{"ValidUser", "Invalid@Password"},
+			name: "Password contains invalid characters",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "Invalid@Password",
+				Role:     "viewer"},
 			expectError:  true,
 			errorMessage: "password must use only letter or number characters",
+		},
+		{
+			name: "Invalid role",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "ValidPassword123",
+				Role:     "invalid_role"},
+			expectError:  true,
+			errorMessage: "role must be either admin, editor, or viewer",
+		},
+		{
+			name: "Empty role",
+			credentials: auth.CreateAccountReq{
+				Username: "ValidUser",
+				Password: "ValidPassword123",
+				Role:     ""},
+			expectError:  true,
+			errorMessage: "role must be either admin, editor, or viewer",
 		},
 	}
 
