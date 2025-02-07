@@ -89,7 +89,7 @@ export default function DagRunForm() {
         setSuccessMsg("DagRun was created!");
       })
       .catch((e) => {
-        setErrorMsgs(["failed to create DagRun"]);
+        setErrorMsgs([e.message]);
       });
   };
 

@@ -69,6 +69,7 @@ func (a *authSqliteManager) InitialiseDatabase(ctx context.Context) error {
 			id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
 			username TEXT UNIQUE NOT NULL,
 			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'viewer',
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);
@@ -99,8 +100,8 @@ func (a *authSqliteManager) InitialiseDatabase(ctx context.Context) error {
 	// If the account does not exist, create the default account
 	if count == 0 {
 		createDefaultAccountSQL := `
-			INSERT INTO accounts (username, password_hash) 
-			VALUES (?, ?);
+			INSERT INTO accounts (username, password_hash, role) 
+			VALUES (?, ?, ?);
 		`
 
 		hashedPassword, err := hashPassword("adminpassword")
@@ -108,7 +109,7 @@ func (a *authSqliteManager) InitialiseDatabase(ctx context.Context) error {
 			return err
 		}
 
-		if _, err := a.db.ExecContext(ctx, createDefaultAccountSQL, "admin", hashedPassword); err != nil {
+		if _, err := a.db.ExecContext(ctx, createDefaultAccountSQL, "admin", hashedPassword, "admin"); err != nil {
 			return fmt.Errorf("failed to create default account: %v", err)
 		}
 	}
@@ -164,10 +165,10 @@ func (a *authSqliteManager) ChangePassword(ctx context.Context, username string,
 	return nil
 }
 
-func (a *authSqliteManager) CreateAccount(ctx context.Context, credentials *Credentials) error {
+func (a *authSqliteManager) CreateAccount(ctx context.Context, credentials *CreateAccountReq) error {
 	createAccountSQL := `
-		INSERT INTO accounts (username, password_hash) 
-		VALUES (?, ?);
+		INSERT INTO accounts (username, password_hash, role) 
+		VALUES (?, ?, ?);
 	`
 
 	hashedPassword, err := hashPassword(credentials.Password)
@@ -175,7 +176,7 @@ func (a *authSqliteManager) CreateAccount(ctx context.Context, credentials *Cred
 		return err
 	}
 
-	if _, err := a.db.ExecContext(ctx, createAccountSQL, credentials.Username, hashedPassword); err != nil {
+	if _, err := a.db.ExecContext(ctx, createAccountSQL, credentials.Username, hashedPassword, credentials.Role); err != nil {
 		return fmt.Errorf("failed to create account: %v", err)
 	}
 
@@ -184,7 +185,7 @@ func (a *authSqliteManager) CreateAccount(ctx context.Context, credentials *Cred
 
 func (a *authSqliteManager) DeleteUser(ctx context.Context, user string) error {
 	if user == "admin" {
-		return fmt.Errorf("Cannot delete the admin account")
+		return fmt.Errorf("cannot delete the admin account")
 	}
 
 	if _, err := a.db.ExecContext(ctx, `
@@ -217,7 +218,7 @@ func (a *authSqliteManager) GetUserPageCount(ctx context.Context, limit int) (in
 
 func (a *authSqliteManager) GetUsers(ctx context.Context, limit int, offset int) ([]*User, error) {
 	rows, err := a.db.QueryContext(ctx, `
-	SELECT username
+	SELECT username, role
 	FROM accounts
 	ORDER BY created_at DESC
 	LIMIT ? OFFSET ?;
@@ -232,11 +233,9 @@ func (a *authSqliteManager) GetUsers(ctx context.Context, limit int, offset int)
 	users := []*User{}
 	for rows.Next() {
 		user := User{}
-		if err := rows.Scan(&user.Username); err != nil {
+		if err := rows.Scan(&user.Username, &user.Role); err != nil {
 			return nil, err
 		}
-
-		user.Role = "Admin"
 
 		users = append(users, &user)
 	}
@@ -244,8 +243,8 @@ func (a *authSqliteManager) GetUsers(ctx context.Context, limit int, offset int)
 	return users, nil
 }
 
-func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string) (string, error) {
-	// Parse the JWT token
+func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string) (string, string, error) {
+	// Parse and verify the JWT token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Ensure that the token method is HMAC
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -255,7 +254,19 @@ func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string
 	})
 
 	if err != nil || !token.Valid {
-		return "", fmt.Errorf("invalid token")
+		return "", "", fmt.Errorf("invalid token")
+	}
+
+	// Extract claims from the token
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", fmt.Errorf("invalid token claims")
+	}
+
+	// Get the role from the token claims
+	role, ok := claims["role"].(string)
+	if !ok {
+		return "", "", fmt.Errorf("role not found in token")
 	}
 
 	// Query the token details from the database
@@ -267,14 +278,14 @@ func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string
 		WHERE token = ? AND expires_at > CURRENT_TIMESTAMP;
 	`, tokenString).Scan(&revoked, &accountId); err != nil {
 		if err == sql.ErrNoRows {
-			return "", fmt.Errorf("invalid or expired token")
+			return "", "", fmt.Errorf("invalid or expired token")
 		}
-		return "", fmt.Errorf("failed to query token: %v", err)
+		return "", "", fmt.Errorf("failed to query token: %v", err)
 	}
 
 	// Check if the token has been revoked
 	if revoked {
-		return "", fmt.Errorf("token has been revoked")
+		return "", "", fmt.Errorf("token has been revoked")
 	}
 
 	// Query the username based on account ID
@@ -285,23 +296,24 @@ func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string
 		WHERE id = ?;
 	`, accountId).Scan(&username); err != nil {
 		if err == sql.ErrNoRows {
-			return "", fmt.Errorf("could not find username")
+			return "", "", fmt.Errorf("could not find username")
 		}
-		return "", fmt.Errorf("failed to query for username: %v", err)
+		return "", "", fmt.Errorf("failed to query for username: %v", err)
 	}
 
-	return username, nil
+	return username, role, nil
 }
 
 func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials) (string, error) {
 	var accountId string
 	var storedPasswordHash string
+	var role string
 
 	if err := a.db.QueryRowContext(ctx, `
-		SELECT id, password_hash 
+		SELECT id, password_hash, role
 		FROM accounts 
 		WHERE username = ?;
-	`, credentials.Username).Scan(&accountId, &storedPasswordHash); err != nil {
+	`, credentials.Username).Scan(&accountId, &storedPasswordHash, &role); err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid credentials")
 		}
@@ -320,6 +332,7 @@ func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials)
 		"exp":        expires.Unix(),
 		"iat":        now.Unix(),
 		"jti":        uuid.New().String(),
+		"role":       role,
 	})
 
 	signedToken, err := token.SignedString(a.secretKey)

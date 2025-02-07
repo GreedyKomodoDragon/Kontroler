@@ -10,6 +10,7 @@ export default function CreateAccountPage() {
   const [username, setUsername] = createSignal<string>("");
   const [password, setPassword] = createSignal<string>("");
   const [passwordConfirm, setPasswordConfirm] = createSignal<string>("");
+  const [role, setRole] = createSignal<string>("");
 
   const onSubmit = () => {
     setErrorMsgs([]);
@@ -27,17 +28,21 @@ export default function CreateAccountPage() {
       errors.push("passwords must match");
     }
 
+    if (["admin", "editor", "viewer"].indexOf(role()) === -1) {
+      errors.push("role must be either Admin, Editor, or Viewer");
+    }
+
     if (errors.length != 0) {
       setErrorMsgs(errors);
       return;
     }
 
-    createAccount(username(), password())
+    createAccount(username(), password(), role())
       .then(() => {
         setSuccessMsg("Account has been successfully created!");
       })
-      .catch(() => {
-        setErrorMsgs(["failed to create the new user"]);
+      .catch((e) => {
+        setErrorMsgs([e.message]);
       });
   };
 
@@ -80,6 +85,23 @@ export default function CreateAccountPage() {
                 setPasswordConfirm(event.currentTarget.value);
               }}
             />
+          </div>
+          <div>
+            <label class="block text-lg font-medium my-4">
+              Role
+            </label>
+            <select
+              class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
+              required
+              onChange={(event) => {
+                setRole(event.currentTarget.value.toLowerCase());
+              }}
+            >
+              <option value="">Select a role</option>
+              <option value="admin">Admin</option>
+              <option value="editor">Editor</option>
+              <option value="viewer">Viewer</option>
+            </select>
           </div>
 
           <div class="flex justify-center">

@@ -31,7 +31,7 @@ func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
 	dagRouter := router.Group("/dag")
 
-	dagRouter.Get("/names", func(c *fiber.Ctx) error {
+	dagRouter.Get("/names", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		term := c.Query("term")
 		if term == "" {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -48,7 +48,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
-	dagRouter.Get("/parameters", func(c *fiber.Ctx) error {
+	dagRouter.Get("/parameters", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		name := c.Query("name")
 		if name == "" {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -65,7 +65,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
-	dagRouter.Get("/meta/:page", func(c *fiber.Ctx) error {
+	dagRouter.Get("/meta/:page", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -86,7 +86,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
-	dagRouter.Get("/pages/count", func(c *fiber.Ctx) error {
+	dagRouter.Get("/pages/count", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		pageCount, err := dbManager.GetDagPageCount(c.Context(), 10)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting dag page count")
@@ -98,7 +98,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
-	dagRouter.Get("/runs/:page", func(c *fiber.Ctx) error {
+	dagRouter.Get("/runs/:page", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -117,7 +117,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(dags)
 	})
 
-	dagRouter.Get("/run/:id", func(c *fiber.Ctx) error {
+	dagRouter.Get("/run/:id", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		id, err := strconv.Atoi(c.Params("id"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -132,7 +132,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(dagRun)
 	})
 
-	dagRouter.Get("/run/all/:id", func(c *fiber.Ctx) error {
+	dagRouter.Get("/run/all/:id", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		id, err := strconv.Atoi(c.Params("id"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -147,7 +147,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(dagRun)
 	})
 
-	dagRouter.Get("/run/task/:runId/:taskId", func(c *fiber.Ctx) error {
+	dagRouter.Get("/run/task/:runId/:taskId", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		runId, err := strconv.Atoi(c.Params("runId"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -167,7 +167,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
 	})
 
-	dagRouter.Get("/task/:taskId", func(c *fiber.Ctx) error {
+	dagRouter.Get("/task/:taskId", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		taskId, err := strconv.Atoi(c.Params("taskId"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -182,7 +182,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
 	})
 
-	dagRouter.Get("/dagTask/pages/page/:page", func(c *fiber.Ctx) error {
+	dagRouter.Get("/dagTask/pages/page/:page", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -204,7 +204,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
 	})
 
-	dagRouter.Get("/dagTask/pages/count", func(c *fiber.Ctx) error {
+	dagRouter.Get("/dagTask/pages/count", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		pageCount, err := dbManager.GetDagTaskPageCount(c.Context(), 10)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting DagTask details")
@@ -216,7 +216,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
-	dagRouter.Post("/create", func(c *fiber.Ctx) error {
+	dagRouter.Post("/create", roleMiddleware("editor"), func(c *fiber.Ctx) error {
 		var dagForm kclient.DagFormObj
 		if err := c.BodyParser(&dagForm); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -237,7 +237,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 
 	})
 
-	dagRouter.Get("/run/pages/count", func(c *fiber.Ctx) error {
+	dagRouter.Get("/run/pages/count", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		pageCount, err := dbManager.GetDagRunPageCount(c.Context(), 10)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting dag run page count")
@@ -249,7 +249,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
-	dagRouter.Post("/run/create", func(c *fiber.Ctx) error {
+	dagRouter.Post("/run/create", roleMiddleware("editor"), func(c *fiber.Ctx) error {
 		var dagrunForm kclient.DagRunForm
 		if err := c.BodyParser(&dagrunForm); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -287,7 +287,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 func addStats(router fiber.Router, dbManager db.DbManager) {
 	statsRouter := router.Group("/stats")
 
-	statsRouter.Get("/dashboard", func(c *fiber.Ctx) error {
+	statsRouter.Get("/dashboard", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		stats, err := dbManager.GetDashboardStats(c.Context())
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting main stats")
@@ -333,8 +333,8 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			"message": "Login successful",
 		})
 	})
-	authRouter.Post("/create", func(c *fiber.Ctx) error {
-		var req auth.Credentials
+	authRouter.Post("/create", roleMiddleware("admin"), func(c *fiber.Ctx) error {
+		var req auth.CreateAccountReq
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"message": err.Error(),
@@ -390,7 +390,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 
-		username, err := authManager.IsValidLogin(c.Context(), jwtToken)
+		username, _, err := authManager.IsValidLogin(c.Context(), jwtToken)
 		if err != nil {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
@@ -400,7 +400,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		})
 	})
 
-	authRouter.Get("/users/page/:page", func(c *fiber.Ctx) error {
+	authRouter.Get("/users/page/:page", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		page, err := strconv.Atoi(c.Params("page"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -420,7 +420,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		})
 	})
 
-	authRouter.Get("/users/pages/count", func(c *fiber.Ctx) error {
+	authRouter.Get("/users/pages/count", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		pageCount, err := authManager.GetUserPageCount(c.Context(), 10)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting user page count")
@@ -432,7 +432,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		})
 	})
 
-	authRouter.Delete("/users/:user", func(c *fiber.Ctx) error {
+	authRouter.Delete("/users/:user", roleMiddleware("admin"), func(c *fiber.Ctx) error {
 		user := c.Params("user")
 		if user == "" {
 			return c.SendStatus(fiber.StatusBadRequest)
@@ -456,7 +456,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 func addLogs(router fiber.Router, logFetcher logs.LogFetcher) {
 	logRouter := router.Group("/logs")
 
-	logRouter.Get("/run/:run/pod/:pod", func(c *fiber.Ctx) error {
+	logRouter.Get("/run/:run/pod/:pod", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		podName := c.Params("pod")
 		if podName == "" {
 			return c.SendStatus(fiber.StatusBadRequest)
