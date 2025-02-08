@@ -50,7 +50,7 @@ func test_valid_login(t *testing.T, authManager auth.AuthManager, createAccountR
 			Password: createAccountReq.Password,
 		}
 
-		token, err := authManager.Login(context.Background(), credentials)
+		token, _, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 	})
@@ -58,7 +58,7 @@ func test_valid_login(t *testing.T, authManager auth.AuthManager, createAccountR
 
 func test_invalid_login(t *testing.T, authManager auth.AuthManager, credentials *auth.Credentials) {
 	t.Run("invalid login for account", func(t *testing.T) {
-		token, err := authManager.Login(context.Background(), credentials)
+		token, _, err := authManager.Login(context.Background(), credentials)
 		require.Error(t, err)
 		require.Empty(t, token)
 	})
@@ -74,7 +74,7 @@ func test_is_valid_login(t *testing.T, authManager auth.AuthManager, createAccou
 			Password: createAccountReq.Password,
 		}
 
-		token, err := authManager.Login(context.Background(), credentials)
+		token, _, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
@@ -95,7 +95,7 @@ func test_revoke_token(t *testing.T, authManager auth.AuthManager, createAccount
 			Password: createAccountReq.Password,
 		}
 
-		token, err := authManager.Login(context.Background(), credentials)
+		token, _, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
@@ -120,7 +120,7 @@ func test_change_password(t *testing.T, authManager auth.AuthManager, createAcco
 			Password: createAccountReq.Password,
 		}
 
-		token, err := authManager.Login(context.Background(), credentials)
+		token, _, err := authManager.Login(context.Background(), credentials)
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
@@ -135,12 +135,12 @@ func test_change_password(t *testing.T, authManager auth.AuthManager, createAcco
 		require.NoError(t, err)
 
 		// Old credentials
-		token, err = authManager.Login(context.Background(), credentials)
+		token, _, err = authManager.Login(context.Background(), credentials)
 		require.Error(t, err)
 		require.Empty(t, token)
 
 		// New Creds
-		token, err = authManager.Login(context.Background(), &auth.Credentials{
+		token, _, err = authManager.Login(context.Background(), &auth.Credentials{
 			Username: credentials.Username,
 			Password: "newPassword",
 		})

@@ -93,7 +93,7 @@ func (a *authPostgresManager) CreateAccount(ctx context.Context, credentials *Cr
 	return nil
 }
 
-func (a *authPostgresManager) Login(ctx context.Context, credentials *Credentials) (string, error) {
+func (a *authPostgresManager) Login(ctx context.Context, credentials *Credentials) (string, string, error) {
 	var accountId uuid.UUID
 	var role string
 
@@ -103,9 +103,9 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 		WHERE username = $1 AND password_hash = crypt($2, password_hash)
 	`, credentials.Username, credentials.Password).Scan(&accountId, &role); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", fmt.Errorf("invalid credentials")
+			return "", "", fmt.Errorf("invalid credentials")
 		}
-		return "", fmt.Errorf("failed to query user: %v", err)
+		return "", "", fmt.Errorf("failed to query user: %v", err)
 	}
 
 	now := time.Now()
@@ -121,17 +121,17 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 
 	signedToken, err := token.SignedString(a.secretKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %v", err)
+		return "", "", fmt.Errorf("failed to sign token: %v", err)
 	}
 
 	if _, err = a.pool.Exec(ctx, `
 		INSERT INTO tokens (account_id, token, expires_at)
 		VALUES ($1, $2, $3)
 	`, accountId, signedToken, expires); err != nil {
-		return "", fmt.Errorf("failed to store token: %v", err)
+		return "", "", fmt.Errorf("failed to store token: %v", err)
 	}
 
-	return signedToken, nil
+	return signedToken, role, nil
 }
 
 func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString string) (string, string, error) {

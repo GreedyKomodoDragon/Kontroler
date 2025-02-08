@@ -309,7 +309,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			})
 		}
 
-		token, err := authManager.Login(c.Context(), &req)
+		token, role, err := authManager.Login(c.Context(), &req)
 		if err != nil {
 			log.Error().Err(err).Msg("Error checking credentials")
 			return c.SendStatus(fiber.StatusInternalServerError)
@@ -330,7 +330,7 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 		})
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"message": "Login successful",
+			"role": role,
 		})
 	})
 	authRouter.Post("/create", roleMiddleware("admin"), func(c *fiber.Ctx) error {
@@ -390,13 +390,14 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 
-		username, _, err := authManager.IsValidLogin(c.Context(), jwtToken)
+		username, role, err := authManager.IsValidLogin(c.Context(), jwtToken)
 		if err != nil {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"username": username,
+			"role":     role,
 		})
 	})
 

@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import ErrorAlert from "../components/errorAlert";
 import SuccessfulAlert from "../components/successfulAlert";
 import { createAccount } from "../api/admin";
+import { Role, roleDescriptions } from "../types/admin";
 
 export default function CreateAccountPage() {
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
@@ -87,9 +88,7 @@ export default function CreateAccountPage() {
             />
           </div>
           <div>
-            <label class="block text-lg font-medium my-4">
-              Role
-            </label>
+            <label class="block text-lg font-medium my-4">Role</label>
             <select
               class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
               required
@@ -102,6 +101,29 @@ export default function CreateAccountPage() {
               <option value="editor">Editor</option>
               <option value="viewer">Viewer</option>
             </select>
+            {role() && <h4 class="mt-2">Permission:</h4>}
+            {role() &&
+              roleDescriptions[role() as Role]?.map(
+                (desc: string, index: number) => (
+                  <li class="flex items-center space-x-3 text-white p-2 rounded-md transition-colors">
+                    {/* green tick */}
+                    <svg
+                      class="w-5 h-5 text-green-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span>{desc}</span>
+                  </li>
+                )
+              )}
           </div>
 
           <div class="flex justify-center">
