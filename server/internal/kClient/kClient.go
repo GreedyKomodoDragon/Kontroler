@@ -118,6 +118,19 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		}
 	}
 
+	if dagForm.Workspace != nil {
+		spec["workspace"] = map[string]interface{}{
+			"enabled": dagForm.Workspace.Enabled,
+			"pvc": map[string]interface{}{
+				"accessModes":      dagForm.Workspace.PvcSpec.AccessModes,
+				"selector":         dagForm.Workspace.PvcSpec.Selector,
+				"resources":        dagForm.Workspace.PvcSpec.Resources,
+				"storageClassName": dagForm.Workspace.PvcSpec.StorageClassName,
+				"volumeMode":       dagForm.Workspace.PvcSpec.VolumeMode,
+			},
+		}
+	}
+
 	// Create the DAG object
 	dag := map[string]interface{}{
 		"apiVersion": "kontroler.greedykomodo/v1alpha1",
