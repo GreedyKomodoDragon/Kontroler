@@ -25,7 +25,7 @@ export default function ProfileTab() {
           </h4>
           <ul class="space-y-3">
             {auth.role() &&
-              roleDescriptions[auth.role() as Role].map(
+              roleDescriptions[auth.role() as Role]?.map(
                 (desc: string, index: number) => (
                   <li class="flex items-center space-x-3 text-gray-700 hover:bg-gray-50 p-2 rounded-md transition-colors">
                     {/* green tick */}

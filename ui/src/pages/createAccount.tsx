@@ -103,7 +103,7 @@ export default function CreateAccountPage() {
             </select>
             {role() && <h4 class="mt-2">Permission:</h4>}
             {role() &&
-              roleDescriptions[role() as Role].map(
+              roleDescriptions[role() as Role]?.map(
                 (desc: string, index: number) => (
                   <li class="flex items-center space-x-3 text-white p-2 rounded-md transition-colors">
                     {/* green tick */}
