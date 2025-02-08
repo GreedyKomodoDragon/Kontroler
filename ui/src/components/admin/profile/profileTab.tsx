@@ -1,28 +1,9 @@
 import { useAuth } from "../../../providers/authProvider";
+import { Role, roleDescriptions } from "../../../types/admin";
 
-// Define valid role types
-type Role = "admin" | "editor" | "viewer";
 
 export default function ProfileTab() {
   const auth = useAuth();
-
-  const roleDescriptions: Record<Role, string[]> = {
-    admin: [
-      "Admins have full access.",
-      "Can manage users.",
-      "Can edit content.",
-      "Can configure settings.",
-    ],
-    editor: [
-      "Editors can modify content.",
-      "Do not have access to user management.",
-      "Cannot change system settings.",
-    ],
-    viewer: [
-      "Viewers can only read content.",
-      "Cannot make any modifications.",
-    ],
-  };
 
   return (
     <div class="rounded-lg border bg-white text-gray-900 shadow-sm p-8">
@@ -43,17 +24,28 @@ export default function ProfileTab() {
             Your Permissions
           </h4>
           <ul class="space-y-3">
-            {auth.role() && roleDescriptions[auth.role() as Role].map((desc: string, index: number) => (
-              <li
-                class="flex items-center space-x-3 text-gray-700 hover:bg-gray-50 p-2 rounded-md transition-colors"
-              >
-                {/* green tick */}
-                <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                <span>{desc}</span>
-              </li>
-            ))}
+            {auth.role() &&
+              roleDescriptions[auth.role() as Role].map(
+                (desc: string, index: number) => (
+                  <li class="flex items-center space-x-3 text-gray-700 hover:bg-gray-50 p-2 rounded-md transition-colors">
+                    {/* green tick */}
+                    <svg
+                      class="w-5 h-5 text-green-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span>{desc}</span>
+                  </li>
+                )
+              )}
           </ul>
         </div>
       </div>
