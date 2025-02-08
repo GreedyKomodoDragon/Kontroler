@@ -14,6 +14,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<boolean>;
   username: () => string;
+  role: () => string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,6 +23,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
   const [isAuthenticated, setIsAuthenticated] = createSignal<boolean>(false);
   const [isLoading, setIsLoading] = createSignal<boolean>(true);
   const [username, setUsername] = createSignal<string>("");
+  const [role, setRole] = createSignal<string>("");
 
   const checkAuthentication = async () => {
     try {
@@ -34,7 +36,9 @@ export function AuthProvider(props: { children: JSX.Element }) {
         setIsAuthenticated(true);
         response.json().then((data) => {
           setUsername(data.username);
+          setRole(data.role);
         });
+
       } else {
         setIsAuthenticated(false);
       }
@@ -69,6 +73,12 @@ export function AuthProvider(props: { children: JSX.Element }) {
         setUsername(username);
         setIsAuthenticated(true);
         setIsLoading(false);
+        
+        const body = await response.json();
+        if (body.role) {
+          setRole(body.role);
+        }
+
         return true;
       }
 
@@ -105,6 +115,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
     login,
     logout,
     username,
+    role,
   };
 
   return (

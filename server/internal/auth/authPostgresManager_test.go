@@ -195,9 +195,10 @@ func Test_Postgres_TokenExpiration(t *testing.T) {
 	err = authManager.CreateAccount(context.Background(), createAccountReq)
 	require.NoError(t, err)
 
-	token, err := authManager.Login(context.Background(), credentials)
+	token, role, err := authManager.Login(context.Background(), credentials)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
+	require.Equal(t, "viewer", role)
 
 	// Simulate token expiration
 	_, err = pool.Exec(context.Background(), `

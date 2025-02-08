@@ -304,7 +304,7 @@ func (a *authSqliteManager) IsValidLogin(ctx context.Context, tokenString string
 	return username, role, nil
 }
 
-func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials) (string, error) {
+func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials) (string, string, error) {
 	var accountId string
 	var storedPasswordHash string
 	var role string
@@ -315,13 +315,13 @@ func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials)
 		WHERE username = ?;
 	`, credentials.Username).Scan(&accountId, &storedPasswordHash, &role); err != nil {
 		if err == sql.ErrNoRows {
-			return "", fmt.Errorf("invalid credentials")
+			return "", "", fmt.Errorf("invalid credentials")
 		}
-		return "", fmt.Errorf("failed to query user: %v", err)
+		return "", "", fmt.Errorf("failed to query user: %v", err)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(storedPasswordHash), []byte(credentials.Password)); err != nil {
-		return "", fmt.Errorf("invalid credentials")
+		return "", "", fmt.Errorf("invalid credentials")
 	}
 
 	now := time.Now()
@@ -337,7 +337,7 @@ func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials)
 
 	signedToken, err := token.SignedString(a.secretKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %v", err)
+		return "", "", fmt.Errorf("failed to sign token: %v", err)
 	}
 
 	_, err = a.db.ExecContext(ctx, `
@@ -345,10 +345,10 @@ func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials)
 		VALUES (?, ?, ?);
 	`, accountId, signedToken, expires)
 	if err != nil {
-		return "", fmt.Errorf("failed to store token: %v", err)
+		return "", "", fmt.Errorf("failed to store token: %v", err)
 	}
 
-	return signedToken, nil
+	return signedToken, role, nil
 }
 
 func (a *authSqliteManager) RevokeToken(ctx context.Context, tokenString string) error {
