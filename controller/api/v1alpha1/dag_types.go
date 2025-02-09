@@ -149,8 +149,10 @@ type DAGSpec struct {
 
 // DAGStatus defines the observed state of DAG
 type DAGStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// shows the current phase of the DAG
+	Phase string `json:"phase,omitempty"`
+	// reason for the current phase
+	Message string `json:"message,omitempty"`
 }
 
 //+kubebuilder:object:root=true

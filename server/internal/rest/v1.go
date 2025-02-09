@@ -231,6 +231,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 			})
 		}
 
+		log.Info().Msg("DAG created successfully")
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 			"message": "DAG created successfully",
 		})

@@ -10,7 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.20.4
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.31.0
-	k8s.io/apimachinery v0.32.0
+	k8s.io/apimachinery v0.32.1
 )
 
 require (
@@ -131,6 +131,7 @@ require (
 	github.com/valyala/fasthttp v1.56.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
+	k8s.io/api v0.32.1
 	k8s.io/client-go v0.31.0
 	modernc.org/sqlite v1.33.1
 )

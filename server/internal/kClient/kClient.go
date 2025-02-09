@@ -118,6 +118,19 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		}
 	}
 
+	if dagForm.Workspace != nil {
+		spec["workspace"] = map[string]interface{}{
+			"enable": dagForm.Workspace.Enabled,
+			"pvc": map[string]interface{}{
+				"accessModes":      dagForm.Workspace.PvcSpec.AccessModes,
+				"selector":         dagForm.Workspace.PvcSpec.Selector,
+				"resources":        dagForm.Workspace.PvcSpec.Resources,
+				"storageClassName": dagForm.Workspace.PvcSpec.StorageClassName,
+				"volumeMode":       dagForm.Workspace.PvcSpec.VolumeMode,
+			},
+		}
+	}
+
 	// Create the DAG object
 	dag := map[string]interface{}{
 		"apiVersion": "kontroler.greedykomodo/v1alpha1",
@@ -141,8 +154,55 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		Object: dag,
 	}
 
-	_, err := client.Resource(gvr).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
-	return err
+	dagResource, err := client.Resource(gvr).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create DAG: %w", err)
+	}
+
+	// Wait for reconciliation with timeout
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for DAG reconciliation")
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for DAG reconciliation")
+		case <-ticker.C:
+			// Get latest DAG status
+			current, err := client.Resource(gvr).Namespace(dagForm.Namespace).Get(ctx, dagResource.GetName(), metav1.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to get DAG status: %w", err)
+			}
+
+			// Check status conditions
+			status, found, err := unstructured.NestedString(current.Object, "status", "phase")
+			if err != nil {
+				return fmt.Errorf("failed to get status conditions: %w", err)
+			}
+
+			if !found {
+				continue // Status not yet set
+			}
+
+			if status == "Failed" {
+				message, found, err := unstructured.NestedString(current.Object, "status", "phase")
+				if err != nil {
+					return fmt.Errorf("failed to get message/reason for failed: %w", err)
+				}
+
+				if !found {
+					return fmt.Errorf("DAG failed to reconcile, but no reason given")
+				}
+
+				return fmt.Errorf("DAG failed to reconcile, reason: %s", message)
+			}
+
+			return nil
+		}
+	}
 }
 
 func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) (int64, error) {

@@ -1,5 +1,10 @@
 package kclient
 
+import (
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
 type Metadata struct {
 	Labels map[string]string `json:"labels"`
 	Name   string            `json:"name"`
@@ -91,6 +96,20 @@ type TaskRef struct {
 	Version int    `json:"version"`
 }
 
+type PVC struct {
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes"`
+	// +optional
+	Selector         *metav1.LabelSelector        `json:"selector,omitempty"`
+	Resources        corev1.ResourceRequirements  `json:"resources,omitempty"`
+	StorageClassName *string                      `json:"storageClassName,omitempty"`
+	VolumeMode       *corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
+}
+
+type Workspace struct {
+	Enabled bool `json:"enable"`
+	PvcSpec PVC  `json:"pvc"`
+}
+
 // DagFormObj represents the overall DAG form object.
 type DagFormObj struct {
 	Name       string             `json:"name"`
@@ -99,6 +118,7 @@ type DagFormObj struct {
 	Parameters []DagParameterSpec `json:"parameters,omitempty"`
 	Namespace  string             `json:"namespace"`
 	Webhook    Webhook            `json:"webhook"`
+	Workspace  *Workspace         `json:"workspace,omitempty"`
 }
 
 type Webhook struct {
