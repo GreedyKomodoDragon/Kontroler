@@ -5,6 +5,7 @@ import { A, useParams } from "@solidjs/router";
 import LoadingIcon from "../components/loadingIcon";
 import DagViz from "../components/dagViz";
 import { PodStatusTable } from "../components/tables/podStatusTable";
+import LoadingButton from "../components/inputs/loadingbutton";
 
 const DagRun: Component = () => {
   const params = useParams();
@@ -31,7 +32,18 @@ const DagRun: Component = () => {
         <LoadingIcon />
       ) : (
         <div class="p-6 shadow-lg rounded-lg">
-          <h2 class="text-3xl font-bold mb-4">Run ID: {dataRunMeta()?.id}</h2>
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-3xl font-bold">Run ID: {dataRunMeta()?.id}</h2>
+            <LoadingButton
+              onClick={async () => {
+                // wait faction of second to show loading icon
+                await new Promise((r) => setTimeout(r, 100));
+                getDagRunAll(parseInt(params.id)).then((data) =>
+                  setDataRunMeta(data)
+                );
+              }}
+            />
+          </div>
           <hr class="mb-4 border-gray-300" />
           <h4 class="text-xl font-semibold mb-4 ">
             DAG: {dataRunMeta()?.dagId}
