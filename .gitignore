@@ -3,3 +3,4 @@
 *.srl
 scripts/secret.yaml
 *.p12
+.DS_Store

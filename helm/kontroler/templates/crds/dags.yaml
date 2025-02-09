@@ -3273,6 +3273,14 @@ spec:
             type: object
           status:
             description: DAGStatus defines the observed state of DAG
+            properties:
+              message:
+                description: reason for the current phase
+                type: string
+              phase:
+                description: shows the current phase of the DAG
+                description: reason for the current phase
+                type: string
             type: object
         type: object
     served: true

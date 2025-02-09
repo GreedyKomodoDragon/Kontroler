@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, Setter } from "solid-js";
+import { createEffect, onCleanup, onMount, Setter } from "solid-js";
 import { Network, Data, Options } from "vis-network/standalone/esm/vis-network";
 
 type Task = {
@@ -94,20 +94,25 @@ export default function DagViz(props: DagVizProps) {
     return edges;
   };
 
-  const nodes = generateNodes();
-  const edges = generateEdges();
 
+  let network: Network | undefined;
   let networkContainer: HTMLDivElement | undefined;
 
-  createEffect(() => {
-    if (networkContainer) {
+  onMount(() => {
+    createEffect(() => {
+      if (!networkContainer) return;
+
+      // Cleanup previous network instance
+      if (network) {
+        network.destroy();
+      }
+
       const data: Data = {
-        nodes: nodes,
-        edges: edges,
+        nodes: generateNodes(),
+        edges: generateEdges(),
       };
 
       const options: Options = {
-        // Means DAG do not change each time they are reloaded - makes it hard to follow the flow
         layout: {
           randomSeed: 400,
         },
@@ -127,19 +132,25 @@ export default function DagViz(props: DagVizProps) {
         },
       };
 
-      const network = new Network(networkContainer, data, options);
+      try {
+        network = new Network(networkContainer, data, options);
 
-      network.on("click", (event) => {
-        if (event.nodes.length != 0 && props.setSelectedTask) {
-          props.setSelectedTask(parseInt(event.nodes[0]));
-        }
-      });
+        network.on("click", (event) => {
+          if (event.nodes.length != 0 && props.setSelectedTask) {
+            props.setSelectedTask(parseInt(event.nodes[0]));
+          }
+        });
+      } catch (error) {
+        console.error("Error creating network:", error);
+      }
+    });
 
-      // Cleanup the network instance when the component is unmounted
-      onCleanup(() => {
+    onCleanup(() => {
+      if (network) {
         network.destroy();
-      });
-    }
+        network = undefined;
+      }
+    });
   });
 
   return (
