@@ -56,12 +56,9 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	// Fetch the DAG object that triggered the reconciliation
 	var dag kontrolerv1alpha1.DAG
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
-		// Handle the case where the DAG object was deleted before reconciliation
 		if errors.IsNotFound(err) {
 			return r.handleDeletion(ctx, req, dag)
 		}
-
-		// Return error if unable to fetch DAG object
 		return ctrl.Result{}, err
 	}
 
@@ -74,22 +71,20 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	for _, val := range dag.Spec.Task {
 		if val.TaskRef != nil {
 			if val.TaskRef.Name == "" || val.TaskRef.Version == 0 {
-				return ctrl.Result{}, fmt.Errorf("missing name or version")
+				return r.markDAGFailed(ctx, &dag, "missing name or version")
 			}
-
 			taskRefs = append(taskRefs, *val.TaskRef)
 		}
 	}
 
 	refParams, err := r.DbManager.GetTaskRefsParameters(ctx, taskRefs)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed at GetTaskRefsParameters: %s", err.Error())
+		return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed at GetTaskRefsParameters: %s", err.Error()))
 	}
 
 	// Validate the DAG
 	if err := dag.ValidateDAG(refParams); err != nil {
-		// Return error if DAG is not valid
-		return ctrl.Result{}, fmt.Errorf("failed to validate dag: %s", err.Error())
+		return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to validate dag: %s", err.Error()))
 	}
 
 	// Store the DAG object in the database
@@ -98,13 +93,33 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			log.Log.Info("reconcile event", "controller", "dag", "event", "applying the same dag")
 			return ctrl.Result{}, nil
 		}
-
-		return ctrl.Result{}, fmt.Errorf("failed to store dag in db: %s", err.Error())
+		return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to store dag in db: %s", err.Error()))
 	}
 
-	// Add Finialiser to DagTasks if they are used
 	r.updatingDagTaskFinalisers(ctx, taskRefs, req.Namespace)
 
+	return r.markDAGSuccessful(ctx, &dag)
+}
+
+func (r *DAGReconciler) markDAGFailed(ctx context.Context, dag *kontrolerv1alpha1.DAG, reason string) (ctrl.Result, error) {
+	dag.Status.Phase = "Failed"
+	dag.Status.Message = reason
+	if err := r.Status().Update(ctx, dag); err != nil {
+		log.Log.Error(err, "failed to update DAG status", "dag", dag.Name)
+		return ctrl.Result{}, err
+	}
+	log.Log.Info("DAG marked as failed", "dag", dag.Name, "reason", reason)
+	return ctrl.Result{}, nil
+}
+
+func (r *DAGReconciler) markDAGSuccessful(ctx context.Context, dag *kontrolerv1alpha1.DAG) (ctrl.Result, error) {
+	dag.Status.Phase = "Successful"
+	dag.Status.Message = "DAG reconciled successfully"
+	if err := r.Status().Update(ctx, dag); err != nil {
+		log.Log.Error(err, "failed to update DAG status", "dag", dag.Name)
+		return ctrl.Result{}, err
+	}
+	log.Log.Info("DAG marked as successful", "dag", dag.Name)
 	return ctrl.Result{}, nil
 }
 
