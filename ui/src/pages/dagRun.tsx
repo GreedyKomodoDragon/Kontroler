@@ -16,6 +16,19 @@ const DagRun: Component = () => {
     TaskRunDetails | undefined
   >();
 
+  // Initial load
+  const loadDagRun = async () => {
+    try {
+      const data = await getDagRunAll(parseInt(params.id));
+      setDataRunMeta(data);
+    } catch (error) {
+      console.error("Error loading DAG run:", error);
+    }
+  };
+
+  // Load initial data
+  loadDagRun();
+
   getDagRunAll(parseInt(params.id)).then((data) => setDataRunMeta(data));
 
   createEffect(() => {
@@ -38,9 +51,7 @@ const DagRun: Component = () => {
               onClick={async () => {
                 // wait faction of second to show loading icon
                 await new Promise((r) => setTimeout(r, 100));
-                getDagRunAll(parseInt(params.id)).then((data) =>
-                  setDataRunMeta(data)
-                );
+                await loadDagRun();
               }}
             />
           </div>
