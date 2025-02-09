@@ -29,8 +29,6 @@ const DagRun: Component = () => {
   // Load initial data
   loadDagRun();
 
-  getDagRunAll(parseInt(params.id)).then((data) => setDataRunMeta(data));
-
   createEffect(() => {
     if (selectedTask() === -1) return;
 
@@ -50,6 +48,7 @@ const DagRun: Component = () => {
             <LoadingButton
               onClick={async () => {
                 // wait faction of second to show loading icon
+                // TODO: replace with pop up message
                 await new Promise((r) => setTimeout(r, 100));
                 await loadDagRun();
               }}
