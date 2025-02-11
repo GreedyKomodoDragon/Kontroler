@@ -24,7 +24,7 @@ func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, 
 
 	// check if a bucket has been selected/log fetching enabled
 	if logFetcher != nil {
-		addLogs(router, logFetcher)
+		addLogs(router, logFetcher, dbManager)
 	}
 }
 
@@ -455,13 +455,23 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 	})
 }
 
-func addLogs(router fiber.Router, logFetcher logs.LogFetcher) {
+func addLogs(router fiber.Router, logFetcher logs.LogFetcher, db db.DbManager) {
 	logRouter := router.Group("/logs")
 
 	logRouter.Get("/run/:run/pod/:pod", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
-		podName := c.Params("pod")
-		if podName == "" {
+		podUID := c.Params("pod")
+		if podUID == "" {
 			return c.SendStatus(fiber.StatusBadRequest)
+		}
+
+		exists, err := db.PodExists(c.Context(), podUID)
+		if err != nil {
+			log.Error().Err(err).Msg("Error checking if pod exists")
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+
+		if !exists {
+			return c.SendStatus(fiber.StatusNotFound)
 		}
 
 		runStr := c.Params("run")
@@ -474,6 +484,6 @@ func addLogs(router fiber.Router, logFetcher logs.LogFetcher) {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		return logs.ServeLogWithRange(c, runId, podName, logFetcher)
+		return logs.ServeLogWithRange(c, runId, podUID, logFetcher)
 	})
 }

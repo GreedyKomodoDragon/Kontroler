@@ -9,6 +9,7 @@ import (
 	kclient "kontroler-server/internal/kClient"
 	"kontroler-server/internal/logs"
 	"kontroler-server/internal/rest"
+	"kontroler-server/internal/ws"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gofiber/websocket/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
@@ -114,7 +116,18 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create a log fetcher")
 	}
 
+	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, kubClient)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create a log streamer")
+	}
+
 	app := rest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
+
+	// Apply authentication middleware BEFORE WebSocket upgrade
+	app.Use("/ws/logs", ws.Auth(authManager))
+
+	// Secure WebSocket route
+	app.Get("/ws/logs", websocket.New(logStreamer.StreamLogs))
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())

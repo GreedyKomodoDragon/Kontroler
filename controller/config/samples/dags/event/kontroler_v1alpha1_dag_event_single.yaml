@@ -1,0 +1,24 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  labels:
+    app.kubernetes.io/name: dag
+    app.kubernetes.io/instance: dag-sample
+    app.kubernetes.io/part-of: operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: operator
+  name: dag-single
+spec:
+  task:
+    - name: "random"
+      command: ["sh", "-c"]
+      args:
+        [
+          "if [ $((RANDOM%2)) -eq 0 ]; then echo $second; else exit 1; fi",
+        ]
+      image: "alpine:latest"
+      backoff:
+        limit: 5
+      conditional:
+        enabled: false
+        retryCodes: []
