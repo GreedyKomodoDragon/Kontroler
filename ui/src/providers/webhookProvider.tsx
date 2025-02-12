@@ -29,7 +29,6 @@ export function WebSocketProvider(props: { children: any }) {
     socket.onopen = () => console.log("WebSocket Connected");
     socket.onmessage = (event) => {
       if (isStreaming()) {
-        console.log("WebSocket Message:", event.data);
         setLogs((prev) => [...prev, event.data]); // Append new logs
       }
     };
