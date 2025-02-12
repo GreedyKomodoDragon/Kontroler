@@ -1,23 +1,25 @@
 package ws
 
 import (
+	"context"
 	"kontroler-server/internal/db"
 	"log"
 	"time"
 
 	"github.com/gofiber/websocket/v2"
-	"k8s.io/client-go/dynamic"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 type WebSocketLogStream struct {
 	db        db.DbManager
-	kubClient dynamic.Interface
+	clientSet *kubernetes.Clientset
 }
 
-func NewWebSocketLogStream(db db.DbManager, kubClient dynamic.Interface) *WebSocketLogStream {
+func NewWebSocketLogStream(db db.DbManager, clientSet *kubernetes.Clientset) *WebSocketLogStream {
 	return &WebSocketLogStream{
 		db:        db,
-		kubClient: kubClient,
+		clientSet: clientSet,
 	}
 }
 
@@ -31,19 +33,44 @@ func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
 
 	podUUID := c.Query("pod")
 	if podUUID == "" {
-		log.Println("❌ No pod UUID provided, closing connection")
 		c.WriteMessage(websocket.CloseMessage, []byte("Missing pod UUID"))
 		return
 	}
 
-	// Simulated log streaming
-	for i := 1; i <= 50; i++ {
-		logMessage := []byte("Log Entry " + podUUID)
-		if err := c.WriteMessage(websocket.TextMessage, logMessage); err != nil {
-			log.Println("WebSocket write error:", err)
+	namespace, name, err := w.db.GetPodNameAndNamespace(context.Background(), podUUID)
+	if err != nil {
+		c.WriteMessage(websocket.CloseMessage, []byte("Failed to get logs"))
+		return
+	}
+
+	// Get logs from the pod
+	req := w.clientSet.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{
+		Follow: true,
+	})
+
+	logStream, err := req.Stream(context.TODO())
+	if err != nil {
+		c.WriteMessage(websocket.CloseMessage, []byte("Failed to get logs"))
+		return
+	}
+	defer logStream.Close()
+
+	for {
+		buf := make([]byte, 1024)
+		n, err := logStream.Read(buf)
+		if err != nil {
+			log.Println("Error reading log stream:", err)
 			break
 		}
 
-		time.Sleep(1 * time.Second)
+		err = c.WriteMessage(websocket.TextMessage, buf[:n])
+		if err != nil {
+			log.Println("Error writing message to WebSocket:", err)
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
 	}
+
+	c.WriteMessage(websocket.CloseMessage, []byte("finished"))
 }

@@ -714,3 +714,17 @@ func (p *postgresManager) PodExists(ctx context.Context, podUID string) (bool, e
 
 	return exists, nil
 }
+
+func (p *postgresManager) GetPodNameAndNamespace(ctx context.Context, podUID string) (string, string, error) {
+	var namespace string
+	var name string
+	if err := p.pool.QueryRow(ctx, `
+	SELECT namespace, name
+	FROM Task_Pods
+	WHERE pod_uid = $1;
+	`, podUID).Scan(&namespace, &name); err != nil {
+		return "", "", err
+	}
+
+	return namespace, name, nil
+}

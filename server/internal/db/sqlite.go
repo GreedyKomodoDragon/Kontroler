@@ -838,6 +838,20 @@ func (s *sqliteManager) PodExists(ctx context.Context, podUID string) (bool, err
 	return exists, nil
 }
 
+func (s *sqliteManager) GetPodNameAndNamespace(ctx context.Context, podUID string) (string, string, error) {
+	var namespace string
+	var name string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT namespace, name
+		FROM Task_Pods
+		WHERE Pod_UID = ?;
+	`, podUID).Scan(&namespace, &name); err != nil {
+		return "", "", err
+	}
+
+	return namespace, name, nil
+}
+
 func generateQuestionMarks(slice []string) string {
 	length := len(slice)
 

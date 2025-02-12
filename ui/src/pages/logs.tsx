@@ -9,6 +9,7 @@ import { useWebSocket } from "../providers/webhookProvider";
 export default function Logs() {
   const params = useParams();
   const { logs: liveLogs, startLogs, stopLogs, isStreaming } = useWebSocket();
+  const [lastStreamAttempt, setLastStreamAttempt] = createSignal(0);
 
   // Fetch logs via API
   const logs = createQuery(() => ({
@@ -17,11 +18,16 @@ export default function Logs() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   }));
 
-  // Start WebSocket streaming if logs are empty
+  const RETRY_COOLDOWN = 2000; // 2 seconds
+
+  // Start WebSocket streaming if logs are empty, with cooldown
   createEffect(() => {
     if (logs.isSuccess && !logs.data?.trim() && liveLogs().length === 0) {
-      console.log("No logs available, starting WebSocket stream...");
-      startLogs(params.pod);
+      const now = Date.now();
+      if (now - lastStreamAttempt() >= RETRY_COOLDOWN) {
+        setLastStreamAttempt(now);
+        startLogs(params.pod);
+      }
     }
   });
 

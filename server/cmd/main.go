@@ -106,7 +106,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
 	}
 
-	kubClient, err := kclient.NewClient()
+	kubClient, clientset, err := kclient.NewClients()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a kubernetes client")
 	}
@@ -116,7 +116,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create a log fetcher")
 	}
 
-	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, kubClient)
+	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, clientset)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a log streamer")
 	}
