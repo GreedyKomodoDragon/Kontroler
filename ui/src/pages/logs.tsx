@@ -18,7 +18,7 @@ export default function Logs() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   }));
 
-  const RETRY_COOLDOWN = 2000; // 2 seconds
+  const RETRY_COOLDOWN = 500;
 
   // Start WebSocket streaming if logs are empty, with cooldown
   createEffect(() => {
@@ -33,6 +33,7 @@ export default function Logs() {
 
   // Stop streaming when leaving the page
   onCleanup(() => {
+    setLastStreamAttempt(0);
     stopLogs();
   });
 
