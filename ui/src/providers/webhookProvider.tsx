@@ -19,24 +19,48 @@ export function WebSocketProvider(props: { children: any }) {
   const [ws, setWs] = createSignal<WebSocket | null>(null);
   const [logs, setLogs] = createSignal<string[]>([]);
   const [isStreaming, setIsStreaming] = createSignal<boolean>(false);
+  const [currentPodUID, setCurrentPodUID] = createSignal<string | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = createSignal<number>(0);
+
+  const MAX_RECONNECT_ATTEMPTS = 3;
 
   // Establish WebSocket connection
   const connectWebSocket = (podUUID: string) => {
-    if (ws()) return; // Avoid duplicate connections
+    // Close existing connection if switching pods
+    if (ws() && currentPodUID() !== podUUID) {
+      ws()?.close();
+      setWs(null);
+      setLogs([]); // Clear logs when switching pods
+    }
+
+    if (ws()) return; // Avoid duplicate connections for same pod
 
     const socket = new WebSocket(`ws://localhost:8082/ws/logs?pod=${podUUID}`);
+    setCurrentPodUID(podUUID);
 
-    socket.onopen = () => console.log("WebSocket Connected");
+    socket.onopen = () => {
+      console.log(`WebSocket Connected for pod: ${podUUID}`);
+      setReconnectAttempts(0); // Reset reconnect attempts on successful connection
+    };
+
     socket.onmessage = (event) => {
-      if (isStreaming()) {
-        setLogs((prev) => [...prev, event.data]); // Append new logs
+      if (isStreaming() && currentPodUID() === podUUID) {
+        const timestamp = new Date().toISOString();
+        const logEntry = `[${timestamp}] ${event.data}`;
+        setLogs((prev) => [...prev, logEntry]);
       }
     };
-    socket.onerror = (err) => console.error("WebSocket Error:", err);
+
     socket.onclose = () => {
-      console.log("WebSocket Disconnected");
+      console.log(`WebSocket Disconnected for pod ${podUUID}`);
       setIsStreaming(false);
-      setWs(null); // Reset WebSocket on disconnect
+      setWs(null);
+
+      // Attempt reconnection if streaming was active
+      if (isStreaming() && reconnectAttempts() < MAX_RECONNECT_ATTEMPTS) {
+        setReconnectAttempts((prev) => prev + 1);
+        setTimeout(() => connectWebSocket(podUUID), 1000 * reconnectAttempts());
+      }
     };
 
     setWs(socket);
@@ -44,7 +68,16 @@ export function WebSocketProvider(props: { children: any }) {
 
   // Start log streaming
   const startLogs = (podUID: string) => {
-    if (!ws()) connectWebSocket(podUID); // Ensure connection is active
+    if (!podUID) {
+      console.error("Invalid pod UID provided");
+      return;
+    }
+
+    if (currentPodUID() !== podUID) {
+      setLogs([]); // Clear logs when switching pods
+    }
+
+    connectWebSocket(podUID);
     setIsStreaming(true);
   };
 
@@ -53,13 +86,17 @@ export function WebSocketProvider(props: { children: any }) {
     if (ws()) {
       setIsStreaming(false);
       ws()?.close();
-      setLogs([]); // Clear logs
+      setLogs([]);
+      setCurrentPodUID(null);
+      setReconnectAttempts(0);
     }
   };
 
   // Close WebSocket when provider unmounts
   onCleanup(() => {
     ws()?.close();
+    setCurrentPodUID(null);
+    setReconnectAttempts(0);
   });
 
   return (
