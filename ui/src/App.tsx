@@ -38,7 +38,6 @@ const Layout: Component<{ children: JSX.Element }> = (props) => {
   );
 };
 
-
 const queryClient = new QueryClient();
 
 // Main App component
