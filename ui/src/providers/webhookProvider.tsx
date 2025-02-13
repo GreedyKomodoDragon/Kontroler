@@ -83,13 +83,11 @@ export function WebSocketProvider(props: { children: any }) {
 
   // Stop log streaming
   const stopLogs = () => {
-    if (ws()) {
-      setIsStreaming(false);
-      ws()?.close();
-      setLogs([]);
-      setCurrentPodUID(null);
-      setReconnectAttempts(0);
-    }
+    setIsStreaming(false);
+    ws()?.close();
+    setLogs([]);
+    setCurrentPodUID(null);
+    setReconnectAttempts(0);
   };
 
   // Close WebSocket when provider unmounts
