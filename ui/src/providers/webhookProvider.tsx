@@ -24,6 +24,7 @@ export function WebSocketProvider(props: { children: any }) {
   const [reconnectAttempts, setReconnectAttempts] = createSignal<number>(0);
 
   const MAX_RECONNECT_ATTEMPTS = 3;
+  const MAX_LOGS = 1000;
 
   // Establish WebSocket connection
   const connectWebSocket = (podUUID: string) => {
@@ -48,7 +49,7 @@ export function WebSocketProvider(props: { children: any }) {
       if (isStreaming() && currentPodUID() === podUUID) {
         const timestamp = new Date().toISOString();
         const logEntry = `[${timestamp}] ${event.data}`;
-        setLogs((prev) => [...prev, logEntry]);
+        setLogs((prev) => [...prev.slice(-MAX_LOGS), logEntry]);
       }
     };
 

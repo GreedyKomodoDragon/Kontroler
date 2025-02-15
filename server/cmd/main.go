@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/websocket/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -117,14 +118,16 @@ func main() {
 	}
 
 	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, clientset)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create a log streamer")
-	}
 
 	app := rest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
 
 	// Apply authentication middleware BEFORE WebSocket upgrade
 	app.Use("/ws/logs", ws.Auth(authManager))
+
+	app.Use("/ws/logs", limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: 10 * time.Minute,
+	}))
 
 	// Secure WebSocket route
 	app.Get("/ws/logs", websocket.New(logStreamer.StreamLogs))
