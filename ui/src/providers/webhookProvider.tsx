@@ -5,6 +5,7 @@ import {
   onCleanup,
   Accessor,
 } from "solid-js";
+import { getWebsocketUrl } from "../api/utils";
 
 interface WebSocketContextType {
   logs: Accessor<string[]>;
@@ -35,7 +36,7 @@ export function WebSocketProvider(props: { children: any }) {
 
     if (ws()) return; // Avoid duplicate connections for same pod
 
-    const socket = new WebSocket(`ws://localhost:8082/ws/logs?pod=${podUUID}`);
+    const socket = new WebSocket(`${getWebsocketUrl()}/ws/logs?pod=${podUUID}`);
     setCurrentPodUID(podUUID);
 
     socket.onopen = () => {
