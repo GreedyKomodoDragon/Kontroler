@@ -209,6 +209,7 @@ ui:
   imagePullPolicy: Always
   env:
     API_URL: "http://localhost:3000"
+    WS_URL: "ws://localhost:3000"
   serviceAccount:
     create: true
     annotations: {}

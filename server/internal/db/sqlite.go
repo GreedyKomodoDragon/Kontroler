@@ -823,6 +823,35 @@ func (s *sqliteManager) GetDagTaskPageCount(ctx context.Context, limit int) (int
 	return pages, nil
 }
 
+func (s *sqliteManager) PodExists(ctx context.Context, podUID string) (bool, error) {
+	// Check if the pod exists
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+	SELECT EXISTS(
+		SELECT 1
+		FROM Task_Pods
+		WHERE Pod_UID = ?
+	);`, podUID).Scan(&exists); err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
+func (s *sqliteManager) GetPodNameAndNamespace(ctx context.Context, podUID string) (string, string, error) {
+	var namespace string
+	var name string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT namespace, name
+		FROM Task_Pods
+		WHERE Pod_UID = ?;
+	`, podUID).Scan(&namespace, &name); err != nil {
+		return "", "", err
+	}
+
+	return namespace, name, nil
+}
+
 func generateQuestionMarks(slice []string) string {
 	length := len(slice)
 

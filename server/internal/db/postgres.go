@@ -699,3 +699,32 @@ func (p *postgresManager) GetDagTaskPageCount(ctx context.Context, limit int) (i
 
 	return pages, nil
 }
+
+func (p *postgresManager) PodExists(ctx context.Context, podUID string) (bool, error) {
+	// Check if the pod exists
+	var exists bool
+	if err := p.pool.QueryRow(ctx, `
+	SELECT EXISTS(
+		SELECT 1
+		FROM Task_Pods
+		WHERE Pod_UID = $1
+	);`, podUID).Scan(&exists); err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
+func (p *postgresManager) GetPodNameAndNamespace(ctx context.Context, podUID string) (string, string, error) {
+	var namespace string
+	var name string
+	if err := p.pool.QueryRow(ctx, `
+	SELECT namespace, name
+	FROM Task_Pods
+	WHERE pod_uid = $1;
+	`, podUID).Scan(&namespace, &name); err != nil {
+		return "", "", err
+	}
+
+	return namespace, name, nil
+}

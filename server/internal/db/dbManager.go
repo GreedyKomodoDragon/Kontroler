@@ -130,6 +130,8 @@ type DbManager interface {
 	GetIsSecrets(ctx context.Context, dagName string, parameterNames []string) (map[string]bool, error)
 	GetDagTasks(ctx context.Context, limit int, offset int) ([]*DagTaskDetails, error)
 	GetDagTaskPageCount(ctx context.Context, limit int) (int, error)
+	PodExists(ctx context.Context, podUID string) (bool, error)
+	GetPodNameAndNamespace(ctx context.Context, podUID string) (string, string, error)
 
 	Close()
 }

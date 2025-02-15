@@ -9,6 +9,7 @@ import (
 	kclient "kontroler-server/internal/kClient"
 	"kontroler-server/internal/logs"
 	"kontroler-server/internal/rest"
+	"kontroler-server/internal/ws"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/websocket/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
@@ -104,7 +107,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
 	}
 
-	kubClient, err := kclient.NewClient()
+	kubClient, clientset, err := kclient.NewClients()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a kubernetes client")
 	}
@@ -114,7 +117,20 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create a log fetcher")
 	}
 
+	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, clientset)
+
 	app := rest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
+
+	// Apply authentication middleware BEFORE WebSocket upgrade
+	app.Use("/ws/logs", ws.Auth(authManager))
+
+	app.Use("/ws/logs", limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: 10 * time.Minute,
+	}))
+
+	// Secure WebSocket route
+	app.Get("/ws/logs", websocket.New(logStreamer.StreamLogs))
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())

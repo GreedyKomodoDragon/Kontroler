@@ -39,6 +39,8 @@ spec:
           env:
           - name: API_URL
             value: {{ .Values.ui.env.API_URL }}
+          - name: WS_URL
+            value: {{ .Values.ui.env.WS_URL }}
           ports:
             - name: http
               containerPort: {{ .Values.ui.service.port }}
