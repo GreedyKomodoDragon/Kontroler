@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -278,18 +279,24 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 	return runID, err
 }
 
-func NewClient() (dynamic.Interface, error) {
+func NewClients() (dynamic.Interface, *kubernetes.Clientset, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return dynClient, nil
+	// Create a Kubernetes clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return dynClient, clientset, nil
 }
 
 func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (int64, error) {

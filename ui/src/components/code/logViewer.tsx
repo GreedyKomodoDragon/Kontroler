@@ -1,5 +1,5 @@
 import { highlightAllUnder } from "prismjs";
-import { createEffect } from "solid-js";
+import { createEffect, createMemo } from "solid-js";
 import "prismjs/themes/prism.css";
 
 type LogHighlighterProps = {
@@ -8,6 +8,11 @@ type LogHighlighterProps = {
 
 export default function LogHighlighter(props: LogHighlighterProps) {
   let codeElement: HTMLPreElement | undefined;
+
+  // Create memoized values for log processing
+  const logLines = createMemo(() => props.logs.split("\n"));
+  const maxDigits = createMemo(() => String(logLines().length - 1).length);
+
 
   createEffect(() => {
     if (codeElement) {
@@ -21,16 +26,12 @@ export default function LogHighlighter(props: LogHighlighterProps) {
     return "language-info";
   };
 
-  // Split the logs into lines and get the maximum number of lines
-  const logLines = props.logs.split("\n");
-  const maxDigits = String(logLines.length - 1).length; // Determine max digits for padding
-
   return (
     <pre ref={codeElement} class="p-4 rounded-md overflow-auto">
-      {logLines.map((log, i) => (
+      {logLines().map((log, i) => (
         <>
           <code class={getLogClass(log)}>
-            {String(i).padStart(maxDigits, " ")}: {log}
+            {String(i).padStart(maxDigits(), " ")}: {log}
           </code>
           <br />
         </>

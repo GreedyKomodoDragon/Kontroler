@@ -1,6 +1,7 @@
 // Declare the structure of the window.__ENV__ object
 interface EnvConfig {
   API_URL: string;
+  WS_URL: string;
 }
 
 // Extend the Window interface to include __ENV__

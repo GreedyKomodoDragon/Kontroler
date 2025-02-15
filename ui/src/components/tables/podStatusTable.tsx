@@ -34,7 +34,7 @@ export function PodStatusTable(props: PodStatusTableProps) {
               <td class="px-4 py-2">{pod.exitCode}</td>
               <td class="px-4 py-2">
                 <A
-                  href={`/logs/run/${props.id}/pod/${pod.name}`}
+                  href={`/logs/run/${props.id}/pod/${pod.podUID}`}
                   class="inline-block rounded-md bg-sky-700 p-2 text-white"
                 >
                   See Logs

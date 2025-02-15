@@ -88,7 +88,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	}
 	defer logStream.Close()
 
-	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.Name)
+	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
 	buffer := bytes.NewBuffer(nil)
 	reader := bufio.NewReader(logStream)
 
