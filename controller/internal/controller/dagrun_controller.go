@@ -219,8 +219,13 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 
 	// Create the PVC
 	if err := r.Client.Create(ctx, pvc); err != nil {
-		log.Log.Error(err, "failed to create PVC", "pvc", pvc)
-		return "", err
+		// ignore if already created
+		if err := client.IgnoreAlreadyExists(err); err != nil {
+			return "", err
+		}
+
+		log.Log.Info("PVC already exists", "pvc", pvc.Name)
+		return pvcName, nil
 	}
 
 	log.Log.Info("PVC created successfully", "pvc", pvc.Name)
