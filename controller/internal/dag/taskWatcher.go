@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"kontroler-controller/api/v1alpha1"
@@ -38,7 +37,6 @@ type taskWatcher struct {
 	informer      cache.SharedIndexInformer
 	clientSet     *kubernetes.Clientset
 	taskAllocator TaskAllocator
-	lock          *sync.Mutex
 	logStore      object.LogStore
 	webhookChan   chan webhook.WebhookPayload
 }
@@ -68,7 +66,6 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 		informer:      informer,
 		clientSet:     clientSet,
 		taskAllocator: taskAllocator,
-		lock:          &sync.Mutex{},
 		logStore:      logStore,
 		webhookChan:   webhookChan,
 	}
@@ -235,15 +232,11 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 		return
 	}
 
-	// Mark this as success in db - Have to use lock to avoid getting already started task
-	t.lock.Lock()
 	tasks, err := t.dbManager.MarkSuccessAndGetNextTasks(ctx, taskRunId)
 	if err != nil {
 		log.Log.Error(err, "failed to mark outcome and get next task", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
-		t.lock.Unlock()
 		return
 	}
-	t.lock.Unlock()
 
 	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
 	if err != nil {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 )
 
 type postgresManager struct {
@@ -348,30 +348,21 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 
 func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
 	stats := DashboardStats{}
-	errChan := make(chan error, 5)
-	var wg sync.WaitGroup
 
-	wg.Add(5)
-	// Goroutine for DAG Count and DAG Type Counts
+	// use go error groups
+	eGroup := errgroup.Group{}
 
-	go func() {
-		defer wg.Done()
+	eGroup.Go(func() error {
 		dagCountsQuery := `
 			SELECT 
 				COUNT(dag_id) AS dag_count
 			FROM DAGs
 			WHERE active = TRUE;
 		`
-		row := p.pool.QueryRow(ctx, dagCountsQuery)
-		if err := row.Scan(&stats.DAGCount); err != nil {
-			errChan <- fmt.Errorf("failed to execute dagCountsQuery: %w", err)
-			return
-		}
-	}()
+		return p.pool.QueryRow(ctx, dagCountsQuery).Scan(&stats.DAGCount)
+	})
 
-	// Goroutine for DAG Runs Stats
-	go func() {
-		defer wg.Done()
+	eGroup.Go(func() error {
 		dagRunsQuery := `
 			SELECT 
 				COUNT(CASE WHEN status = 'success' AND run_time >= NOW() - INTERVAL '30 days' THEN 1 END) AS successful_dag_runs,
@@ -380,16 +371,12 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 				COUNT(CASE WHEN status = 'running' THEN 1 END) AS active_dag_runs
 			FROM DAG_Runs;
 		`
-		row := p.pool.QueryRow(ctx, dagRunsQuery)
-		if err := row.Scan(&stats.SuccessfulDagRuns, &stats.FailedDagRuns, &stats.TotalDagRuns, &stats.ActiveDagRuns); err != nil {
-			errChan <- fmt.Errorf("failed to execute dagRunsQuery: %w", err)
-			return
-		}
-	}()
+		return p.pool.QueryRow(ctx, dagRunsQuery).
+			Scan(&stats.SuccessfulDagRuns, &stats.FailedDagRuns, &stats.TotalDagRuns, &stats.ActiveDagRuns)
+	})
 
 	// Goroutine for Task Outcomes
-	go func() {
-		defer wg.Done()
+	eGroup.Go(func() error {
 		taskOutcomesQuery := `
 			SELECT 
 				SUM(CASE WHEN tr.status = 'success' THEN 1 ELSE 0 END) AS completed_tasks,
@@ -403,10 +390,8 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 			WHERE tp.max_updated_at >= NOW() - INTERVAL '30 days';
 		`
 		var completedTasks, failedTasks int
-		row := p.pool.QueryRow(ctx, taskOutcomesQuery)
-		if err := row.Scan(&completedTasks, &failedTasks); err != nil {
-			errChan <- fmt.Errorf("failed to execute taskOutcomesQuery: %w", err)
-			return
+		if err := p.pool.QueryRow(ctx, taskOutcomesQuery).Scan(&completedTasks, &failedTasks); err != nil {
+			return fmt.Errorf("failed to execute taskOutcomesQuery: %w", err)
 		}
 
 		// Set task outcomes
@@ -414,11 +399,12 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 			"Completed": completedTasks,
 			"Failed":    failedTasks,
 		}
-	}()
+
+		return nil
+	})
 
 	// Goroutine for DAG Type Counts
-	go func() {
-		defer wg.Done()
+	eGroup.Go(func() error {
 		dagTypeCountsQuery := `
 			SELECT 
 				CASE 
@@ -431,8 +417,7 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 		`
 		rows, err := p.pool.Query(ctx, dagTypeCountsQuery)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to execute dagTypeCountsQuery: %w", err)
-			return
+			return err
 		}
 		defer rows.Close()
 
@@ -441,16 +426,16 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 			var dagType string
 			var count int
 			if err := rows.Scan(&dagType, &count); err != nil {
-				errChan <- fmt.Errorf("failed to scan row for dagTypeCountsQuery: %w", err)
-				return
+				return fmt.Errorf("failed to scan row for dagTypeCountsQuery: %w", err)
 			}
 			stats.DAGTypeCounts[dagType] = count
 		}
-	}()
+
+		return nil
+	})
 
 	// Goroutine for Daily DAG Run Counts
-	go func() {
-		defer wg.Done()
+	eGroup.Go(func() error {
 		dailyDagRunCountsQuery := `
 			SELECT
 				date_trunc('day', run_time) AS day,
@@ -463,35 +448,27 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 		`
 		rows, err := p.pool.Query(ctx, dailyDagRunCountsQuery)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to execute dailyDagRunCountsQuery: %w", err)
-			return
+			return fmt.Errorf("failed to execute dailyDagRunCountsQuery: %w", err)
 		}
 		defer rows.Close()
 
 		for rows.Next() {
 			var dailyCount DailyDagRunCount
 			if err := rows.Scan(&dailyCount.Day, &dailyCount.SuccessfulCount, &dailyCount.FailedCount); err != nil {
-				errChan <- fmt.Errorf("failed to scan row for dailyDagRunCountsQuery: %w", err)
-				return
+				return fmt.Errorf("failed to scan row for dailyDagRunCountsQuery: %w", err)
 			}
+
 			stats.DailyDagRunCounts = append(stats.DailyDagRunCounts, dailyCount)
 		}
 		if err := rows.Err(); err != nil {
-			errChan <- fmt.Errorf("failed to iterate over dailyDagRunCounts rows: %w", err)
+			return fmt.Errorf("failed to iterate over dailyDagRunCounts rows: %w", err)
 		}
-	}()
 
-	// Wait for all goroutines to finish
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
+		return nil
+	})
 
-	// Check for errors
-	for err := range errChan {
-		if err != nil {
-			return nil, err
-		}
+	if err := eGroup.Wait(); err != nil {
+		return nil, err
 	}
 
 	return &stats, nil

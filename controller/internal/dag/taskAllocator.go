@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"kontroler-controller/internal/db"
 	"kontroler-controller/internal/utils"
@@ -27,6 +28,13 @@ const (
 	annotationTaskID   = "kontroler/task-id"
 
 	finalizerLogCollection = "kontroler/logcollection"
+	initScriptCommand      = `printf %s > /script/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
+						chmod 555 /script/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`
+)
+
+var (
+	finaliserSlice    []string = []string{finalizerLogCollection}
+	scriptExecCommand          = []string{"bash", "-c", "/script/my-script.sh"}
 )
 
 type TaskAllocator interface {
@@ -38,12 +46,29 @@ type TaskAllocator interface {
 type taskAllocator struct {
 	clientSet *kubernetes.Clientset
 	id        string
+	podPool   *sync.Pool
 }
 
 func NewTaskAllocator(clientSet *kubernetes.Clientset, id string) TaskAllocator {
+	pool := &sync.Pool{
+		New: func() any {
+			return &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						labelManagedBy:     "kontroler",
+						labelKontrolerType: "task",
+					},
+					Annotations: map[string]string{},
+					Finalizers:  finaliserSlice,
+				},
+			}
+		},
+	}
+
 	return &taskAllocator{
 		clientSet: clientSet,
 		id:        id,
+		podPool:   pool,
 	}
 }
 
@@ -63,23 +88,18 @@ func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, d
 func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
 	podSpec := t.createPodSpec(&task, envs, resources)
 
-	// Create pod metadata and pod object
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				labelManagedBy:     "kontroler",
-				labelKontrolerType: "task",
-				labelKontrolerID:   t.id,
-			},
-			Annotations: map[string]string{
-				annotationTaskRID:  strconv.Itoa(taskRunId),
-				annotationDagRunID: strconv.Itoa(dagRunId),
-				annotationTaskID:   strconv.Itoa(task.Id),
-			},
-			Finalizers: []string{finalizerLogCollection},
-		},
-		Spec: *podSpec,
-	}
+	// using pod pool to reduce struct re-creation
+	pod := t.podPool.Get().(*v1.Pod)
+	defer t.podPool.Put(pod)
+
+	// required metadata
+	pod.ObjectMeta.Labels[labelKontrolerID] = t.id
+	pod.ObjectMeta.Annotations[annotationTaskRID] = strconv.Itoa(taskRunId)
+	pod.ObjectMeta.Annotations[annotationDagRunID] = strconv.Itoa(dagRunId)
+	pod.ObjectMeta.Annotations[annotationTaskID] = strconv.Itoa(task.Id)
+
+	// set podspec
+	pod.Spec = *podSpec
 
 	// Attempt pod creation with retry on name collision
 	for i := 0; i < 5; i++ {
@@ -122,8 +142,7 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 				Name:  "script-copier",
 				Image: scriptInjectorImage,
 				Command: []string{
-					"bash", "-c", fmt.Sprintf(`printf %s > /script/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
-						chmod 555 /script/my-script.sh && echo "Permissions set" || echo "Failed to set permissions" >&2`, shellescape.Quote(task.Script)),
+					"bash", "-c", fmt.Sprintf(initScriptCommand, shellescape.Quote(task.Script)),
 				},
 				VolumeMounts: []v1.VolumeMount{
 					{
@@ -138,7 +157,7 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 			{
 				Name:    task.Name,
 				Image:   task.Image,
-				Command: []string{"bash", "-c", "/script/my-script.sh"},
+				Command: scriptExecCommand,
 				Env:     envs,
 			},
 		}

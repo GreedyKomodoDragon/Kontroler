@@ -1150,3 +1150,28 @@ func Test_SQLite__MarkConnectingTasksAsSuspended_Single(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, suspendedCount)
 }
+
+func Test_SQLite__MarkConnectingTasksAsSuspended_deduplicate_tasks(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	defer dbConn.Close()
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_MarkConnectingTasksAsSuspended_deduplicate_tasks(t, dm)
+
+	var suspendedCount int
+	err = dbConn.QueryRow(`
+	SELECT suspendedCount
+	FROM DAG_Runs
+	WHERE run_id = 1;`).Scan(&suspendedCount)
+	require.NoError(t, err)
+	require.Equal(t, 3, suspendedCount)
+}

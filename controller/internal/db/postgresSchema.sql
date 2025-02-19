@@ -119,3 +119,25 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     PRIMARY KEY (Pod_UID),
     FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id) ON DELETE CASCADE
 );
+
+-- creating indexes
+-- Indexes for DAGs table to speed up lookup by name and version
+CREATE INDEX IF NOT EXISTS idx_dags_name_version ON DAGs (name, version DESC);
+CREATE INDEX IF NOT EXISTS idx_dags_dag_id ON DAGs (dag_id);
+
+-- Indexes for DAG_Tasks to speed up joins on dag_id and task_id
+CREATE INDEX IF NOT EXISTS idx_dag_tasks_dag_id ON DAG_Tasks (dag_id);
+CREATE INDEX IF NOT EXISTS idx_dag_tasks_task_id ON DAG_Tasks (task_id);
+CREATE INDEX IF NOT EXISTS idx_dag_tasks_dag_task_id ON DAG_Tasks (dag_task_id);
+
+-- Index for Dependencies table to speed up dependency lookups
+CREATE INDEX IF NOT EXISTS idx_dependencies_task_id ON Dependencies (task_id);
+CREATE INDEX IF NOT EXISTS idx_dependencies_depends_on_task_id ON Dependencies (depends_on_task_id);
+
+-- Indexes for DAG_Runs to optimize query filters
+CREATE INDEX IF NOT EXISTS idx_dag_runs_dag_id ON DAG_Runs (dag_id);
+CREATE INDEX IF NOT EXISTS idx_dag_runs_run_id ON DAG_Runs (run_id);
+
+-- Indexes for Tasks to speed up lookup by task_id
+CREATE INDEX IF NOT EXISTS idx_tasks_task_id ON Tasks (task_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_name_version_namespace ON Tasks (name, version, namespace);
