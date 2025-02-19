@@ -1382,9 +1382,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		FROM Dependencies d
 		JOIN DAG_Tasks dt ON d.depends_on_task_id = dt.dag_task_id
 		WHERE dt.dag_id = (
-			SELECT dag_id
-			FROM DAG_Runs
-			WHERE run_id = $1
+			SELECT dag_id FROM DAG_Runs WHERE run_id = $1
 		);
 	`, dagRunId)
 	if err != nil {
@@ -1406,17 +1404,16 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 
 	var startingTaskID int
 	if err := tx.QueryRow(ctx, `
-		SELECT task_id
-		FROM Task_Runs
-		WHERE task_run_id = $1;
+		SELECT task_id FROM Task_Runs WHERE task_run_id = $1;
 	`, taskRunId).Scan(&startingTaskID); err != nil {
 		return err
 	}
 
 	// DFS using stack
 	stack := []int{startingTaskID}
-	var updates [][]interface{}
 	seen := make(map[int]bool)
+	uniqueUpdates := make(map[int]struct{})
+	var updates [][]interface{}
 
 	for len(stack) > 0 {
 		currentTaskID := stack[len(stack)-1]
@@ -1429,8 +1426,11 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 
 		if dependentTasks, exists := dependencies[currentTaskID]; exists {
 			for _, taskID := range dependentTasks {
-				updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
-				stack = append(stack, taskID)
+				if _, exists := uniqueUpdates[taskID]; !exists {
+					uniqueUpdates[taskID] = struct{}{}
+					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
+					stack = append(stack, taskID)
+				}
 			}
 		}
 	}

@@ -1749,6 +1749,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	stack := []int{startingTaskID}
 	seen := make(map[int]bool)
 	var updates [][]interface{}
+	uniqueUpdates := make(map[int]struct{})
 
 	for len(stack) > 0 {
 		currentTaskID := stack[len(stack)-1]
@@ -1761,8 +1762,11 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 
 		if dependentTasks, exists := dependencies[currentTaskID]; exists {
 			for _, taskID := range dependentTasks {
-				updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
-				stack = append(stack, taskID)
+				if _, exists := uniqueUpdates[taskID]; !exists {
+					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
+					uniqueUpdates[taskID] = struct{}{}
+					stack = append(stack, taskID)
+				}
 			}
 		}
 	}
