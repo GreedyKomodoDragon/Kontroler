@@ -70,6 +70,12 @@ certManager:
     spec:
       selfSigned: {}
 
+kubeconfig:
+  # secret: kubeconfig
+  secret: ""
+  key: kubeconfig
+  mountPath: /etc/kontroler/
+
 controller:
   enabled: true
   image: greedykomodo/kontroler-controller:0.0.1
@@ -77,10 +83,6 @@ controller:
     path: /etc/kontroler/config/
     value:
       kubeconfig: ""
-    kubeconfig:
-      secret: kubeconfig
-      key: kubeconfig
-      mountPath: /etc/kontroler/
     configmapOverride: ""
   leaderElectionID: "610a3770.greedykomodo"
   db:
@@ -130,6 +132,11 @@ server:
   enabled: true
   replicaCount: 1
   image: "greedykomodo/kontroler-server:0.0.1"
+  config:
+    path: /etc/kontroler/config/
+    value:
+      kubeconfig: ""
+    configmapOverride: ""
   db:
     user: postgres
     password:

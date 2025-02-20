@@ -32,10 +32,10 @@ spec:
             {{ else }}
             name: kontroler-config
             {{ end }}
-        {{ if .Values.controller.config.kubeconfig.secret }}
+        {{ if .Values.kubeconfig.secret }}
         - name: kubeconfig
           secret:
-            secretName: {{ .Values.controller.config.kubeconfig.secret }}
+            secretName: {{ .Values.kubeconfig.secret }}
         {{ end }}
         {{ if eq .Values.db.type "sqlite" }}
         - name: sqlite-db-volume
@@ -152,9 +152,9 @@ spec:
           volumeMounts:
             - name: config
               mountPath: {{ .Values.controller.config.path }}
-            {{ if .Values.controller.config.kubeconfig.secret }}
+            {{ if .Values.kubeconfig.secret }}
             - name: kubeconfig
-              mountPath: {{ printf "%s-%s" .Values.controller.config.kubeconfig.mountPath .Values.controller.config.kubeconfig.key }}
+              mountPath: {{ printf "%s-%s" .Values.kubeconfig.mountPath .Values.kubeconfig.key }}
             {{ end }}
             {{ if eq .Values.db.type "sqlite" }}
             - name: sqlite-db-volume

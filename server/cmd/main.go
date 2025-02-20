@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"flag"
 	"kontroler-server/internal/auth"
+	"kontroler-server/internal/config"
 	"kontroler-server/internal/db"
 	kclient "kontroler-server/internal/kClient"
 	"kontroler-server/internal/logs"
-	"kontroler-server/internal/rest"
+	internalRest "kontroler-server/internal/rest"
 	"kontroler-server/internal/ws"
 	"net"
 	"net/http"
@@ -24,10 +26,35 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	var configPath string
+
+	flag.StringVar(&configPath, "configpath", "", "Path to configuration file")
+	flag.Parse()
+
+	serverConfig, err := config.ParseConfig(configPath)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to parse config")
+	}
+
+	// Get kubernetes config
+	var config *rest.Config
+	var kubeErr error
+	if serverConfig.KubeConfigPath != "" {
+		config, kubeErr = clientcmd.BuildConfigFromFlags("", serverConfig.KubeConfigPath)
+	} else {
+		config, kubeErr = rest.InClusterConfig()
+	}
+
+	if kubeErr != nil {
+		log.Fatal().Err(kubeErr).Msg("failed to create kubernetes config")
+	}
 
 	auditLogs, _ := os.LookupEnv("AUDIT_LOGS")
 
@@ -107,7 +134,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
 	}
 
-	kubClient, clientset, err := kclient.NewClients()
+	kubClient, clientset, err := kclient.NewClients(config)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a kubernetes client")
 	}
@@ -119,7 +146,7 @@ func main() {
 
 	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, clientset)
 
-	app := rest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
+	app := internalRest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
 
 	// Apply authentication middleware BEFORE WebSocket upgrade
 	app.Use("/ws/logs", ws.Auth(authManager))
@@ -148,7 +175,7 @@ func main() {
 
 	var tlsConfig *tls.Config = nil
 	if os.Getenv("MTLS") == "true" {
-		tlsConfig, err = rest.CreateTLSConfig()
+		tlsConfig, err = internalRest.CreateTLSConfig()
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create rest tls configuration")
 		}

@@ -297,11 +297,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if configController.EnableControllerWebhooks {
-		if err = (&kontrolerv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DagRun")
-			os.Exit(1)
-		}
+	if err = (&kontrolerv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "DagRun")
+		os.Exit(1)
 	}
 
 	if err = (&controller.DagTaskReconciler{
