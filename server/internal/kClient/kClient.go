@@ -279,12 +279,7 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 	return runID, err
 }
 
-func NewClients() (dynamic.Interface, *kubernetes.Clientset, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, nil, err
-	}
-
+func NewClients(config *rest.Config) (dynamic.Interface, *kubernetes.Clientset, error) {
 	dynClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, nil, err

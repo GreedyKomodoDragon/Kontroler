@@ -30,6 +30,8 @@ spec:
         {{- toYaml .Values.server.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Values.server.name }}-kontroler-server
+          args:
+          - --configpath={{ printf "%s%s" .Values.server.config.path  "config.yaml" }}
           securityContext:
             {{- toYaml .Values.server.securityContext | nindent 12 }}
           image: {{ .Values.server.image }}
@@ -103,6 +105,12 @@ spec:
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
           volumeMounts:
+            - name: config
+              mountPath: {{ .Values.server.config.path }}
+            {{ if .Values.kubeconfig.secret }}
+            - name: kubeconfig
+              mountPath: {{ printf "%s-%s" .Values.kubeconfig.mountPath .Values.kubeconfig.key }}
+            {{ end }}
             {{ if eq .Values.db.type "sqlite" }}
             - name: sqlite-db-volume
               mountPath: {{ .Values.db.sqlite.path }}
@@ -134,6 +142,18 @@ spec:
               subPath: {{ .Values.server.db.ssl.paths.key.filename }}
             {{ end }}
       volumes:
+        - name: config
+          configMap:
+            {{ if .Values.server.config.configmapOverride }}
+            name: {{ .Values.server.config.configmapOverride }}
+            {{ else }}
+            name: kontroler-config-server
+            {{ end }}
+        {{ if .Values.kubeconfig.secret }}
+        - name: kubeconfig
+          secret:
+            secretName: {{ .Values.kubeconfig.secret }}
+        {{ end }}
         {{ if eq .Values.db.type "sqlite" }}
         - name: sqlite-db-volume
           persistentVolumeClaim:
