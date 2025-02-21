@@ -22,6 +22,10 @@ This system allows for running containers as tasks within a DAG, while providing
 
 ## Getting Started
 
+### Documentation
+
+The best place to find the most up to date documentation is at our docsite, you can find it at: https://kontroler.dev
+
 ### Helm Chart
 
 You can find the unified helm chart under the /helm directory in this repo. The helm chart contains:
