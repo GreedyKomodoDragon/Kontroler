@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -36,6 +36,7 @@ import (
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/config"
 	"kontroler-controller/internal/controller"
 	"kontroler-controller/internal/dag"
 	"kontroler-controller/internal/db"
@@ -62,9 +63,11 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var configPath string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&configPath, "configpath", "", "Path to configuration file")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -103,26 +106,31 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	namespaces := os.Getenv("NAMESPACES")
-	if namespaces == "" {
-		// if you don't select one it will go to the default namespace
-		namespaces = "default"
-	}
-
-	leaderElectionID := os.Getenv("LEADER_ELECTION_ID")
-	if leaderElectionID == "" {
-		setupLog.Error(fmt.Errorf("missing LEADER_ELECTION_ID"), "must provide LEADER_ELECTION_ID")
+	configController, err := config.ParseConfig(configPath)
+	if err != nil {
+		setupLog.Error(err, "failed to parse config")
 		os.Exit(1)
 	}
 
 	namespaceConfigMap := map[string]cache.Config{}
-	namespacesSlice := strings.Split(namespaces, ",")
-
-	for _, namespace := range namespacesSlice {
+	for _, namespace := range configController.Namespaces {
 		namespaceConfigMap[strings.TrimSpace(namespace)] = cache.Config{}
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// Get kubernetes config
+	var config *rest.Config
+	var kubeErr error
+	if configController.KubeConfigPath != "" {
+		config, kubeErr = clientcmd.BuildConfigFromFlags("", configController.KubeConfigPath)
+	} else {
+		config, kubeErr = rest.InClusterConfig()
+	}
+	if kubeErr != nil {
+		setupLog.Error(kubeErr, "unable to get kubeconfig")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(config, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -132,7 +140,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       leaderElectionID,
+		LeaderElectionID:       configController.LeaderElectionID,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -150,13 +158,6 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
-	}
-
-	// Create the clientset
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		setupLog.Error(err, "failed to get config")
 		os.Exit(1)
 	}
 
@@ -256,12 +257,14 @@ func main() {
 	}()
 
 	taskAllocator := dag.NewTaskAllocator(clientset, id)
-	watchers := make([]dag.TaskWatcher, len(namespacesSlice))
+	watchers := make([]dag.TaskWatcher, len(configController.Namespaces))
 
-	for i, namespace := range namespacesSlice {
-		taskWatcher, err := dag.NewTaskWatcher(namespace, clientset, taskAllocator, dbDAGManager, id, logStore, webhookChannel)
+	for i, namespace := range configController.Namespaces {
+		namespaceTrimmed := strings.TrimSpace(namespace)
+
+		taskWatcher, err := dag.NewTaskWatcher(namespaceTrimmed, clientset, taskAllocator, dbDAGManager, id, logStore, webhookChannel)
 		if err != nil {
-			setupLog.Error(err, "failed to create task watcher", "namespace", namespace)
+			setupLog.Error(err, "failed to create task watcher", "namespace", namespaceTrimmed)
 			os.Exit(1)
 		}
 
@@ -270,8 +273,8 @@ func main() {
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
 
-	closeChannels := make([]chan struct{}, len(namespacesSlice))
-	for i := 0; i < len(namespacesSlice); i++ {
+	closeChannels := make([]chan struct{}, len(configController.Namespaces))
+	for i := 0; i < len(configController.Namespaces); i++ {
 		closeChan := make(chan struct{})
 		closeChannels[i] = closeChan
 	}
@@ -294,11 +297,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = (&kontrolerv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DagRun")
-			os.Exit(1)
-		}
+	if err = (&kontrolerv1alpha1.DagRun{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "DagRun")
+		os.Exit(1)
 	}
 
 	if err = (&controller.DagTaskReconciler{
@@ -326,7 +327,7 @@ func main() {
 		log.Log.Info("Became the leader, starting the controller.")
 		go taskScheduler.Run(ctx)
 
-		for i := 0; i < len(namespacesSlice); i++ {
+		for i := 0; i < len(configController.Namespaces); i++ {
 			go watchers[i].StartWatching(closeChannels[i])
 		}
 

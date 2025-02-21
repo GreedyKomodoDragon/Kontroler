@@ -1,0 +1,10 @@
+{{ if and .Values.server.enabled (empty .Values.server.config.configmapOverride) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kontroler-config-server
+  namespace: {{ .Release.Namespace }}
+data:
+    config.yaml: |-
+        {{ .Values.server.config.value | toYaml | nindent 8 }}
+{{ end }}

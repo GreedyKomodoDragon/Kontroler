@@ -25,6 +25,18 @@ spec:
       securityContext:
         runAsNonRoot: true
       volumes:
+        - name: config
+          configMap:
+            {{ if .Values.controller.config.configmapOverride }}
+            name: {{ .Values.controller.config.configmapOverride }}
+            {{ else }}
+            name: kontroler-config
+            {{ end }}
+        {{ if .Values.kubeconfig.secret }}
+        - name: kubeconfig
+          secret:
+            secretName: {{ .Values.kubeconfig.secret }}
+        {{ end }}
         {{ if eq .Values.db.type "sqlite" }}
         - name: sqlite-db-volume
           persistentVolumeClaim:
@@ -61,6 +73,7 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=127.0.0.1:8080
             - --leader-elect
+            - --configpath={{ printf "%s%s" .Values.controller.config.path  "config.yaml" }}
           env:
             - name: LEADER_ELECTION_ID
               value: {{ .Values.controller.leaderElectionID }}
@@ -137,6 +150,12 @@ spec:
               drop:
                 - ALL
           volumeMounts:
+            - name: config
+              mountPath: {{ .Values.controller.config.path }}
+            {{ if .Values.kubeconfig.secret }}
+            - name: kubeconfig
+              mountPath: {{ .Values.kubeconfig.mountPath }}
+            {{ end }}
             {{ if eq .Values.db.type "sqlite" }}
             - name: sqlite-db-volume
               mountPath: {{ .Values.db.sqlite.path }}
