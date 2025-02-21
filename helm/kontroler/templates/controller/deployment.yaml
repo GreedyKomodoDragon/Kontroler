@@ -154,7 +154,7 @@ spec:
               mountPath: {{ .Values.controller.config.path }}
             {{ if .Values.kubeconfig.secret }}
             - name: kubeconfig
-              mountPath: {{ printf "%s-%s" .Values.kubeconfig.mountPath .Values.kubeconfig.key }}
+              mountPath: {{ .Values.kubeconfig.mountPath }}
             {{ end }}
             {{ if eq .Values.db.type "sqlite" }}
             - name: sqlite-db-volume

@@ -71,10 +71,8 @@ certManager:
       selfSigned: {}
 
 kubeconfig:
-  # secret: kubeconfig
-  secret: ""
-  key: kubeconfig
-  mountPath: /etc/kontroler/
+  secret: kubeconfig-secret
+  mountPath: /etc/kontroler/secrets
 
 controller:
   enabled: true
@@ -82,7 +80,7 @@ controller:
   config:
     path: /etc/kontroler/config/
     value:
-      kubeconfig: ""
+      kubeConfigPath: ""
     configmapOverride: ""
   leaderElectionID: "610a3770.greedykomodo"
   db:
@@ -135,7 +133,7 @@ server:
   config:
     path: /etc/kontroler/config/
     value:
-      kubeconfig: ""
+      kubeConfigPath: ""
     configmapOverride: ""
   db:
     user: postgres
