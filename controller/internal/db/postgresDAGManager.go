@@ -50,60 +50,62 @@ func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	return nil
 }
 
-func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
-	// Check if the DAG already exists
-	// Begin transaction
+// Add new transaction helper
+func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return wrapError("begin_transaction", err)
 	}
-
-	// Rollback transaction if not committed
 	defer tx.Rollback(ctx)
 
-	var existingDAGID int
-	var version int
-	var hash string
-
-	err = tx.QueryRow(ctx, `
-	SELECT dag_id, version, hash
-	FROM DAGs
-	WHERE name = $1 AND namespace = $2
-	ORDER BY version DESC;`, dag.Name, namespace).Scan(&existingDAGID, &version, &hash)
-	if err != nil && err != pgx.ErrNoRows {
-		return fmt.Errorf("failed when getting hash: %w", err)
-	}
-
-	hashBytes, err := hashDagSpec(&dag.Spec)
-	if err != nil {
+	if err := fn(tx); err != nil {
 		return err
 	}
 
-	hashValue := fmt.Sprintf("%x", hashBytes)
-	if hash == hashValue {
-		return fmt.Errorf("applying the same dag")
-	}
-
-	if existingDAGID != 0 {
-		version++
-	}
-
-	// DAG does not exist, insert it
-	if err := p.insertDAG(ctx, tx, dag, version, namespace, hashValue); err != nil {
-		return err
-	}
-
-	// SET previous version to false - allows version but stops multiple versions running
-	if err := p.setInactive(ctx, tx, dag.Name, namespace, version-1); err != nil {
-		return err
-	}
-
-	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return wrapError("commit_transaction", err)
 	}
-
 	return nil
+}
+
+// Update example method to use new patterns
+func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		var existingDAGID int
+		var version int
+		var hash string
+
+		err := tx.QueryRow(ctx, QueryGetDAG, dag.Name, namespace).Scan(&existingDAGID, &version, &hash)
+		if err != nil && err != pgx.ErrNoRows {
+			return wrapError("query_existing_dag", err)
+		}
+
+		hashBytes, err := hashDagSpec(&dag.Spec)
+		if err != nil {
+			return wrapError("hash_dag_spec", err)
+		}
+
+		hashValue := fmt.Sprintf("%x", hashBytes)
+		if hash == hashValue {
+			return fmt.Errorf("applying the same dag")
+		}
+
+		if existingDAGID != 0 {
+			version++
+		}
+
+		// DAG does not exist, insert it
+		if err := p.insertDAG(ctx, tx, dag, version, namespace, hashValue); err != nil {
+			return err
+		}
+
+		// SET previous version to false - allows version but stops multiple versions running
+		if err := p.setInactive(ctx, tx, dag.Name, namespace, version-1); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // insertDAG inserts a new DAG object into the database.
@@ -125,10 +127,10 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 	}
 
 	var dagID int
-	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification, workspaceEnabled) 
-	VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9, $10)
-	RETURNING dag_id;`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL, dag.Spec.Webhook.VerifySSL, dag.Spec.Workspace.Enabled).Scan(&dagID); err != nil {
+	if err := tx.QueryRow(ctx, QueryInsertDAG,
+		dag.Name, version, hash, dag.Spec.Schedule, namespace,
+		nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL,
+		dag.Spec.Webhook.VerifySSL, dag.Spec.Workspace.Enabled).Scan(&dagID); err != nil {
 		return fmt.Errorf("failed inserting DAG: %w", err)
 	}
 
@@ -175,9 +177,8 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	}
 
 	// Map the task to the DAG
-	if _, err := tx.Exec(ctx, `
-	INSERT INTO DAG_Parameters (dag_id, name, isSecret, defaultValue) 
-	VALUES ($1, $2, $3, $4)`, dagID, parameter.Name, isSecret, value); err != nil {
+	if _, err := tx.Exec(ctx, QueryInsertParameter,
+		dagID, parameter.Name, isSecret, value); err != nil {
 		return err
 	}
 
@@ -186,9 +187,10 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 
 func (p *postgresDAGManager) insertWorkspace(ctx context.Context, tx pgx.Tx, dagID int, workspace *v1alpha1.PVC) error {
 	// Insert the workspace
-	if _, err := tx.Exec(ctx, `
-	INSERT INTO DAG_Workspaces (dag_id, accessModes, selector, resources, storageClassName, volumeMode) 
-	VALUES ($1, $2, $3, $4, $5, $6);`, dagID, workspace.AccessModes, workspace.Selector, workspace.Resources, workspace.StorageClassName, workspace.VolumeMode); err != nil {
+	if _, err := tx.Exec(ctx, QueryInsertWorkspace,
+		dagID, workspace.AccessModes, workspace.Selector,
+		workspace.Resources, workspace.StorageClassName,
+		workspace.VolumeMode); err != nil {
 		return err
 	}
 
@@ -220,14 +222,11 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		}
 
 	} else {
-		// must provide a unique name - name is used not used for in-line and must just be unique
-		newUUID := uuid.New()
-
 		if err := tx.QueryRow(ctx, `
 		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version) 
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13) 
 		RETURNING task_id;`,
-			newUUID.String(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
+			uuid.NewString(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
 			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
 			return fmt.Errorf("failed to insert line task: %s", err.Error())
 		}
@@ -808,6 +807,8 @@ type DagInfo struct {
 	DagName          string
 	Namespace        string
 	WorkspaceEnabled bool
+	WebhookUrl       string
+	SSLVerification  bool
 }
 
 func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
@@ -819,7 +820,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 	defer tx.Rollback(ctx)
 
 	rows, err := tx.Query(ctx, `
-        SELECT dag_id, name, schedule, namespace, workspaceEnabled
+        SELECT dag_id, name, schedule, namespace, workspaceEnabled, webhookUrl, sslVerification
         FROM DAGs
         WHERE nexttime <= NOW() AND schedule != '' AND active = TRUE;
     `)
@@ -837,7 +838,10 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 		var schedule string
 		var namespace string
 		var workEnabled bool
-		if err := rows.Scan(&dagId, &name, &schedule, &namespace, &workEnabled); err != nil {
+		var webhookUrl string
+		var sslVerification bool
+
+		if err := rows.Scan(&dagId, &name, &schedule, &namespace, &workEnabled, &webhookUrl, &sslVerification); err != nil {
 			return nil, err
 		}
 
@@ -845,6 +849,8 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 			DagName:          name,
 			Namespace:        namespace,
 			WorkspaceEnabled: workEnabled,
+			WebhookUrl:       webhookUrl,
+			SSLVerification:  sslVerification,
 		})
 
 		schedules = append(schedules, schedule)
@@ -871,8 +877,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
             WHERE dag_id = $2;`, nextTime, namespaces[i].DagId)
 	}
 
-	br := tx.SendBatch(ctx, batch)
-	if err := br.Close(); err != nil {
+	if err := tx.SendBatch(ctx, batch).Close(); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
