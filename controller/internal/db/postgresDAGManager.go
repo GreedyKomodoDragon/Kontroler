@@ -59,7 +59,7 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	defer tx.Rollback(ctx)
 
 	if err := fn(tx); err != nil {
-		return err // Already wrapped by the operation
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -222,14 +222,11 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		}
 
 	} else {
-		// must provide a unique name - name is used not used for in-line and must just be unique
-		newUUID := uuid.New()
-
 		if err := tx.QueryRow(ctx, `
 		INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version) 
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13) 
 		RETURNING task_id;`,
-			newUUID.String(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
+			uuid.NewString(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
 			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
 			return fmt.Errorf("failed to insert line task: %s", err.Error())
 		}
@@ -880,8 +877,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
             WHERE dag_id = $2;`, nextTime, namespaces[i].DagId)
 	}
 
-	br := tx.SendBatch(ctx, batch)
-	if err := br.Close(); err != nil {
+	if err := tx.SendBatch(ctx, batch).Close(); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
