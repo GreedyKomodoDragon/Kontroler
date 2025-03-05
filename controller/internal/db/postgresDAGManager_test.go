@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
@@ -650,13 +651,16 @@ func TestPostgresDAGManager_MarkPodStatus(t *testing.T) {
 	testDAGManagerMarkPodStatus_Insert_Multiple(t, dm)
 
 	status = ""
+	var tStamp time.Time
 	err = pool.QueryRow(context.Background(), `
-	SELECT status 
+	SELECT status, ended_at
 	FROM Task_Pods 
-	WHERE name = $1;`, "pod-two").Scan(&status)
+	WHERE name = $1;`, "pod-two").Scan(&status, &tStamp)
 
 	require.NoError(t, err)
 	require.Equal(t, string(v1.PodSucceeded), status)
+	require.Equal(t, "2021-01-01 01:00:00 +0000 UTC", tStamp.String())
+
 }
 
 func TestPostgresDAGManager_DeleteDag(t *testing.T) {

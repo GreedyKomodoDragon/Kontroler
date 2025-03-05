@@ -40,6 +40,8 @@ export type TaskPod = {
   status: string;
   name: string;
   exitCode: number;
+  startedAt: string;
+  endedAt?: string;
 };
 
 export type TaskRunDetails = {

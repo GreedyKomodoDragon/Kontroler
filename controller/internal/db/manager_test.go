@@ -643,10 +643,11 @@ func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManage
 		assert.NotEqual(t, 0, taskRunID)
 
 		uid := types.UID(uuid.New().String())
-		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodPending, time.Now(), nil, "default")
+		tStamp := time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC)
+		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodPending, tStamp, nil, "default")
 		require.NoError(t, err)
 
-		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodSucceeded, time.Now().Add(time.Hour), nil, "default")
+		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodSucceeded, tStamp.Add(time.Hour), nil, "default")
 		require.NoError(t, err)
 	})
 

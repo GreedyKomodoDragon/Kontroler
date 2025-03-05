@@ -998,7 +998,9 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 	var currentStatus v1.PodPhase
 	var currentTimestamp time.Time
 	err = tx.QueryRow(ctx, `
-        SELECT status, updated_at FROM Task_Pods WHERE Pod_UID = $1 AND task_run_id = $2
+        SELECT status, updated_at
+		FROM Task_Pods
+		WHERE Pod_UID = $1 AND task_run_id = $2;
     `, podUid, taskRunID).Scan(&currentStatus, &currentTimestamp)
 
 	if err != nil && err != pgx.ErrNoRows {
@@ -1010,15 +1012,29 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 		return nil // The database already has a newer status, so skip this update
 	}
 
-	// Insert the new status with the current timestamp
-	if _, err = tx.Exec(ctx, `
-        INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (Pod_UID) 
-        DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
-        WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
-    `, podUid, taskRunID, name, status, namespace, tStamp, exitCode); err != nil {
-		return err
+	if status == v1.PodSucceeded || status == v1.PodFailed {
+		if _, err := tx.Exec(ctx, `
+			UPDATE Task_Pods
+			SET status = $1, updated_at = $2, exitCode = $3, ended_at = $4
+			WHERE Pod_UID = $5 AND task_run_id = $6;
+		`, status, tStamp, exitCode, tStamp, podUid, taskRunID); err != nil {
+			return err
+		}
+	} else if status == v1.PodRunning {
+		if _, err := tx.Exec(ctx, `
+			UPDATE Task_Pods
+			SET status = $1, updated_at = $2
+			WHERE Pod_UID = $3 AND task_run_id = $4;
+		`, status, tStamp, podUid, taskRunID); err != nil {
+			return err
+		}
+	} else {
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
+			VALUES ($1, $2, $3, $4, $5, $6, $7);
+		`, podUid, taskRunID, name, status, namespace, tStamp, exitCode); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit(ctx)
