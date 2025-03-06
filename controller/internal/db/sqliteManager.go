@@ -216,9 +216,8 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     name VARCHAR(255) NOT NULL,
     status VARCHAR(255) NOT NULL,
     namespace TEXT NOT NULL,
-	started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ended_at TIMESTAMP,
+    duration INTEGER,
     FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id)
 );
 	`
@@ -1264,55 +1263,47 @@ func (s *sqliteDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) 
 }
 
 func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error {
+	// Begin a transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// Get the current status and timestamp from the database
-	var currentStatus v1.PodPhase
+	// Check for existing record and retrieve the current status and timestamp
 	var currentTimestamp time.Time
 	err = tx.QueryRowContext(ctx, `
-        SELECT status, updated_at
-		FROM Task_Pods
-		WHERE Pod_UID = ? AND task_run_id = ?;
-    `, podUid, taskRunID).Scan(&currentStatus, &currentTimestamp)
+        SELECT updated_at FROM Task_Pods WHERE Pod_UID = ? AND task_run_id = ?
+    `, podUid, taskRunID).Scan(&currentTimestamp)
 
 	if err != nil && err != sql.ErrNoRows {
+		// Return if any error other than "no rows" occurs
 		return err
 	}
 
-	// Compare timestamps and skip the update if the current status is newer
-	if err != sql.ErrNoRows && currentTimestamp.After(tStamp) {
-		return nil // The database already has a newer status, so skip this update
-	}
-
-	if status == v1.PodSucceeded || status == v1.PodFailed {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE Task_Pods
-			SET status = ?, updated_at = ?, exitCode = ?, ended_at = ?
-			WHERE Pod_UID = ? AND task_run_id = ?;
-		`, status, tStamp, exitCode, tStamp, podUid, taskRunID); err != nil {
+	// Decide whether to insert or update
+	if err == sql.ErrNoRows {
+		// No existing row, perform an INSERT
+		_, err = tx.ExecContext(ctx, `
+            INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, podUid, taskRunID, name, status, namespace, tStamp, exitCode)
+		if err != nil {
 			return err
 		}
-	} else if status == v1.PodRunning {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE Task_Pods
-			SET status = ?, updated_at = ?
-			WHERE Pod_UID = ? AND task_run_id = ?;
-		`, status, tStamp, podUid, taskRunID); err != nil {
-			return err
-		}
-	} else {
-		if _, err = tx.ExecContext(ctx, `
-			INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
-			VALUES (?, ?, ?, ?, ?, ?, ?);
-		`, podUid, taskRunID, name, status, namespace, tStamp, exitCode); err != nil {
+	} else if currentTimestamp.Before(tStamp) {
+		// Existing row has an older timestamp, perform an UPDATE
+		_, err = tx.ExecContext(ctx, `
+            UPDATE Task_Pods 
+            SET status = ?, updated_at = ?, exitCode = ?
+            WHERE Pod_UID = ? AND task_run_id = ?
+        `, status, tStamp, exitCode, podUid, taskRunID)
+		if err != nil {
 			return err
 		}
 	}
 
+	// Commit the transaction
 	return tx.Commit()
 }
 
@@ -1826,4 +1817,23 @@ func (s *sqliteDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int
 	}
 
 	return taskCount == successCount+failedCount+suspendedCount, nil
+}
+
+func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, pod *v1.Pod, taskRunId int, durationSec int64) error {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE Task_Pods
+		SET duration = ?
+		WHERE Pod_UID = ? AND task_run_id = ?;
+	`, durationSec, pod.UID, taskRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

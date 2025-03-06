@@ -1,20 +1,24 @@
 import { A } from "@solidjs/router";
 import { TaskRunDetails } from "../../types/dag";
 
+function formatTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (remainingSeconds > 0) parts.push(`${remainingSeconds}s`);
+
+  return parts.length > 0 ? parts.join(' ') : '0s';
+}
+
 type PodStatusTableProps = {
   details: TaskRunDetails;
   id: number;
 };
 
-const formatDuration = (startDate: string, endDate: string) => {
-  const duration = new Date(endDate).getTime() - new Date(startDate).getTime();
-  const hours = Math.floor(duration / 3600000);
-  const minutes = Math.floor((duration % 3600000) / 60000);
-  const seconds = Math.floor((duration % 60000) / 1000);
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
-};
 
 export function PodStatusTable(props: PodStatusTableProps) {
   return (
@@ -44,11 +48,8 @@ export function PodStatusTable(props: PodStatusTableProps) {
                 {pod.status}
               </td>
               <td class="px-4 py-2">{pod.exitCode}</td>
-              <td class="px-4 py-2">{new Date(pod.startedAt).toUTCString()}</td>
               <td class="px-4 py-2">
-                {pod.endedAt
-                  ? formatDuration(pod.startedAt, pod.endedAt)
-                  : "N/A"}
+                {pod.duration !== null ? formatTime(pod.duration) : "N/A"}
               </td>
               <td class="px-4 py-2">
                 <A

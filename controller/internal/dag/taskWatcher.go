@@ -194,6 +194,8 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 		t.handleStartedTaskRun(ctx, pod, taskRunId)
 	case v1.PodPending:
 		t.handlePendingTaskRun(ctx, pod, taskRunId)
+	case v1.PodUnknown:
+		log.Log.Info("pod status unknown", "podUID", pod.UID, "name", pod.Name, "event", event)
 	}
 }
 
@@ -393,13 +395,20 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 	var exitCode *int32 = nil
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+
+		var durationSec int64 = 0
+		if pod.Status.ContainerStatuses[0].State.Running != nil {
+			stamp = pod.Status.ContainerStatuses[0].State.Running.StartedAt.Time
+			endTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
+			durationSec = int64(endTime.Sub(stamp).Seconds())
+		}
+
+		if err := t.dbManager.AddPodDuration(context.Background(), pod, taskRunId, durationSec); err != nil {
+			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+		}
 	}
 
-	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace); err != nil {
-		return err
-	}
-
-	return nil
+	return t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace)
 }
 
 func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {

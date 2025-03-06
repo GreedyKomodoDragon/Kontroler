@@ -55,12 +55,11 @@ type TaskRunDetails struct {
 }
 
 type TaskPod struct {
-	PodUID    string     `json:"podUID"`
-	ExitCode  *int       `json:"exitCode"`
-	Name      string     `json:"name"`
-	Status    string     `json:"status"`
-	StartedAt *time.Time `json:"startedAt"`
-	EndedAt   *time.Time `json:"endedAt,omitempty"`
+	PodUID   string `json:"podUID"`
+	ExitCode *int   `json:"exitCode"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+	Duration *int64 `json:"duration"`
 }
 
 // Parameter represents a task parameter.

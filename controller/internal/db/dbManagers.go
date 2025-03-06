@@ -70,4 +70,5 @@ type DBDAGManager interface {
 	GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error)
 	CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
 	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) error
+	AddPodDuration(ctx context.Context, pod *v1.Pod, taskRunId int, durationSec int64) error
 }
