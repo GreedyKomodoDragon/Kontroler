@@ -448,13 +448,9 @@ func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, tas
 
 func (t *taskWatcher) deletePod(ctx context.Context, pod *v1.Pod) error {
 	backgroundDeletion := metav1.DeletePropagationBackground
-	if err := t.clientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+	return t.clientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 		PropagationPolicy: &backgroundDeletion,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 func (t *taskWatcher) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
