@@ -43,11 +43,8 @@ func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron
 
 func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	// Initialize the database schema
-	if _, err := p.pool.Exec(ctx, progresSchema); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := p.pool.Exec(ctx, progresSchema)
+	return err
 }
 
 // Add new transaction helper
@@ -177,12 +174,8 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	}
 
 	// Map the task to the DAG
-	if _, err := tx.Exec(ctx, QueryInsertParameter,
-		dagID, parameter.Name, isSecret, value); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := tx.Exec(ctx, QueryInsertParameter, dagID, parameter.Name, isSecret, value)
+	return err
 }
 
 func (p *postgresDAGManager) insertWorkspace(ctx context.Context, tx pgx.Tx, dagID int, workspace *v1alpha1.PVC) error {
