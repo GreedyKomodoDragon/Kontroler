@@ -396,12 +396,9 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 
-		var durationSec int64 = 0
-		if pod.Status.ContainerStatuses[0].State.Running != nil {
-			stamp = pod.Status.ContainerStatuses[0].State.Running.StartedAt.Time
-			endTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
-			durationSec = int64(endTime.Sub(stamp).Seconds())
-		}
+		stamp = pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
+		endTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
+		durationSec := int64(endTime.Sub(stamp).Seconds())
 
 		if err := t.dbManager.AddPodDuration(context.Background(), pod, taskRunId, durationSec); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
