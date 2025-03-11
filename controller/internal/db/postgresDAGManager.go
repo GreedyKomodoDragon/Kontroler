@@ -998,11 +998,6 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 		return err
 	}
 
-	// Compare timestamps and skip the update if the current status is newer
-	if currentTimestamp.After(tStamp) {
-		return nil // The database already has a newer status, so skip this update
-	}
-
 	// Insert the new status with the current timestamp
 	if _, err = tx.Exec(ctx, `
         INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)

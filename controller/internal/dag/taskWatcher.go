@@ -397,7 +397,7 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 
 		stamp = pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
-		endTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
+		endTime := pod.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Time
 		durationSec := int64(endTime.Sub(stamp).Seconds())
 
 		if err := t.dbManager.AddPodDuration(context.Background(), pod, taskRunId, durationSec); err != nil {

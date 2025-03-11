@@ -11,7 +11,7 @@ function formatTime(seconds: number): string {
   if (minutes > 0) parts.push(`${minutes}m`);
   if (remainingSeconds > 0) parts.push(`${remainingSeconds}s`);
 
-  return parts.length > 0 ? parts.join(' ') : '0s';
+  return parts.length > 0 ? parts.join(' ') : '';
 }
 
 type PodStatusTableProps = {
@@ -20,7 +20,7 @@ type PodStatusTableProps = {
 };
 
 
-export function PodStatusTable(props: PodStatusTableProps) {
+export function PodStatusTable(props: Readonly<PodStatusTableProps>) {
   return (
     <div class="overflow-x-auto">
       <table class="min-w-full table-auto border-collapse">
@@ -30,7 +30,6 @@ export function PodStatusTable(props: PodStatusTableProps) {
             <th class="px-4 py-2 border-b text-left">Pod Name</th>
             <th class="px-4 py-2 border-b text-left">Status</th>
             <th class="px-4 py-2 border-b text-left">Exit Code</th>
-            <th class="px-4 py-2 border-b text-left">Start Time</th>
             <th class="px-4 py-2 border-b text-left">Duration</th>
             <th class="px-4 py-2 border-b text-left">Actions</th>
           </tr>

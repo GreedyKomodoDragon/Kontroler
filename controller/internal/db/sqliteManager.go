@@ -1291,7 +1291,7 @@ func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, 
 		if err != nil {
 			return err
 		}
-	} else if currentTimestamp.Before(tStamp) {
+	} else {
 		// Existing row has an older timestamp, perform an UPDATE
 		_, err = tx.ExecContext(ctx, `
             UPDATE Task_Pods 
