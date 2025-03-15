@@ -1819,7 +1819,7 @@ func (s *sqliteDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int
 	return taskCount == successCount+failedCount+suspendedCount, nil
 }
 
-func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, pod *v1.Pod, taskRunId int, durationSec int64) error {
+func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1830,8 +1830,8 @@ func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, pod *v1.Pod, task
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE Task_Pods
 		SET duration = ?
-		WHERE Pod_UID = ? AND task_run_id = ?;
-	`, durationSec, pod.UID, taskRunId); err != nil {
+		WHERE task_run_id = ?;
+	`, durationSec, taskRunId); err != nil {
 		return err
 	}
 
