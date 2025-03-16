@@ -542,7 +542,7 @@ func (t *taskWatcher) checkIfDagRunIsComplete(ctx context.Context, runId int) (b
 	allTasksDone, err := t.dbManager.CheckIfAllTasksDone(ctx, runId)
 	if err != nil {
 		log.Log.Error(err, "failed to check if all tasks are done", "runId", runId)
-		return false, nil
+		return false, err
 	}
 
 	return allTasksDone, nil

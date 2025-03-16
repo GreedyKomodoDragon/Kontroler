@@ -15,6 +15,7 @@ import (
 	cron "github.com/robfig/cron/v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 
 	_ "modernc.org/sqlite"
 )
@@ -701,7 +702,11 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		return nil, fmt.Errorf("failed to get tasks: %v", err)
 	}
 
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Log.Error(err, "failed to close row")
+		}
+	}()
 
 	tasks := []Task{}
 	for rows.Next() {

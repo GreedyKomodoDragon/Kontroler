@@ -16,6 +16,7 @@ import (
 	cron "github.com/robfig/cron/v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 
 	_ "embed"
 )
@@ -53,7 +54,11 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	if err != nil {
 		return wrapError("begin_transaction", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			log.Log.Error(err, "failed to rollback transaction")
+		}
+	}()
 
 	if err := fn(tx); err != nil {
 		return err
@@ -281,7 +286,11 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		return 0, err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			log.Log.Error(err, "failed to rollback transaction")
+		}
+	}()
 
 	// Map the task to the DAG
 	var dagRunID int

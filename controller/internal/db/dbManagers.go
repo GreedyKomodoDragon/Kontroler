@@ -20,7 +20,6 @@ type Task struct {
 	PodTemplate         *v1alpha1.PodTemplateSpec
 	Script              string
 	ScriptInjectorImage string
-	pvcName             *string
 }
 
 type Parameter struct {
