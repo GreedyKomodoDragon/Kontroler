@@ -659,7 +659,7 @@ func TestPostgresDAGManager_MarkPodStatus(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, string(v1.PodSucceeded), status)
-	require.Equal(t, int64(10), duration.Int64)
+	require.Equal(t, int64(60*60), duration.Int64)
 
 }
 

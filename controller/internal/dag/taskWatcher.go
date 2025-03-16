@@ -396,9 +396,10 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 
-		stamp = pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
-		endTime := pod.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Time
-		durationSec := int64(endTime.Sub(stamp).Seconds())
+		// Use the termination time for final pod status
+		stamp = pod.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Time
+		startTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
+		durationSec := int64(stamp.Sub(startTime).Seconds())
 
 		if err := t.dbManager.AddPodDuration(context.Background(), taskRunId, durationSec); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
@@ -407,6 +408,7 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 
 	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name,
 		taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace); err != nil {
+		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
 		return fmt.Errorf("failed to mark pod status: %w", err)
 	}
 
