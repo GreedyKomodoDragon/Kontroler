@@ -78,7 +78,7 @@ func NewLogStore() (LogStore, error) {
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
 	defer func() {
 		if err := removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
-			log.Log.Error(err, "error removing finalizer")
+			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
 		}
 	}()
 

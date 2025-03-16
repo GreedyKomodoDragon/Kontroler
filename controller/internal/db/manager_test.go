@@ -650,7 +650,7 @@ func testDAGManagerMarkPodStatus_Insert_Multiple(t *testing.T, dm db.DBDAGManage
 		err = dm.MarkPodStatus(context.Background(), uid, "pod-two", 2, v1.PodSucceeded, tStamp.Add(time.Hour), nil, "default")
 		require.NoError(t, err)
 
-		err = dm.AddPodDuration(context.Background(), 2, 10)
+		err = dm.AddPodDuration(context.Background(), 2, 60*60)
 		require.NoError(t, err)
 	})
 
