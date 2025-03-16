@@ -86,7 +86,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		Follow: true,
 	})
 
-	logStream, err := req.Stream(context.TODO())
+	logStream, err := req.Stream(ctx)
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %v", err)
 	}
