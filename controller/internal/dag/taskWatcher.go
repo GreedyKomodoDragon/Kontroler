@@ -405,7 +405,13 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 		}
 	}
 
-	return t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace)
+	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name,
+		taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace); err != nil {
+		return fmt.Errorf("failed to mark pod status: %w", err)
+	}
+
+	log.Log.Info("pod status written to db", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
+	return nil
 }
 
 func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {

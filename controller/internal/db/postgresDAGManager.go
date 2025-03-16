@@ -1008,14 +1008,19 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 	}
 
 	// Insert the new status with the current timestamp
-	if _, err = tx.Exec(ctx, `
+	command, err := tx.Exec(ctx, `
         INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (Pod_UID) 
         DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
-        WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
-    `, podUid, taskRunID, name, status, namespace, tStamp, exitCode); err != nil {
+        WHERE Task_Pods.updated_at <= EXCLUDED.updated_at;
+    `, podUid, taskRunID, name, status, namespace, tStamp, exitCode)
+	if err != nil {
 		return err
+	}
+
+	if command.RowsAffected() == 0 {
+		return fmt.Errorf("pod status not updated")
 	}
 
 	return tx.Commit(ctx)
