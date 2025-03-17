@@ -23,6 +23,15 @@ issues:
       linters:
         - dupl
         - lll
+    - path: "_test\\.go$"  # Ignore all test files
+      linters:
+        - dupl
+        - errcheck
+        - goconst
+        - gocyclo
+        - gosimple
+        - lll
+        - nakedret
     - path: "test/*" # Example: Ignore specific linters in test files
       linters:
         - nakedret

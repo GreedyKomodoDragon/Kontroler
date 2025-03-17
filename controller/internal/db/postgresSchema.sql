@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     status VARCHAR(255) NOT NULL,
     namespace TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    duration BIGINT,
     PRIMARY KEY (Pod_UID),
     FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id) ON DELETE CASCADE
 );

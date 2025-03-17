@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -615,13 +616,15 @@ func Test_SQLite_DAGManager_MarkPodStatus(t *testing.T) {
 	testDAGManagerMarkPodStatus_Insert_Multiple(t, dm)
 
 	status = ""
-	err = dbConn.QueryRow(`
-	SELECT status 
+	var duration sql.NullInt64
+	err = dbConn.QueryRowContext(context.Background(), `
+	SELECT status, duration
 	FROM Task_Pods 
-	WHERE name = ?;`, "pod-two").Scan(&status)
+	WHERE name = $1;`, "pod-two").Scan(&status, &duration)
 
 	require.NoError(t, err)
 	require.Equal(t, string(v1.PodSucceeded), status)
+	require.Equal(t, int64(60*60), duration.Int64)
 }
 
 func Test_SQLite_DAGManager_DeleteDag(t *testing.T) {

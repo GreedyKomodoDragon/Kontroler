@@ -20,7 +20,6 @@ type Task struct {
 	PodTemplate         *v1alpha1.PodTemplateSpec
 	Script              string
 	ScriptInjectorImage string
-	pvcName             *string
 }
 
 type Parameter struct {
@@ -70,4 +69,5 @@ type DBDAGManager interface {
 	GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error)
 	CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
 	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) error
+	AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error
 }

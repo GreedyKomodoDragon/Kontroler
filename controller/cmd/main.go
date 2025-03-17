@@ -262,7 +262,8 @@ func main() {
 	for i, namespace := range configController.Namespaces {
 		namespaceTrimmed := strings.TrimSpace(namespace)
 
-		taskWatcher, err := dag.NewTaskWatcher(namespaceTrimmed, clientset, taskAllocator, dbDAGManager, id, logStore, webhookChannel)
+		taskWatcher, err := dag.NewTaskWatcher(namespaceTrimmed, clientset, taskAllocator,
+			dbDAGManager, id, logStore, webhookChannel)
 		if err != nil {
 			setupLog.Error(err, "failed to create task watcher", "namespace", namespaceTrimmed)
 			os.Exit(1)

@@ -35,6 +35,7 @@ const (
 )
 
 func warnError(err error) {
+	//nolint:forbidigo
 	fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
 }
 

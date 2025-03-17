@@ -256,7 +256,7 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 	// Get the current status of each task
 	rows, err := p.pool.Query(ctx, `
-	SELECT Pod_UID, exitCode, name, status
+	SELECT Pod_UID, exitCode, name, status, duration
 	FROM Task_Pods
 	WHERE task_run_id = $1;`, task.Id)
 
@@ -270,9 +270,15 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 	for rows.Next() {
 		pod := &TaskPod{}
-		if err := rows.Scan(&pod.PodUID, &pod.ExitCode, &pod.Name, &pod.Status); err != nil {
+		var duration sql.NullInt64
+		if err := rows.Scan(&pod.PodUID, &pod.ExitCode, &pod.Name, &pod.Status, &duration); err != nil {
 			return nil, err
 		}
+
+		if duration.Valid {
+			pod.Duration = &duration.Int64
+		}
+
 		task.Pods = append(task.Pods, pod)
 	}
 

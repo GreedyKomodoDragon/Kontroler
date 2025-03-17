@@ -16,6 +16,7 @@ import (
 	cron "github.com/robfig/cron/v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 
 	_ "embed"
 )
@@ -43,11 +44,8 @@ func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron
 
 func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	// Initialize the database schema
-	if _, err := p.pool.Exec(ctx, progresSchema); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := p.pool.Exec(ctx, progresSchema)
+	return err
 }
 
 // Add new transaction helper
@@ -56,7 +54,11 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	if err != nil {
 		return wrapError("begin_transaction", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			log.Log.Error(err, "failed to rollback transaction")
+		}
+	}()
 
 	if err := fn(tx); err != nil {
 		return err
@@ -177,12 +179,8 @@ func (p *postgresDAGManager) insertParameter(ctx context.Context, tx pgx.Tx, dag
 	}
 
 	// Map the task to the DAG
-	if _, err := tx.Exec(ctx, QueryInsertParameter,
-		dagID, parameter.Name, isSecret, value); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := tx.Exec(ctx, QueryInsertParameter, dagID, parameter.Name, isSecret, value)
+	return err
 }
 
 func (p *postgresDAGManager) insertWorkspace(ctx context.Context, tx pgx.Tx, dagID int, workspace *v1alpha1.PVC) error {
@@ -288,7 +286,11 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		return 0, err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil {
+			log.Log.Error(err, "failed to rollback transaction")
+		}
+	}()
 
 	// Map the task to the DAG
 	var dagRunID int
@@ -1005,20 +1007,20 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 		return err
 	}
 
-	// Compare timestamps and skip the update if the current status is newer
-	if currentTimestamp.After(tStamp) {
-		return nil // The database already has a newer status, so skip this update
-	}
-
 	// Insert the new status with the current timestamp
-	if _, err = tx.Exec(ctx, `
+	command, err := tx.Exec(ctx, `
         INSERT INTO Task_Pods (Pod_UID, task_run_id, name, status, namespace, updated_at, exitCode)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (Pod_UID) 
         DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, exitCode = EXCLUDED.exitCode
-        WHERE Task_Pods.updated_at < EXCLUDED.updated_at;
-    `, podUid, taskRunID, name, status, namespace, tStamp, exitCode); err != nil {
+        WHERE Task_Pods.updated_at <= EXCLUDED.updated_at;
+    `, podUid, taskRunID, name, status, namespace, tStamp, exitCode)
+	if err != nil {
 		return err
+	}
+
+	if command.RowsAffected() == 0 {
+		return fmt.Errorf("pod status not updated")
 	}
 
 	return tx.Commit(ctx)
@@ -1295,21 +1297,48 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 }
 
 func (p *postgresDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error) {
-	taskMp := map[v1alpha1.TaskRef][]string{}
+	if len(taskRefs) == 0 {
+		return map[v1alpha1.TaskRef][]string{}, nil
+	}
 
-	querySql := `
-		SELECT parameters
+	// Create dynamic placeholders for the WHERE clause
+	placeholders := make([]string, len(taskRefs))
+	args := make([]interface{}, len(taskRefs)*2)
+	for i, ref := range taskRefs {
+		placeholders[i] = fmt.Sprintf("(name = $%d AND version = $%d)", i*2+1, i*2+2)
+		args[i*2] = ref.Name
+		args[i*2+1] = ref.Version
+	}
+
+	// Build the query
+	query := fmt.Sprintf(`
+		SELECT name, version, parameters
 		FROM Tasks
-		WHERE name = $1 AND version = $2 AND inline = FALSE;
-    `
+		WHERE (%s) AND inline = FALSE;`,
+		strings.Join(placeholders, " OR "))
 
-	for _, val := range taskRefs {
-		var parameters = []string{}
-		if err := p.pool.QueryRow(ctx, querySql, val.Name, val.Version).Scan(&parameters); err != nil {
+	// Execute the batch query
+	rows, err := p.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Process results
+	taskMp := make(map[v1alpha1.TaskRef][]string, len(taskRefs))
+	for rows.Next() {
+		var name string
+		var version int
+		var parameters []string
+		if err := rows.Scan(&name, &version, &parameters); err != nil {
 			return nil, err
 		}
+		taskMp[v1alpha1.TaskRef{Name: name, Version: version}] = parameters
+	}
 
-		taskMp[val] = parameters
+	// Check if we got all requested tasks
+	if len(taskMp) != len(taskRefs) {
+		return nil, fmt.Errorf("not all requested tasks were found")
 	}
 
 	return taskMp, nil
@@ -1477,4 +1506,23 @@ func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID i
 	}
 
 	return taskCount == successCount+failedCount+suspendedCount, nil
+}
+
+func (p *postgresDAGManager) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE Task_Pods
+		SET duration = $1
+		WHERE task_run_id = $2;
+	`, durationSec, taskRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

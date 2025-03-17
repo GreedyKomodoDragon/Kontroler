@@ -194,6 +194,8 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 		t.handleStartedTaskRun(ctx, pod, taskRunId)
 	case v1.PodPending:
 		t.handlePendingTaskRun(ctx, pod, taskRunId)
+	case v1.PodUnknown:
+		log.Log.Info("pod status unknown", "podUID", pod.UID, "name", pod.Name, "event", event)
 	}
 }
 
@@ -393,12 +395,24 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 	var exitCode *int32 = nil
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+
+		// Use the termination time for final pod status
+		stamp = pod.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Time
+		startTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
+		durationSec := int64(stamp.Sub(startTime).Seconds())
+
+		if err := t.dbManager.AddPodDuration(context.Background(), taskRunId, durationSec); err != nil {
+			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+		}
 	}
 
-	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name, taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace); err != nil {
-		return err
+	if err := t.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name,
+		taskRunId, pod.Status.Phase, stamp, exitCode, pod.Namespace); err != nil {
+		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
+		return fmt.Errorf("failed to mark pod status: %w", err)
 	}
 
+	log.Log.Info("pod status written to db", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
 	return nil
 }
 
@@ -439,13 +453,9 @@ func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, tas
 
 func (t *taskWatcher) deletePod(ctx context.Context, pod *v1.Pod) error {
 	backgroundDeletion := metav1.DeletePropagationBackground
-	if err := t.clientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+	return t.clientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 		PropagationPolicy: &backgroundDeletion,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 func (t *taskWatcher) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
@@ -540,7 +550,7 @@ func (t *taskWatcher) checkIfDagRunIsComplete(ctx context.Context, runId int) (b
 	allTasksDone, err := t.dbManager.CheckIfAllTasksDone(ctx, runId)
 	if err != nil {
 		log.Log.Error(err, "failed to check if all tasks are done", "runId", runId)
-		return false, nil
+		return false, err
 	}
 
 	return allTasksDone, nil

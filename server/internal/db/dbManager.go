@@ -59,6 +59,7 @@ type TaskPod struct {
 	ExitCode *int   `json:"exitCode"`
 	Name     string `json:"name"`
 	Status   string `json:"status"`
+	Duration *int64 `json:"duration"`
 }
 
 // Parameter represents a task parameter.

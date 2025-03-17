@@ -15,6 +15,7 @@ import (
 	cron "github.com/robfig/cron/v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 
 	_ "modernc.org/sqlite"
 )
@@ -217,6 +218,7 @@ CREATE TABLE IF NOT EXISTS Task_Pods (
     status VARCHAR(255) NOT NULL,
     namespace TEXT NOT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    duration INTEGER,
     FOREIGN KEY (task_run_id) REFERENCES Task_Runs(task_run_id)
 );
 	`
@@ -700,7 +702,11 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		return nil, fmt.Errorf("failed to get tasks: %v", err)
 	}
 
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Log.Error(err, "failed to close row")
+		}
+	}()
 
 	tasks := []Task{}
 	for rows.Next() {
@@ -1290,7 +1296,7 @@ func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, 
 		if err != nil {
 			return err
 		}
-	} else if currentTimestamp.Before(tStamp) {
+	} else {
 		// Existing row has an older timestamp, perform an UPDATE
 		_, err = tx.ExecContext(ctx, `
             UPDATE Task_Pods 
@@ -1816,4 +1822,23 @@ func (s *sqliteDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int
 	}
 
 	return taskCount == successCount+failedCount+suspendedCount, nil
+}
+
+func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE Task_Pods
+		SET duration = ?
+		WHERE task_run_id = ?;
+	`, durationSec, taskRunId); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
