@@ -76,13 +76,17 @@ func NewLogStore() (LogStore, error) {
 }
 
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
-	defer removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection")
+	defer func() {
+		if err := removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
+			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
+		}
+	}()
 
 	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
 		Follow: true,
 	})
 
-	logStream, err := req.Stream(context.TODO())
+	logStream, err := req.Stream(ctx)
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %v", err)
 	}

@@ -1,12 +1,26 @@
 import { A } from "@solidjs/router";
 import { TaskRunDetails } from "../../types/dag";
 
+function formatTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (remainingSeconds > 0) parts.push(`${remainingSeconds}s`);
+
+  return parts.length > 0 ? parts.join(' ') : '';
+}
+
 type PodStatusTableProps = {
   details: TaskRunDetails;
   id: number;
 };
 
-export function PodStatusTable(props: PodStatusTableProps) {
+
+export function PodStatusTable(props: Readonly<PodStatusTableProps>) {
   return (
     <div class="overflow-x-auto">
       <table class="min-w-full table-auto border-collapse">
@@ -16,6 +30,7 @@ export function PodStatusTable(props: PodStatusTableProps) {
             <th class="px-4 py-2 border-b text-left">Pod Name</th>
             <th class="px-4 py-2 border-b text-left">Status</th>
             <th class="px-4 py-2 border-b text-left">Exit Code</th>
+            <th class="px-4 py-2 border-b text-left">Duration</th>
             <th class="px-4 py-2 border-b text-left">Actions</th>
           </tr>
         </thead>
@@ -32,6 +47,9 @@ export function PodStatusTable(props: PodStatusTableProps) {
                 {pod.status}
               </td>
               <td class="px-4 py-2">{pod.exitCode}</td>
+              <td class="px-4 py-2">
+                {pod.duration !== null ? formatTime(pod.duration) : "N/A"}
+              </td>
               <td class="px-4 py-2">
                 <A
                   href={`/logs/run/${props.id}/pod/${pod.podUID}`}
