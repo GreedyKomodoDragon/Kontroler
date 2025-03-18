@@ -1387,10 +1387,10 @@ func (p *postgresDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId 
 	return pvc, nil
 }
 
-func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) error {
+func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) ([]string, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -1404,7 +1404,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		);
 	`, dagRunId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Store dependencies in a map for fast lookups
@@ -1413,7 +1413,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		var parentTaskID, dependentTaskID int
 		if err := dependencyRows.Scan(&parentTaskID, &dependentTaskID); err != nil {
 			dependencyRows.Close()
-			return fmt.Errorf("failed to scan dependency row: %w", err)
+			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
 		}
 		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
 	}
@@ -1424,7 +1424,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	if err := tx.QueryRow(ctx, `
 		SELECT task_id FROM Task_Runs WHERE task_run_id = $1;
 	`, taskRunId).Scan(&startingTaskID); err != nil {
-		return err
+		return nil, err
 	}
 
 	// DFS using stack
@@ -1432,6 +1432,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	seen := make(map[int]bool)
 	uniqueUpdates := make(map[int]struct{})
 	var updates [][]interface{}
+	taskIdsSuspended := []int{}
 
 	for len(stack) > 0 {
 		currentTaskID := stack[len(stack)-1]
@@ -1446,6 +1447,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 			for _, taskID := range dependentTasks {
 				if _, exists := uniqueUpdates[taskID]; !exists {
 					uniqueUpdates[taskID] = struct{}{}
+					taskIdsSuspended = append(taskIdsSuspended, taskID)
 					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
 					stack = append(stack, taskID)
 				}
@@ -1459,7 +1461,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		copySrc := pgx.CopyFromRows(updates)
 		_, err := tx.CopyFrom(ctx, pgx.Identifier{"task_runs"}, columns, copySrc)
 		if err != nil {
-			return fmt.Errorf("failed to bulk insert task runs: %w", err)
+			return nil, fmt.Errorf("failed to bulk insert task runs: %w", err)
 		}
 	}
 
@@ -1468,10 +1470,24 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		UPDATE DAG_Runs 
 		SET suspendedCount = suspendedCount + $1
 		WHERE run_id = $2;`, len(updates), dagRunId); err != nil {
-		return err
+		return nil, err
 	}
 
-	return tx.Commit(ctx)
+	// get task names
+	taskNames := []string{}
+	for _, taskID := range taskIdsSuspended {
+		var taskName string
+		if err := tx.QueryRow(ctx, `
+			SELECT name
+			FROM DAG_Tasks
+			WHERE task_id = $1;
+		`, taskID).Scan(&taskName); err != nil {
+			return nil, err
+		}
+		taskNames = append(taskNames, taskName)
+	}
+
+	return taskNames, tx.Commit(ctx)
 }
 
 func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {

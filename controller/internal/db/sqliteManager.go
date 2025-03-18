@@ -1712,10 +1712,10 @@ func (s *sqliteDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId in
 	return pvc, nil
 }
 
-func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) error {
+func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -1729,7 +1729,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		);
 	`, dagRunId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -1738,7 +1738,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	for rows.Next() {
 		var parentTaskID, dependentTaskID int
 		if err := rows.Scan(&parentTaskID, &dependentTaskID); err != nil {
-			return fmt.Errorf("failed to scan dependency row: %w", err)
+			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
 		}
 		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
 	}
@@ -1748,7 +1748,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	if err := tx.QueryRowContext(ctx, `
 		SELECT task_id FROM Task_Runs WHERE task_run_id = ?;
 	`, taskRunId).Scan(&startingTaskID); err != nil {
-		return fmt.Errorf("failed to get starting task ID: %w", err)
+		return nil, fmt.Errorf("failed to get starting task ID: %w", err)
 	}
 
 	// DFS using stack
@@ -1756,6 +1756,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	seen := make(map[int]bool)
 	var updates [][]interface{}
 	uniqueUpdates := make(map[int]struct{})
+	taskIdsSuspended := []int{}
 
 	for len(stack) > 0 {
 		currentTaskID := stack[len(stack)-1]
@@ -1771,6 +1772,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 				if _, exists := uniqueUpdates[taskID]; !exists {
 					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
 					uniqueUpdates[taskID] = struct{}{}
+					taskIdsSuspended = append(taskIdsSuspended, taskID)
 					stack = append(stack, taskID)
 				}
 			}
@@ -1784,13 +1786,13 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 			VALUES (?, ?, ?, ?);
 		`)
 		if err != nil {
-			return fmt.Errorf("failed to prepare batch insert: %w", err)
+			return nil, fmt.Errorf("failed to prepare batch insert: %w", err)
 		}
 		defer stmt.Close()
 
 		for _, update := range updates {
 			if _, err := stmt.ExecContext(ctx, update...); err != nil {
-				return fmt.Errorf("failed to execute batch insert: %w", err)
+				return nil, fmt.Errorf("failed to execute batch insert: %w", err)
 			}
 		}
 	}
@@ -1800,10 +1802,28 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		UPDATE DAG_Runs 
 		SET suspendedCount = suspendedCount + ?
 		WHERE run_id = ?;`, len(updates), dagRunId); err != nil {
-		return err
+		return nil, err
 	}
 
-	return tx.Commit()
+	// get task names
+	taskNames := []string{}
+	for _, taskID := range taskIdsSuspended {
+		var taskName string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT name
+			FROM DAG_Tasks
+			WHERE task_id = ?;
+		`, taskID).Scan(&taskName); err != nil {
+			return nil, err
+		}
+		taskNames = append(taskNames, taskName)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return taskNames, nil
 }
 
 func (s *sqliteDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
