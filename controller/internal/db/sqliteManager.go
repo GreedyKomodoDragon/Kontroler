@@ -1812,7 +1812,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		if err := tx.QueryRowContext(ctx, `
 			SELECT name
 			FROM DAG_Tasks
-			WHERE task_id = ?;
+			WHERE dag_task_id = ?;
 		`, taskID).Scan(&taskName); err != nil {
 			return nil, err
 		}

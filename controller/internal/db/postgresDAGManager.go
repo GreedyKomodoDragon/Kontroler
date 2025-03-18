@@ -1484,7 +1484,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		if err := tx.QueryRow(ctx, `
 			SELECT name
 			FROM DAG_Tasks
-			WHERE task_id = $1;
+			WHERE dag_task_id = $1;
 		`, taskID).Scan(&taskName); err != nil {
 			return nil, fmt.Errorf("failed to get task name: %w", err)
 		}
