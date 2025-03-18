@@ -281,39 +281,30 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		return 0, err
 	}
 
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
-			log.Log.Error(err, "failed to rollback transaction")
-		}
-	}()
-
-	// Map the task to the DAG
 	var dagRunID int
-	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, suspendedCount, run_time, pvcName) 
-	VALUES ($1, $2, 'running', 0, 0, 0, NOW(), $3) 
-	RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
-		return 0, err
-	}
-
-	// TODO: batch this
-	for _, param := range parameters {
-		value := param.Value
-		if param.FromSecret != "" {
-			value = param.FromSecret
+	if err := p.withTx(ctx, func(tx pgx.Tx) error {
+		// Map the task to the DAG
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, suspendedCount, run_time, pvcName) 
+			VALUES ($1, $2, 'running', 0, 0, 0, NOW(), $3) 
+			RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
+			return err
 		}
 
-		if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-			return 0, err
-		}
-	}
+		// TODO: batch this
+		for _, param := range parameters {
+			value := param.Value
+			if param.FromSecret != "" {
+				value = param.FromSecret
+			}
 
-	if err := tx.Commit(ctx); err != nil {
+			if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
 		return 0, err
 	}
 
