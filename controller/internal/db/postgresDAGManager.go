@@ -56,6 +56,10 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil {
+			if err == pgx.ErrTxClosed {
+				return
+			}
+
 			log.Log.Error(err, "failed to rollback transaction")
 		}
 	}()
@@ -1404,7 +1408,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		);
 	`, dagRunId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch dependencies: %w", err)
 	}
 
 	// Store dependencies in a map for fast lookups
@@ -1424,7 +1428,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	if err := tx.QueryRow(ctx, `
 		SELECT task_id FROM Task_Runs WHERE task_run_id = $1;
 	`, taskRunId).Scan(&startingTaskID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get task id: %w", err)
 	}
 
 	// DFS using stack
@@ -1470,7 +1474,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		UPDATE DAG_Runs 
 		SET suspendedCount = suspendedCount + $1
 		WHERE run_id = $2;`, len(updates), dagRunId); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update DAG runs: %w", err)
 	}
 
 	// get task names
@@ -1482,7 +1486,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 			FROM DAG_Tasks
 			WHERE task_id = $1;
 		`, taskID).Scan(&taskName); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get task name: %w", err)
 		}
 		taskNames = append(taskNames, taskName)
 	}
