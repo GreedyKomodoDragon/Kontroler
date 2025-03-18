@@ -422,83 +422,76 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 }
 
 func (p *postgresDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
+			return err
+		}
 
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error) {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
+	var tasks []Task
 
-	defer tx.Rollback(ctx)
-
-	var runId int
-	err = tx.QueryRow(ctx, `
-	UPDATE Task_Runs 
-	SET status = 'success' 
-	WHERE task_run_id = $1 
-	RETURNING run_id`, taskRunId).Scan(&runId)
-	if err != nil && err != pgx.ErrNoRows {
-		return nil, err
-	}
-
-	if _, err := tx.Exec(ctx, `
-		UPDATE DAG_Runs 
-		SET successfulCount = successfulCount + 1
-		WHERE run_id = $1;`, runId); err != nil {
-		return nil, err
-	}
-
-	var status string
-	err = tx.QueryRow(ctx, `
-		UPDATE DAG_Runs
-		SET status = 'success'
-		FROM DAGs
-		WHERE DAG_Runs.dag_id = DAGs.dag_id
-		AND DAGs.taskCount = DAG_Runs.successfulCount
-		AND DAG_Runs.run_id = $1
-		RETURNING DAG_Runs.status;
-	`, runId).Scan(&status)
-
-	if err != nil && err != pgx.ErrNoRows {
-		return nil, err
-	}
-
-	if status == "success" {
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
+	if err := p.withTx(ctx, func(tx pgx.Tx) error {
+		var runId int
+		err := tx.QueryRow(ctx, `
+		UPDATE Task_Runs 
+		SET status = 'success' 
+		WHERE task_run_id = $1 
+		RETURNING run_id`, taskRunId).Scan(&runId)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
 		}
 
-		return []Task{}, nil
-	}
+		if _, err := tx.Exec(ctx, `
+			UPDATE DAG_Runs 
+			SET successfulCount = successfulCount + 1
+			WHERE run_id = $1;`, runId); err != nil {
+			return err
+		}
 
-	dagId, err := p.getDAGIdFromRun(ctx, tx, runId)
-	if err != nil {
-		return nil, err
-	}
+		var status string
+		err = tx.QueryRow(ctx, `
+			UPDATE DAG_Runs
+			SET status = 'success'
+			FROM DAGs
+			WHERE DAG_Runs.dag_id = DAGs.dag_id
+			AND DAGs.taskCount = DAG_Runs.successfulCount
+			AND DAG_Runs.run_id = $1
+			RETURNING DAG_Runs.status;
+		`, runId).Scan(&status)
 
-	tasks, parameters, err := p.getNextRunnableTasks(ctx, tx, taskRunId, runId, dagId)
-	if err != nil {
-		return nil, err
-	}
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
 
-	if err := p.fetchTaskParameters(ctx, tx, dagId, tasks, parameters); err != nil {
-		return nil, err
-	}
+		if status == "success" {
+			if err := tx.Commit(ctx); err != nil {
+				return err
+			}
 
-	if err := tx.Commit(ctx); err != nil {
+			return nil
+		}
+
+		dagId, err := p.getDAGIdFromRun(ctx, tx, runId)
+		if err != nil {
+			return err
+		}
+
+		var parameters [][]string
+		tasks, parameters, err = p.getNextRunnableTasks(ctx, tx, taskRunId, runId, dagId)
+		if err != nil {
+			return err
+		}
+
+		if err := p.fetchTaskParameters(ctx, tx, dagId, tasks, parameters); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
