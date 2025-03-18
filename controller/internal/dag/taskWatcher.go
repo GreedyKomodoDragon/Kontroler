@@ -244,7 +244,7 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", runId)
 	} else if webhook.URL != "" {
-		go t.sendWebhookNotification(pod.Spec.Containers[0].Name, "suspended", runId, webhook.URL, webhook.VerifySSL)
+		go t.sendWebhookNotification(pod.Spec.Containers[0].Name, "success", runId, webhook.URL, webhook.VerifySSL)
 	}
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
