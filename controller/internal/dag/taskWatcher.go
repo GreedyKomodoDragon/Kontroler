@@ -437,7 +437,7 @@ func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, tas
 		if webhook.URL != "" {
 			for _, taskName := range taskNames {
 				log.Log.Info("task marked as suspended", "taskName", taskName)
-				go t.sendWebhookNotification(taskName, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
+				go t.sendWebhookNotification(taskName, "suspended", dagRunId, webhook.URL, webhook.VerifySSL)
 			}
 		}
 	} else {

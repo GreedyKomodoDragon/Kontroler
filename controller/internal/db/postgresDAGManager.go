@@ -1513,20 +1513,15 @@ func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID i
 }
 
 func (p *postgresDAGManager) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
 		UPDATE Task_Pods
 		SET duration = $1
 		WHERE task_run_id = $2;
 	`, durationSec, taskRunId); err != nil {
-		return err
-	}
+			return err
+		}
 
-	return tx.Commit(ctx)
+		return nil
+	})
 }
