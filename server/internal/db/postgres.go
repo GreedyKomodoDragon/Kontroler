@@ -83,8 +83,9 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 
 	// Get the current status of each task
 	rows, err := tx.Query(ctx, `
-	SELECT task_id, status
-	FROM Task_Runs
+	SELECT r.task_id, r.status, d.name
+	FROM Task_Runs r
+	JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
 	WHERE run_id = $1;`, dagRunId)
 
 	if err != nil {
@@ -96,12 +97,12 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	taskInfo := map[int]TaskInfo{}
 	for rows.Next() {
 		var taskId int
-		taskStatus := TaskInfo{}
-		if err := rows.Scan(&taskId, &taskStatus.Status); err != nil {
+		task := TaskInfo{}
+		if err := rows.Scan(&taskId, &task.Status, &task.Name); err != nil {
 			return nil, err
 		}
 
-		taskInfo[taskId] = taskStatus
+		taskInfo[taskId] = task
 	}
 
 	// fill in the blanks - avoids having to do complex queries to get the missing values
