@@ -945,22 +945,16 @@ func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exi
 }
 
 func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
 		UPDATE Task_Runs 
 		SET status = 'failed' 
 		WHERE task_run_id = $1;
 	`, taskRunId); err != nil {
-		return err
-	}
+			return err
+		}
 
-	if _, err := tx.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 	    UPDATE DAG_Runs
 	    SET
 	        failedCount = failedCount + 1,
@@ -970,10 +964,11 @@ func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int
 			FROM Task_Runs
 			WHERE task_run_id = $1
 		);`, taskRunId); err != nil {
-		return err
-	}
+			return err
+		}
 
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error {
