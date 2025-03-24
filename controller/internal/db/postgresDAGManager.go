@@ -761,22 +761,17 @@ func (p *postgresDAGManager) getDAGIdFromRun(ctx context.Context, tx pgx.Tx, run
 }
 
 func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			UPDATE Task_Runs
+			SET attempts = attempts + 1
+			WHERE task_run_id = $1
+			`, taskRunId); err != nil {
+			return err
+		}
 
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
-	UPDATE Task_Runs 
-	SET attempts = attempts + 1
-	WHERE task_run_id = $1 
-	`, taskRunId); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {
