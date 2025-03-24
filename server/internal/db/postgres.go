@@ -209,8 +209,9 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 
 	// Get the current status of each task
 	rows, err := p.pool.Query(ctx, `
-	SELECT task_id, status
-	FROM Task_Runs
+	SELECT r.task_id, r.status, d.name
+	FROM Task_Runs r
+	JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
 	WHERE run_id = $1;`, dagRunId)
 
 	if err != nil {
@@ -223,7 +224,7 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 	for rows.Next() {
 		var taskId int
 		taskStatus := TaskInfo{}
-		if err := rows.Scan(&taskId, &taskStatus.Status); err != nil {
+		if err := rows.Scan(&taskId, &taskStatus.Status, &taskStatus.Name); err != nil {
 			return nil, err
 		}
 
