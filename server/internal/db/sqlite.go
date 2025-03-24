@@ -103,12 +103,15 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, e
 		return nil, err
 	}
 
-	rows, err := tx.QueryContext(ctx, `
-		SELECT r.task_id, r.status, d.name
-		FROM Task_Runs r
-		JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
-		JOIN tasks t ON d.task_id = t.task_id
-		WHERE run_id = ?`, dagRunId)
+	rows, err := s.db.QueryContext(ctx, `
+        SELECT
+            d.dag_task_id,
+            d.name,
+            COALESCE(r.status, 'pending') AS status
+        FROM DAG_Tasks d
+        JOIN tasks t ON d.task_id = t.task_id
+        LEFT JOIN Task_Runs r ON r.task_id = d.dag_task_id AND r.run_id = ?
+        WHERE d.dag_id = ?`, dagRunId, dagId)
 
 	if err != nil {
 		return nil, err
@@ -119,7 +122,7 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, e
 	for rows.Next() {
 		var taskId int
 		task := TaskInfo{}
-		if err := rows.Scan(&taskId, &task.Status, &task.Name); err != nil {
+		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 		taskInfo[taskId] = task
@@ -225,9 +228,9 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRun
 	meta := &DagRunAll{Id: dagRunId}
 
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT dag_id, status, successfulCount, failedCount
-		FROM DAG_Runs
-		WHERE run_id = ?`, dagRunId).Scan(&meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount); err != nil {
+        SELECT dag_id, status, successfulCount, failedCount
+        FROM DAG_Runs
+        WHERE run_id = ?`, dagRunId).Scan(&meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount); err != nil {
 		return nil, err
 	}
 
@@ -236,12 +239,16 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRun
 		return nil, err
 	}
 
+	// Modified query to use LEFT JOIN and include all tasks
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.task_id, r.status, d.name
-		FROM Task_Runs r
-		JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
-		JOIN tasks t ON d.task_id = t.task_id
-		WHERE run_id = ?`, dagRunId)
+        SELECT
+            d.dag_task_id,
+            d.name,
+            COALESCE(r.status, 'pending') AS status
+        FROM DAG_Tasks d
+        JOIN tasks t ON d.task_id = t.task_id
+        LEFT JOIN Task_Runs r ON r.task_id = d.dag_task_id AND r.run_id = ?
+        WHERE d.dag_id = ?`, dagRunId, meta.DagId)
 
 	if err != nil {
 		return nil, err
@@ -253,16 +260,10 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRun
 	for rows.Next() {
 		var taskId int
 		task := TaskInfo{}
-		if err := rows.Scan(&taskId, &task.Status, &task.Name); err != nil {
+		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 		taskInfo[taskId] = task
-	}
-
-	for key := range connections {
-		if _, ok := taskInfo[key]; !ok {
-			taskInfo[key] = TaskInfo{Status: "pending"}
-		}
 	}
 
 	meta.Connections = connections

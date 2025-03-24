@@ -78,8 +78,8 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	}
 
 	rows, err := p.pool.Query(ctx, `
-	SELECT 
-		d.dag_task_id, 
+	SELECT
+		d.dag_task_id,
 		d.name,
 		COALESCE(r.status, 'pending') AS status
 	FROM DAG_Tasks d
@@ -208,8 +208,8 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 
 	// Get the current status of each task - modified query to use LEFT JOIN
 	rows, err := p.pool.Query(ctx, `
-	SELECT 
-		d.dag_task_id, 
+	SELECT
+		d.dag_task_id,
 		d.name,
 		COALESCE(r.status, 'pending') AS status
 	FROM DAG_Tasks d
