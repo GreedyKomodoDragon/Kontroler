@@ -101,7 +101,7 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	for rows.Next() {
 		var taskId int
 		task := TaskInfo{}
-		if err := rows.Scan(&taskId, &task.Status, &task.Name); err != nil {
+		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 
@@ -230,12 +230,12 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 	taskInfo := map[int]TaskInfo{}
 	for rows.Next() {
 		var taskId int
-		taskStatus := TaskInfo{}
-		if err := rows.Scan(&taskId, &taskStatus.Name, &taskStatus.Status); err != nil {
+		task := TaskInfo{}
+		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 
-		taskInfo[taskId] = taskStatus
+		taskInfo[taskId] = task
 	}
 
 	meta.Connections = connections
