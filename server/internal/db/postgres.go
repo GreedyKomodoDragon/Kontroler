@@ -86,6 +86,7 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	SELECT r.task_id, r.status, d.name
 	FROM Task_Runs r
 	JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
+	JOIN tasks t ON d.task_id = t.task_id
 	WHERE run_id = $1;`, dagRunId)
 
 	if err != nil {
@@ -212,6 +213,7 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 	SELECT r.task_id, r.status, d.name
 	FROM Task_Runs r
 	JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
+	JOIN tasks t ON d.task_id = t.task_id
 	WHERE run_id = $1;`, dagRunId)
 
 	if err != nil {

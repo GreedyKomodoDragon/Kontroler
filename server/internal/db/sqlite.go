@@ -107,6 +107,7 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, e
 		SELECT r.task_id, r.status, d.name
 		FROM Task_Runs r
 		JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
+		JOIN tasks t ON d.task_id = t.task_id
 		WHERE run_id = ?`, dagRunId)
 
 	if err != nil {
@@ -239,6 +240,7 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRun
 		SELECT r.task_id, r.status, d.name
 		FROM Task_Runs r
 		JOIN DAG_Tasks d ON r.task_id = d.dag_task_id
+		JOIN tasks t ON d.task_id = t.task_id
 		WHERE run_id = ?`, dagRunId)
 
 	if err != nil {
