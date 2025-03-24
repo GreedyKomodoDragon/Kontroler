@@ -67,10 +67,6 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	FROM DAG_Runs
 	WHERE run_id = $1`, dagRunId)
 
-	if err != nil {
-		return nil, err
-	}
-
 	if err := row.Scan(&dagId); err != nil {
 		return nil, err
 	}
