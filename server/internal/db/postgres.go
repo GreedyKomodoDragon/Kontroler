@@ -104,15 +104,6 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 		taskInfo[taskId] = task
 	}
 
-	// fill in the blanks - avoids having to do complex queries to get the missing values
-	for key := range connections {
-		if _, ok := taskInfo[key]; !ok {
-			taskInfo[key] = TaskInfo{
-				Status: "pending",
-			}
-		}
-	}
-
 	return &DagRun{
 		Connections: connections,
 		TaskInfo:    taskInfo,
