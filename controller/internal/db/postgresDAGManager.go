@@ -314,7 +314,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 			_, err := tx.CopyFrom(
 				ctx,
 				pgx.Identifier{"dag_run_parameters"},
-				[]string{"run_id", "name", "value", "isSecret"},
+				[]string{"run_id", "name", "value", "issecret"},
 				pgx.CopyFromRows(rows),
 			)
 			if err != nil {
