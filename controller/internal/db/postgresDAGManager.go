@@ -244,36 +244,66 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 }
 
 func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec, version int) error {
-	for _, dependency := range task.RunAfter {
-		var taskId, depId int
+	if len(task.RunAfter) == 0 {
+		return nil
+	}
 
-		err := tx.QueryRow(ctx, `
-		SELECT dag_task_id
-		FROM DAG_Tasks 
-		WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, task.Name, version).Scan(&taskId)
-		if err != nil {
-			return fmt.Errorf("task %s not found for version %d", task.Name, version)
-		}
+	// Get the task ID first
+	var taskId int
+	err := tx.QueryRow(ctx, `
+        SELECT dag_task_id
+        FROM DAG_Tasks 
+        WHERE dag_id = $1 AND name = $2 AND version = $3;`,
+		dagID, task.Name, version).Scan(&taskId)
+	if err != nil {
+		return fmt.Errorf("task %s not found for version %d", task.Name, version)
+	}
 
-		err = tx.QueryRow(ctx, `
-		SELECT dag_task_id
-		FROM DAG_Tasks 
-		WHERE dag_id = $1 AND name = $2
-		ORDER BY version DESC
-		LIMIT 1;
-		;`, dagID, dependency).Scan(&depId)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return fmt.Errorf("dependency task %s not found for version %d", dependency, version)
-			}
+	// Get all dependency IDs in one query using ANY
+	rows, err := tx.Query(ctx, `
+        SELECT name, dag_task_id
+        FROM DAG_Tasks 
+        WHERE dag_id = $1 
+        AND name = ANY($2)
+        ORDER BY version DESC;`,
+		dagID, task.RunAfter)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Create a map to store the dependency IDs
+	depMap := make(map[string]int, len(task.RunAfter))
+	for rows.Next() {
+		var name string
+		var id int
+		if err := rows.Scan(&name, &id); err != nil {
 			return err
 		}
+		depMap[name] = id
+	}
 
-		if _, err := tx.Exec(ctx, `
-		INSERT INTO Dependencies (task_id, depends_on_task_id) 
-		VALUES ($1, $2);`, taskId, depId); err != nil {
-			return err
+	// Verify all dependencies were found
+	for _, dep := range task.RunAfter {
+		if _, ok := depMap[dep]; !ok {
+			return fmt.Errorf("dependency task %s not found", dep)
 		}
+	}
+
+	// Batch insert all dependencies
+	deps := make([][]interface{}, 0, len(task.RunAfter))
+	for _, depName := range task.RunAfter {
+		deps = append(deps, []interface{}{taskId, depMap[depName]})
+	}
+
+	_, err = tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"dependencies"},
+		[]string{"task_id", "depends_on_task_id"},
+		pgx.CopyFromRows(deps),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert dependencies: %w", err)
 	}
 
 	return nil
