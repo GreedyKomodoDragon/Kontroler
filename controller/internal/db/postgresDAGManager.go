@@ -295,15 +295,30 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 			return err
 		}
 
-		// TODO: batch this
-		for _, param := range parameters {
-			value := param.Value
-			if param.FromSecret != "" {
-				value = param.FromSecret
+		// Batch insert all parameters
+		if len(parameters) > 0 {
+			rows := make([][]interface{}, 0, len(parameters))
+			for _, param := range parameters {
+				value := param.Value
+				if param.FromSecret != "" {
+					value = param.FromSecret
+				}
+				rows = append(rows, []interface{}{
+					dagRunID,
+					param.Name,
+					value,
+					param.FromSecret != "",
+				})
 			}
 
-			if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-				return err
+			_, err := tx.CopyFrom(
+				ctx,
+				pgx.Identifier{"dag_run_parameters"},
+				[]string{"run_id", "name", "value", "isSecret"},
+				pgx.CopyFromRows(rows),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to batch insert parameters: %w", err)
 			}
 		}
 
