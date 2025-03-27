@@ -1,5 +1,5 @@
 go-lint-server:
-  image: golang:1.23.5-bullseye
+  image: golang:1.24.1-bullseye
   script: |
     echo "Navigating to server directory"
     cd server
@@ -14,7 +14,7 @@ go-lint-server:
     cpu: "1"
 
 go-lint-controller:
-  image: golang:1.23.5-bullseye
+  image: golang:1.24.1-bullseye
   script: |
     echo "Navigating to controller directory"
     cd controller

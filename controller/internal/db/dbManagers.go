@@ -68,6 +68,6 @@ type DBDAGManager interface {
 	GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error)
 	GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error)
 	CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
-	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) error
+	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) ([]string, error)
 	AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error
 }

@@ -244,7 +244,7 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", runId)
 	} else if webhook.URL != "" {
-		t.sendWebhookNotification(pod, "success", runId, webhook.URL, webhook.VerifySSL)
+		go t.sendWebhookNotification(pod.Spec.Containers[0].Name, "success", runId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
@@ -427,13 +427,22 @@ func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, tas
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
 	} else if webhook.URL != "" {
-		t.sendWebhookNotification(pod, "failed", dagRunId, webhook.URL, webhook.VerifySSL)
+		go t.sendWebhookNotification(pod.Spec.Containers[0].Name, "failed", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 
 	// mark connecting tasks as suspended
 	// return tasks that are marked as suspended
-	if err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId); err != nil {
+	taskNames, err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId)
+	if err == nil {
+		if webhook.URL != "" {
+			for _, taskName := range taskNames {
+				log.Log.Info("task marked as suspended", "taskName", taskName)
+				go t.sendWebhookNotification(taskName, "suspended", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
+			}
+		}
+	} else {
 		log.Log.Error(err, "failed to mark connecting tasks as suspended", "taskRunId", taskRunId)
+		return
 	}
 
 	complete, err := t.checkIfDagRunIsComplete(ctx, dagRunId)
@@ -479,7 +488,7 @@ func (t *taskWatcher) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, tas
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", runId)
 	} else if webhook.URL != "" {
-		t.sendWebhookNotification(pod, "started", runId, webhook.URL, webhook.VerifySSL)
+		t.sendWebhookNotification(pod.Spec.Containers[0].Name, "started", runId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 }
 
@@ -504,18 +513,19 @@ func (t *taskWatcher) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, tas
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", runId)
 	} else if webhook.URL != "" {
-		t.sendWebhookNotification(pod, "pending", runId, webhook.URL, webhook.VerifySSL)
+		t.sendWebhookNotification(pod.Spec.Containers[0].Name, "pending", runId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 }
 
-func (t *taskWatcher) sendWebhookNotification(pod *v1.Pod, status string, dagRunId int, url string, verifySSL bool) {
+func (t *taskWatcher) sendWebhookNotification(name string, status string, dagRunId, taskId int, url string, verifySSL bool) {
 	t.webhookChan <- webhook.WebhookPayload{
 		URL:       url,
 		VerifySSL: verifySSL,
 		Data: webhook.TaskHookDetails{
 			Status:   status,
 			DagRunId: dagRunId,
-			TaskName: pod.Spec.Containers[0].Name,
+			TaskName: name,
+			TaskId:   taskId,
 		},
 	}
 }
