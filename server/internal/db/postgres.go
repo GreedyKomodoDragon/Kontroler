@@ -67,10 +67,6 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	FROM DAG_Runs
 	WHERE run_id = $1`, dagRunId)
 
-	if err != nil {
-		return nil, err
-	}
-
 	if err := row.Scan(&dagId); err != nil {
 		return nil, err
 	}
@@ -81,11 +77,15 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 		return nil, err
 	}
 
-	// Get the current status of each task
-	rows, err := tx.Query(ctx, `
-	SELECT task_id, status
-	FROM Task_Runs
-	WHERE run_id = $1;`, dagRunId)
+	rows, err := p.pool.Query(ctx, `
+	SELECT
+		d.dag_task_id,
+		d.name,
+		COALESCE(r.status, 'pending') AS status
+	FROM DAG_Tasks d
+	JOIN tasks t ON d.task_id = t.task_id
+	LEFT JOIN Task_Runs r ON r.task_id = d.dag_task_id AND r.run_id = $1
+	WHERE d.dag_id = $2;`, dagRunId, dagId)
 
 	if err != nil {
 		return nil, err
@@ -96,21 +96,12 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 	taskInfo := map[int]TaskInfo{}
 	for rows.Next() {
 		var taskId int
-		taskStatus := TaskInfo{}
-		if err := rows.Scan(&taskId, &taskStatus.Status); err != nil {
+		task := TaskInfo{}
+		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 
-		taskInfo[taskId] = taskStatus
-	}
-
-	// fill in the blanks - avoids having to do complex queries to get the missing values
-	for key := range connections {
-		if _, ok := taskInfo[key]; !ok {
-			taskInfo[key] = TaskInfo{
-				Status: "pending",
-			}
-		}
+		taskInfo[taskId] = task
 	}
 
 	return &DagRun{
@@ -206,11 +197,16 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 		return nil, err
 	}
 
-	// Get the current status of each task
+	// Get the current status of each task - modified query to use LEFT JOIN
 	rows, err := p.pool.Query(ctx, `
-	SELECT task_id, status
-	FROM Task_Runs
-	WHERE run_id = $1;`, dagRunId)
+	SELECT
+		d.dag_task_id,
+		d.name,
+		COALESCE(r.status, 'pending') AS status
+	FROM DAG_Tasks d
+	JOIN tasks t ON d.task_id = t.task_id
+	LEFT JOIN Task_Runs r ON r.task_id = d.dag_task_id AND r.run_id = $1
+	WHERE d.dag_id = $2;`, dagRunId, meta.DagId)
 
 	if err != nil {
 		return nil, err
@@ -221,20 +217,12 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 	taskInfo := map[int]TaskInfo{}
 	for rows.Next() {
 		var taskId int
-		taskStatus := TaskInfo{}
-		if err := rows.Scan(&taskId, &taskStatus.Status); err != nil {
+		task := TaskInfo{}
+		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 
-		taskInfo[taskId] = taskStatus
-	}
-
-	for key := range connections {
-		if _, ok := taskInfo[key]; !ok {
-			taskInfo[key] = TaskInfo{
-				Status: "pending",
-			}
-		}
+		taskInfo[taskId] = task
 	}
 
 	meta.Connections = connections

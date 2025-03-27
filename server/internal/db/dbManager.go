@@ -22,6 +22,7 @@ type DAGMetaData struct {
 
 type TaskInfo struct {
 	Status string `json:"status"`
+	Name   string `json:"name"`
 }
 
 type DagRunMeta struct {

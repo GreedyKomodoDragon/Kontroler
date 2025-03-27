@@ -47,7 +47,7 @@ export default function Logs() {
       </h2>{" "}
       <div class="mt-4"></div>
       <Show when={logs.isError}>
-        <div>Error: {logs.error && logs.error.message}</div>
+        <div>Error: {logs.error?.message}</div>
       </Show>
       <Show when={logs.isLoading}>
         <Spinner />

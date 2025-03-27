@@ -1932,7 +1932,12 @@ func testDAGManager_MarkConnectingTasksAsSuspended_single(t *testing.T, dm db.DB
 	require.Equal(t, 1, taskRunId)
 
 	require.NoError(t, dm.MarkTaskAsFailed(context.Background(), taskRunId))
-	require.NoError(t, dm.MarkConnectingTasksAsSuspended(context.Background(), 1, tasks[0].Id))
+	tasksNames, err := dm.MarkConnectingTasksAsSuspended(context.Background(), 1, tasks[0].Id)
+	require.NoError(t, err)
+	require.Len(t, tasksNames, 3)
+	require.Contains(t, tasksNames, "task2")
+	require.Contains(t, tasksNames, "task3")
+	require.Contains(t, tasksNames, "task4")
 }
 
 func testDAGManager_MarkConnectingTasksAsSuspended_deduplicate_tasks(t *testing.T, dm db.DBDAGManager) {
@@ -1991,5 +1996,11 @@ func testDAGManager_MarkConnectingTasksAsSuspended_deduplicate_tasks(t *testing.
 	require.Equal(t, 1, taskRunId)
 
 	require.NoError(t, dm.MarkTaskAsFailed(context.Background(), taskRunId))
-	require.NoError(t, dm.MarkConnectingTasksAsSuspended(context.Background(), 1, tasks[0].Id))
+	taskNames, err := dm.MarkConnectingTasksAsSuspended(context.Background(), 1, tasks[0].Id)
+	require.NoError(t, err)
+	require.Len(t, taskNames, 3)
+	require.Contains(t, taskNames, "task2")
+	require.Contains(t, taskNames, "task3")
+	require.Contains(t, taskNames, "task4")
+
 }

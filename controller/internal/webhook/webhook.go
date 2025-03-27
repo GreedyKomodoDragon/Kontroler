@@ -27,6 +27,7 @@ type TaskHookDetails struct {
 	Status   string `json:"status"`
 	DagRunId int    `json:"dagRunId"`
 	TaskName string `json:"taskName"`
+	TaskId   int    `json:"taskId"`
 }
 
 type webhookManager struct {

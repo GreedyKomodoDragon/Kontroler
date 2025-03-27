@@ -56,6 +56,10 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	}
 	defer func() {
 		if err := tx.Rollback(ctx); err != nil {
+			if err == pgx.ErrTxClosed {
+				return
+			}
+
 			log.Log.Error(err, "failed to rollback transaction")
 		}
 	}()
@@ -240,36 +244,66 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 }
 
 func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx pgx.Tx, dagID int, task *v1alpha1.TaskSpec, version int) error {
-	for _, dependency := range task.RunAfter {
-		var taskId, depId int
+	if len(task.RunAfter) == 0 {
+		return nil
+	}
 
-		err := tx.QueryRow(ctx, `
-		SELECT dag_task_id
-		FROM DAG_Tasks 
-		WHERE dag_id = $1 AND name = $2 AND version = $3;`, dagID, task.Name, version).Scan(&taskId)
-		if err != nil {
-			return fmt.Errorf("task %s not found for version %d", task.Name, version)
-		}
+	// Get the task ID first
+	var taskId int
+	err := tx.QueryRow(ctx, `
+        SELECT dag_task_id
+        FROM DAG_Tasks 
+        WHERE dag_id = $1 AND name = $2 AND version = $3;`,
+		dagID, task.Name, version).Scan(&taskId)
+	if err != nil {
+		return fmt.Errorf("task %s not found for version %d", task.Name, version)
+	}
 
-		err = tx.QueryRow(ctx, `
-		SELECT dag_task_id
-		FROM DAG_Tasks 
-		WHERE dag_id = $1 AND name = $2
-		ORDER BY version DESC
-		LIMIT 1;
-		;`, dagID, dependency).Scan(&depId)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return fmt.Errorf("dependency task %s not found for version %d", dependency, version)
-			}
+	// Get all dependency IDs in one query using ANY
+	rows, err := tx.Query(ctx, `
+        SELECT name, dag_task_id
+        FROM DAG_Tasks 
+        WHERE dag_id = $1 
+        AND name = ANY($2)
+        ORDER BY version DESC;`,
+		dagID, task.RunAfter)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Create a map to store the dependency IDs
+	depMap := make(map[string]int, len(task.RunAfter))
+	for rows.Next() {
+		var name string
+		var id int
+		if err := rows.Scan(&name, &id); err != nil {
 			return err
 		}
+		depMap[name] = id
+	}
 
-		if _, err := tx.Exec(ctx, `
-		INSERT INTO Dependencies (task_id, depends_on_task_id) 
-		VALUES ($1, $2);`, taskId, depId); err != nil {
-			return err
+	// Verify all dependencies were found
+	for _, dep := range task.RunAfter {
+		if _, ok := depMap[dep]; !ok {
+			return fmt.Errorf("dependency task %s not found", dep)
 		}
+	}
+
+	// Batch insert all dependencies
+	deps := make([][]interface{}, 0, len(task.RunAfter))
+	for _, depName := range task.RunAfter {
+		deps = append(deps, []interface{}{taskId, depMap[depName]})
+	}
+
+	_, err = tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"dependencies"},
+		[]string{"task_id", "depends_on_task_id"},
+		pgx.CopyFromRows(deps),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert dependencies: %w", err)
 	}
 
 	return nil
@@ -281,39 +315,45 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		return 0, err
 	}
 
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() {
-		if err := tx.Rollback(ctx); err != nil {
-			log.Log.Error(err, "failed to rollback transaction")
-		}
-	}()
-
-	// Map the task to the DAG
 	var dagRunID int
-	if err := tx.QueryRow(ctx, `
-	INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, suspendedCount, run_time, pvcName) 
-	VALUES ($1, $2, 'running', 0, 0, 0, NOW(), $3) 
-	RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
-		return 0, err
-	}
-
-	// TODO: batch this
-	for _, param := range parameters {
-		value := param.Value
-		if param.FromSecret != "" {
-			value = param.FromSecret
+	if err := p.withTx(ctx, func(tx pgx.Tx) error {
+		// Map the task to the DAG
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO DAG_Runs (dag_id, name, status, successfulCount, failedCount, suspendedCount, run_time, pvcName) 
+			VALUES ($1, $2, 'running', 0, 0, 0, NOW(), $3) 
+			RETURNING run_id`, dagId, name, pvcName).Scan(&dagRunID); err != nil {
+			return err
 		}
 
-		if _, err := tx.Exec(ctx, "INSERT INTO DAG_Run_Parameters (run_id, name, value, isSecret) VALUES ($1, $2, $3, $4);", dagRunID, param.Name, value, param.FromSecret != ""); err != nil {
-			return 0, err
-		}
-	}
+		// Batch insert all parameters
+		if len(parameters) > 0 {
+			rows := make([][]interface{}, 0, len(parameters))
+			for _, param := range parameters {
+				value := param.Value
+				if param.FromSecret != "" {
+					value = param.FromSecret
+				}
+				rows = append(rows, []interface{}{
+					dagRunID,
+					param.Name,
+					value,
+					param.FromSecret != "",
+				})
+			}
 
-	if err := tx.Commit(ctx); err != nil {
+			_, err := tx.CopyFrom(
+				ctx,
+				pgx.Identifier{"dag_run_parameters"},
+				[]string{"run_id", "name", "value", "issecret"},
+				pgx.CopyFromRows(rows),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to batch insert parameters: %w", err)
+			}
+		}
+
+		return nil
+	}); err != nil {
 		return 0, err
 	}
 
@@ -431,83 +471,76 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 }
 
 func (p *postgresDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
+			return err
+		}
 
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, "UPDATE DAG_Runs SET status = $1 WHERE run_id = $2;", outcome, dagRunId); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]Task, error) {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
+	var tasks []Task
 
-	defer tx.Rollback(ctx)
-
-	var runId int
-	err = tx.QueryRow(ctx, `
-	UPDATE Task_Runs 
-	SET status = 'success' 
-	WHERE task_run_id = $1 
-	RETURNING run_id`, taskRunId).Scan(&runId)
-	if err != nil && err != pgx.ErrNoRows {
-		return nil, err
-	}
-
-	if _, err := tx.Exec(ctx, `
-		UPDATE DAG_Runs 
-		SET successfulCount = successfulCount + 1
-		WHERE run_id = $1;`, runId); err != nil {
-		return nil, err
-	}
-
-	var status string
-	err = tx.QueryRow(ctx, `
-		UPDATE DAG_Runs
-		SET status = 'success'
-		FROM DAGs
-		WHERE DAG_Runs.dag_id = DAGs.dag_id
-		AND DAGs.taskCount = DAG_Runs.successfulCount
-		AND DAG_Runs.run_id = $1
-		RETURNING DAG_Runs.status;
-	`, runId).Scan(&status)
-
-	if err != nil && err != pgx.ErrNoRows {
-		return nil, err
-	}
-
-	if status == "success" {
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
+	if err := p.withTx(ctx, func(tx pgx.Tx) error {
+		var runId int
+		err := tx.QueryRow(ctx, `
+		UPDATE Task_Runs 
+		SET status = 'success' 
+		WHERE task_run_id = $1 
+		RETURNING run_id`, taskRunId).Scan(&runId)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
 		}
 
-		return []Task{}, nil
-	}
+		if _, err := tx.Exec(ctx, `
+			UPDATE DAG_Runs 
+			SET successfulCount = successfulCount + 1
+			WHERE run_id = $1;`, runId); err != nil {
+			return err
+		}
 
-	dagId, err := p.getDAGIdFromRun(ctx, tx, runId)
-	if err != nil {
-		return nil, err
-	}
+		var status string
+		err = tx.QueryRow(ctx, `
+			UPDATE DAG_Runs
+			SET status = 'success'
+			FROM DAGs
+			WHERE DAG_Runs.dag_id = DAGs.dag_id
+			AND DAGs.taskCount = DAG_Runs.successfulCount
+			AND DAG_Runs.run_id = $1
+			RETURNING DAG_Runs.status;
+		`, runId).Scan(&status)
 
-	tasks, parameters, err := p.getNextRunnableTasks(ctx, tx, taskRunId, runId, dagId)
-	if err != nil {
-		return nil, err
-	}
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
 
-	if err := p.fetchTaskParameters(ctx, tx, dagId, tasks, parameters); err != nil {
-		return nil, err
-	}
+		if status == "success" {
+			if err := tx.Commit(ctx); err != nil {
+				return err
+			}
 
-	if err := tx.Commit(ctx); err != nil {
+			return nil
+		}
+
+		dagId, err := p.getDAGIdFromRun(ctx, tx, runId)
+		if err != nil {
+			return err
+		}
+
+		var parameters [][]string
+		tasks, parameters, err = p.getNextRunnableTasks(ctx, tx, taskRunId, runId, dagId)
+		if err != nil {
+			return err
+		}
+
+		if err := p.fetchTaskParameters(ctx, tx, dagId, tasks, parameters); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -773,22 +806,17 @@ func (p *postgresDAGManager) getDAGIdFromRun(ctx context.Context, tx pgx.Tx, run
 }
 
 func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			UPDATE Task_Runs
+			SET attempts = attempts + 1
+			WHERE task_run_id = $1
+			`, taskRunId); err != nil {
+			return err
+		}
 
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
-	UPDATE Task_Runs 
-	SET attempts = attempts + 1
-	WHERE task_run_id = $1 
-	`, taskRunId); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {
@@ -957,22 +985,16 @@ func (p *postgresDAGManager) ShouldRerun(ctx context.Context, taskRunid int, exi
 }
 
 func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
 		UPDATE Task_Runs 
 		SET status = 'failed' 
 		WHERE task_run_id = $1;
 	`, taskRunId); err != nil {
-		return err
-	}
+			return err
+		}
 
-	if _, err := tx.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 	    UPDATE DAG_Runs
 	    SET
 	        failedCount = failedCount + 1,
@@ -982,10 +1004,11 @@ func (p *postgresDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int
 			FROM Task_Runs
 			WHERE task_run_id = $1
 		);`, taskRunId); err != nil {
-		return err
-	}
+			return err
+		}
 
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, name string, taskRunID int, status v1.PodPhase, tStamp time.Time, exitCode *int32, namespace string) error {
@@ -1403,10 +1426,10 @@ func (p *postgresDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId 
 	return pvc, nil
 }
 
-func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) error {
+func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) ([]string, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -1420,7 +1443,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		);
 	`, dagRunId)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to fetch dependencies: %w", err)
 	}
 
 	// Store dependencies in a map for fast lookups
@@ -1429,7 +1452,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		var parentTaskID, dependentTaskID int
 		if err := dependencyRows.Scan(&parentTaskID, &dependentTaskID); err != nil {
 			dependencyRows.Close()
-			return fmt.Errorf("failed to scan dependency row: %w", err)
+			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
 		}
 		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
 	}
@@ -1440,7 +1463,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	if err := tx.QueryRow(ctx, `
 		SELECT task_id FROM Task_Runs WHERE task_run_id = $1;
 	`, taskRunId).Scan(&startingTaskID); err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get task id: %w", err)
 	}
 
 	// DFS using stack
@@ -1448,6 +1471,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	seen := make(map[int]bool)
 	uniqueUpdates := make(map[int]struct{})
 	var updates [][]interface{}
+	taskIdsSuspended := []int{}
 
 	for len(stack) > 0 {
 		currentTaskID := stack[len(stack)-1]
@@ -1462,6 +1486,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 			for _, taskID := range dependentTasks {
 				if _, exists := uniqueUpdates[taskID]; !exists {
 					uniqueUpdates[taskID] = struct{}{}
+					taskIdsSuspended = append(taskIdsSuspended, taskID)
 					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
 					stack = append(stack, taskID)
 				}
@@ -1475,7 +1500,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		copySrc := pgx.CopyFromRows(updates)
 		_, err := tx.CopyFrom(ctx, pgx.Identifier{"task_runs"}, columns, copySrc)
 		if err != nil {
-			return fmt.Errorf("failed to bulk insert task runs: %w", err)
+			return nil, fmt.Errorf("failed to bulk insert task runs: %w", err)
 		}
 	}
 
@@ -1484,10 +1509,24 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		UPDATE DAG_Runs 
 		SET suspendedCount = suspendedCount + $1
 		WHERE run_id = $2;`, len(updates), dagRunId); err != nil {
-		return err
+		return nil, fmt.Errorf("failed to update DAG runs: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	// get task names
+	taskNames := []string{}
+	for _, taskID := range taskIdsSuspended {
+		var taskName string
+		if err := tx.QueryRow(ctx, `
+			SELECT name
+			FROM DAG_Tasks
+			WHERE dag_task_id = $1;
+		`, taskID).Scan(&taskName); err != nil {
+			return nil, fmt.Errorf("failed to get task name: %w", err)
+		}
+		taskNames = append(taskNames, taskName)
+	}
+
+	return taskNames, tx.Commit(ctx)
 }
 
 func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
@@ -1509,20 +1548,15 @@ func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID i
 }
 
 func (p *postgresDAGManager) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx, `
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
 		UPDATE Task_Pods
 		SET duration = $1
 		WHERE task_run_id = $2;
 	`, durationSec, taskRunId); err != nil {
-		return err
-	}
+			return err
+		}
 
-	return tx.Commit(ctx)
+		return nil
+	})
 }
