@@ -2,6 +2,7 @@ package dag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,7 +23,9 @@ import (
 )
 
 var (
-	kontrolerTaskRunID = "kontroler/task-rid"
+	ErrMissingAnnotation = errors.New("missing required annotation")
+	ErrInvalidTaskRunID  = errors.New("invalid task run ID")
+	kontrolerTaskRunID   = "kontroler/task-rid"
 )
 
 // Purpose of TaskWatcher is to listen for pods to finish and record results/trigger the next pods
@@ -32,13 +35,13 @@ type TaskWatcher interface {
 }
 
 type taskWatcher struct {
-	namespace     string
-	dbManager     db.DBDAGManager
-	informer      cache.SharedIndexInformer
-	clientSet     *kubernetes.Clientset
-	taskAllocator TaskAllocator
-	logStore      object.LogStore
-	webhookChan   chan webhook.WebhookPayload
+	namespace       string
+	dbManager       db.DBDAGManager
+	informer        cache.SharedIndexInformer
+	clientSet       *kubernetes.Clientset
+	taskAllocator   TaskAllocator
+	logStore        object.LogStore
+	webhookNotifier webhook.WebhookNotifier
 }
 
 func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator, dbManager db.DBDAGManager, id string, logStore object.LogStore, webhookChan chan webhook.WebhookPayload) (TaskWatcher, error) {
@@ -61,13 +64,13 @@ func NewTaskWatcher(namespace string, clientSet *kubernetes.Clientset, taskAlloc
 	informer := factory.Core().V1().Pods().Informer()
 
 	watcher := &taskWatcher{
-		namespace:     namespace,
-		dbManager:     dbManager,
-		informer:      informer,
-		clientSet:     clientSet,
-		taskAllocator: taskAllocator,
-		logStore:      logStore,
-		webhookChan:   webhookChan,
+		namespace:       namespace,
+		dbManager:       dbManager,
+		informer:        informer,
+		clientSet:       clientSet,
+		taskAllocator:   taskAllocator,
+		logStore:        logStore,
+		webhookNotifier: webhook.NewWebhookNotifier(webhookChan),
 	}
 
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -130,15 +133,9 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 	ctx := context.Background()
 	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
-	taskRunIdStr, ok := pod.Annotations[kontrolerTaskRunID]
-	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", kontrolerTaskRunID, "pod", pod.Name)
-		return
-	}
-
-	taskRunId, err := strconv.Atoi(taskRunIdStr)
+	taskRunId, err := t.getTaskRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to convert task run string", "taskRunIdStr", taskRunIdStr)
+		log.Log.Error(err, "failed to get task run ID", "pod", pod.Name)
 		return
 	}
 
@@ -154,32 +151,26 @@ func (t *taskWatcher) handleOutcome(pod *v1.Pod, event string, eventTime time.Ti
 	if t.logStore != nil && readyForLogCollection {
 		// Attempt to get logs, but we don't stop if we can't get them
 		go func() {
-			dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
-			if !ok {
-				log.Log.Error(fmt.Errorf("find to find annotation"), "found pod missing kontroler/dagRun-id", "pod", pod.Name)
-				return
-			}
-
-			runId, err := strconv.Atoi(dagRunStr)
+			dagRunId, err := t.getDagRunID(pod)
 			if err != nil {
-				log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
+				log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
 				return
 			}
 
-			if ok := t.logStore.IsFetching(runId, pod); ok {
+			if ok := t.logStore.IsFetching(dagRunId, pod); ok {
 				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name, "event", event)
 				return
 			}
 
-			if err := t.logStore.MarkAsFetching(runId, pod); err != nil {
+			if err := t.logStore.MarkAsFetching(dagRunId, pod); err != nil {
 				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name, "event", event)
 				return
 			}
 
-			defer t.logStore.UnlistFetching(runId, pod)
+			defer t.logStore.UnlistFetching(dagRunId, pod)
 
 			log.Log.Info("started collecting logs", "pod", pod.Name)
-			if err := t.logStore.UploadLogs(context.Background(), runId, t.clientSet, pod); err != nil {
+			if err := t.logStore.UploadLogs(context.Background(), dagRunId, t.clientSet, pod); err != nil {
 				log.Log.Error(err, "failed to uploadLogs")
 			}
 		}()
@@ -212,20 +203,9 @@ func (t *taskWatcher) handlePodDelete(obj interface{}) {
 func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
 	log.Log.Info("task succeeded", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 
-	// Get the run ID from the Pod
-	dagRunIdStr, ok := pod.Annotations["kontroler/dagRun-id"]
-	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/dagRun-id", "pod", pod.Name)
-		return
-	}
-
-	runId, err := strconv.Atoi(dagRunIdStr)
+	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
-		} else {
-			log.Log.Error(err, "failed to delete pod in successful,", "podUId", pod.UID)
-		}
+		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
 		return
 	}
 
@@ -240,19 +220,19 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 		return
 	}
 
-	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", runId)
+		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
 	} else if webhook.URL != "" {
-		go t.sendTaskRunNotification(pod.Spec.Containers[0].Name, "success", runId, taskRunId, webhook.URL, webhook.VerifySSL)
+		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "success", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
 	if len(tasks) == 0 {
-		complete, err := t.checkIfDagRunIsComplete(ctx, runId)
+		complete, err := t.checkIfDagRunIsComplete(ctx, dagRunId)
 		if err != nil {
-			log.Log.Error(err, "failed to check if dag run is complete", "runId", runId)
+			log.Log.Error(err, "failed to check if dag run is complete", "runId", dagRunId)
 			return
 		}
 
@@ -261,20 +241,19 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 		}
 
 		if err := t.deletePVC(ctx, pod); err != nil {
-			log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", runId, "status", pod.Status.Phase)
+			log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", dagRunId, "status", pod.Status.Phase)
 		}
 		return
 	}
 
-	// TODO: Using a channel + Goroutines Workers for scaling out pods quicker
 	for _, task := range tasks {
-		taskRunId, err := t.dbManager.MarkTaskAsStarted(ctx, runId, task.Id)
+		taskRunId, err := t.dbManager.MarkTaskAsStarted(ctx, dagRunId, task.Id)
 		if err != nil {
-			log.Log.Error(err, "failed to mark task as started", "dagRun_id", runId, "task_id", task.Id)
+			log.Log.Error(err, "failed to mark task as started", "dagRun_id", dagRunId, "task_id", task.Id)
 			continue
 		}
 
-		newPod, err := t.taskAllocator.AllocateTask(ctx, task, runId, taskRunId, pod.Namespace)
+		newPod, err := t.taskAllocator.AllocateTask(ctx, task, dagRunId, taskRunId, pod.Namespace)
 		if err != nil {
 			log.Log.Error(err, "failed to allocate task", "task.Id", task.Id, "task.Name", task.Name)
 			continue
@@ -287,15 +266,9 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
 	log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 
-	dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
-	if !ok {
-		log.Log.Error(fmt.Errorf("find to find annotation"), "found pod missing kontroler/dagRun-id", "pod", pod.Name)
-		return
-	}
-
-	dagRunId, err := strconv.Atoi(dagRunStr)
+	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to parse dagRunStr", "dagRunStr", dagRunStr)
+		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
 		return
 	}
 
@@ -308,7 +281,7 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 		return
 	}
 
-	ok, err = t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+	ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
 	if err != nil {
 		log.Log.Error(err, "failed to determine if pod should be re-ran", "pod", pod.Name)
 		return
@@ -378,28 +351,17 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 	}
 
 	log.Log.Info("new task allocated allocated with env", "taskUUID", taskUUID)
-
 }
 
 func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
-	taskRunIDStr, ok := pod.Annotations[kontrolerTaskRunID]
-	if !ok {
-		return fmt.Errorf("missing annotation: %s", kontrolerTaskRunID)
-	}
-
-	taskRunId, err := strconv.Atoi(taskRunIDStr)
+	taskRunId, err := t.getTaskRunID(pod)
 	if err != nil {
-		return fmt.Errorf("failed to convert task run string: %s", taskRunIDStr)
+		return err
 	}
 
-	dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
-	if !ok {
-		return fmt.Errorf("missing annotation: kontroler/dagRun-id")
-	}
-
-	dagRunId, err := strconv.Atoi(dagRunStr)
+	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
-		return fmt.Errorf("failed to parse dagRunStr: %s", dagRunStr)
+		return err
 	}
 
 	var exitCode *int32 = nil
@@ -423,12 +385,11 @@ func (t *taskWatcher) writeStatusToDB(pod *v1.Pod, stamp time.Time) error {
 		return fmt.Errorf("failed to mark pod status: %w", err)
 	}
 
-	// Send webhook notification
 	webhook, err := t.dbManager.GetWebhookDetails(context.Background(), dagRunId)
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
 	} else if webhook.URL != "" {
-		go t.sendPodEventNotification(
+		go t.webhookNotifier.NotifyPodEvent(
 			pod.Spec.Containers[0].Name,
 			string(pod.Status.Phase),
 			dagRunId,
@@ -454,17 +415,15 @@ func (t *taskWatcher) handleUnretryablePod(ctx context.Context, pod *v1.Pod, tas
 	if err != nil {
 		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
 	} else if webhook.URL != "" {
-		go t.sendTaskRunNotification(pod.Spec.Containers[0].Name, "failed", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
+		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "failed", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 
-	// mark connecting tasks as suspended
-	// return tasks that are marked as suspended
 	taskNames, err := t.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId)
 	if err == nil {
 		if webhook.URL != "" {
 			for _, taskName := range taskNames {
 				log.Log.Info("task marked as suspended", "taskName", taskName)
-				go t.sendTaskRunNotification(taskName, "suspended", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
+				go t.webhookNotifier.NotifyTaskRun(taskName, "suspended", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 			}
 		}
 	} else {
@@ -497,83 +456,34 @@ func (t *taskWatcher) deletePod(ctx context.Context, pod *v1.Pod) error {
 func (t *taskWatcher) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
 	log.Log.Info("task started", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 
-	// Get the run ID from the Pod
-	dagRunIdStr, ok := pod.Annotations["kontroler/dagRun-id"]
-	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/dagRun-id", "pod", pod.Name)
+	dagRunId, err := t.getDagRunID(pod)
+	if err != nil {
+		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
 		return
 	}
 
-	runId, err := strconv.Atoi(dagRunIdStr)
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to parse dagRun-id", "podUId", pod.UID)
-		return
-	}
-
-	// Send webhook notification
-	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
-	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", runId)
+		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
 	} else if webhook.URL != "" {
-		t.sendTaskRunNotification(pod.Spec.Containers[0].Name, "started", runId, taskRunId, webhook.URL, webhook.VerifySSL)
+		t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "started", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 }
 
 func (t *taskWatcher) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
 	log.Log.Info("task pending", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 
-	// Get the run ID from the Pod
-	dagRunIdStr, ok := pod.Annotations["kontroler/dagRun-id"]
-	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/dagRun-id", "pod", pod.Name)
+	dagRunId, err := t.getDagRunID(pod)
+	if err != nil {
+		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
 		return
 	}
 
-	runId, err := strconv.Atoi(dagRunIdStr)
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to parse dagRun-id", "podUId", pod.UID)
-		return
-	}
-
-	// Send webhook notification
-	webhook, err := t.dbManager.GetWebhookDetails(ctx, runId)
-	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", runId)
+		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
 	} else if webhook.URL != "" {
-		go t.sendTaskRunNotification(pod.Spec.Containers[0].Name, "pending", runId, taskRunId, webhook.URL, webhook.VerifySSL)
-	}
-}
-
-func (t *taskWatcher) sendTaskRunNotification(name string, status string, dagRunId, taskId int, url string, verifySSL bool) {
-	t.webhookChan <- webhook.WebhookPayload{
-		URL:       url,
-		VerifySSL: verifySSL,
-		Data: webhook.TaskHookDetails{
-			WebhookDataBase: webhook.WebhookDataBase{
-				Type: "taskrun",
-			},
-			Status:   status,
-			DagRunId: dagRunId,
-			TaskName: name,
-			TaskId:   taskId,
-		},
-	}
-}
-
-func (t *taskWatcher) sendPodEventNotification(name string, status string, dagRunId, taskId int, url string, verifySSL bool, duration int) {
-	t.webhookChan <- webhook.WebhookPayload{
-		URL:       url,
-		VerifySSL: verifySSL,
-		Data: webhook.PodEventDetails{
-			WebhookDataBase: webhook.WebhookDataBase{
-				Type: "pod",
-			},
-			Status:   status,
-			DagRunId: dagRunId,
-			TaskName: name,
-			TaskId:   taskId,
-			Duration: duration,
-		},
+		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "pending", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 }
 
@@ -611,4 +521,27 @@ func (t *taskWatcher) checkIfDagRunIsComplete(ctx context.Context, runId int) (b
 	}
 
 	return allTasksDone, nil
+}
+
+func (t *taskWatcher) getTaskRunID(pod *v1.Pod) (int, error) {
+	taskRunIdStr, ok := pod.Annotations[kontrolerTaskRunID]
+	if !ok {
+		return 0, fmt.Errorf("%w: %s", ErrMissingAnnotation, kontrolerTaskRunID)
+	}
+
+	taskRunId, err := strconv.Atoi(taskRunIdStr)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s", ErrInvalidTaskRunID, taskRunIdStr)
+	}
+
+	return taskRunId, nil
+}
+
+func (t *taskWatcher) getDagRunID(pod *v1.Pod) (int, error) {
+	dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
+	if !ok {
+		return 0, fmt.Errorf("%w: kontroler/dagRun-id", ErrMissingAnnotation)
+	}
+
+	return strconv.Atoi(dagRunStr)
 }
