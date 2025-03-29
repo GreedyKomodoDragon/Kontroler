@@ -17,17 +17,32 @@ type WebhookManager interface {
 	Listen(ctx context.Context) error
 }
 
+type WebhookDataBase struct {
+	// Base struct for webhook data
+	Type string `json:"type"`
+}
+
 type WebhookPayload struct {
 	URL       string
 	VerifySSL bool
-	Data      TaskHookDetails
+	Data      any
 }
 
 type TaskHookDetails struct {
+	WebhookDataBase
 	Status   string `json:"status"`
 	DagRunId int    `json:"dagRunId"`
 	TaskName string `json:"taskName"`
 	TaskId   int    `json:"taskId"`
+}
+
+type PodEventDetails struct {
+	WebhookDataBase
+	Status   string `json:"status"`
+	DagRunId int    `json:"dagRunId"`
+	TaskName string `json:"taskName"`
+	TaskId   int    `json:"taskId"`
+	Duration int    `json:"duration"`
 }
 
 type webhookManager struct {
