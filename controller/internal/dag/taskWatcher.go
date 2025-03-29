@@ -253,7 +253,7 @@ func (t *taskWatcher) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, 
 			continue
 		}
 
-		newPod, err := t.taskAllocator.AllocateTask(ctx, task, dagRunId, taskRunId, pod.Namespace)
+		newPod, err := t.taskAllocator.AllocateTask(ctx, &task, dagRunId, taskRunId, pod.Namespace)
 		if err != nil {
 			log.Log.Error(err, "failed to allocate task", "task.Id", task.Id, "task.Name", task.Name)
 			continue
@@ -312,7 +312,7 @@ func (t *taskWatcher) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, task
 		return
 	}
 
-	dbTask := db.Task{
+	dbTask := &db.Task{
 		Id:      taskId,
 		Name:    container.Name,
 		Args:    container.Args,
