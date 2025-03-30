@@ -29,7 +29,7 @@ func FuzzCreateEnvs(f *testing.F) {
 		ta := dag.NewTaskAllocator(nil, "random")
 
 		// Run CreateEnvs function
-		envs := ta.CreateEnvs(task)
+		envs := ta.CreateEnvs(&task)
 
 		// Check if the function returns valid results
 		if envs == nil || len(*envs) == 0 {

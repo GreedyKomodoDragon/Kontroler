@@ -38,9 +38,9 @@ var (
 )
 
 type TaskAllocator interface {
-	AllocateTask(context.Context, db.Task, int, int, string) (types.UID, error)
-	AllocateTaskWithEnv(context.Context, db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements) (types.UID, error)
-	CreateEnvs(task db.Task) *[]v1.EnvVar
+	AllocateTask(context.Context, *db.Task, int, int, string) (types.UID, error)
+	AllocateTaskWithEnv(context.Context, *db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements) (types.UID, error)
+	CreateEnvs(task *db.Task) *[]v1.EnvVar
 }
 
 type taskAllocator struct {
@@ -72,7 +72,7 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset, id string) TaskAllocator 
 	}
 }
 
-func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
+func (t *taskAllocator) AllocateTask(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
 	envs := t.CreateEnvs(task)
 	if envs == nil {
 		return "", fmt.Errorf("failed to create envs")
@@ -81,12 +81,12 @@ func (t *taskAllocator) AllocateTask(ctx context.Context, task db.Task, dagRunId
 	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, *envs, nil)
 }
 
-func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
+func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
 	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, envs, resources)
 }
 
-func (t *taskAllocator) allocatePod(ctx context.Context, task db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
-	podSpec := t.createPodSpec(&task, envs, resources)
+func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
+	podSpec := t.createPodSpec(task, envs, resources)
 
 	// using pod pool to reduce struct re-creation
 	pod := t.podPool.Get().(*v1.Pod)
@@ -239,7 +239,7 @@ func (t *taskAllocator) applyPodTemplate(podSpec *v1.PodSpec, task *db.Task) {
 	}
 }
 
-func (t *taskAllocator) CreateEnvs(task db.Task) *[]v1.EnvVar {
+func (t *taskAllocator) CreateEnvs(task *db.Task) *[]v1.EnvVar {
 	envs := []v1.EnvVar{}
 	for _, param := range task.Parameters {
 		if param.IsSecret {
