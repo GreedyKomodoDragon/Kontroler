@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestQueue(t *testing.T) (*Queue, string, func()) {
+func setupTestQueue(t *testing.T) (Queue, string, func()) {
 	tmpDir, err := os.MkdirTemp("", "queue-test-*")
 	require.NoError(t, err)
 
-	q, err := NewQueue(t.Context(), tmpDir, "test-topic")
+	q, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		require.NoError(t, err)
@@ -28,14 +28,13 @@ func setupTestQueue(t *testing.T) (*Queue, string, func()) {
 	return q, tmpDir, cleanup
 }
 
-func TestNewQueue(t *testing.T) {
-
+func TestNewPebbleQueue(t *testing.T) {
 	// Test invalid path - use a different directory
 	nonexistentDir, err := os.MkdirTemp("", "queue-test-nonexistent-*")
 	require.NoError(t, err)
 	defer os.RemoveAll(nonexistentDir)
 
-	q1, err := NewQueue(t.Context(), filepath.Join(nonexistentDir, "subdir"), "test-topic")
+	q1, err := NewPebbleQueue(t.Context(), filepath.Join(nonexistentDir, "subdir"), "test-topic")
 	require.NoError(t, err)
 	defer q1.Close()
 
@@ -44,7 +43,7 @@ func TestNewQueue(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(optsDir)
 
-	q2, err := NewQueue(context.Background(), optsDir, "test-topic-opts")
+	q2, err := NewPebbleQueue(context.Background(), optsDir, "test-topic-opts")
 	require.NoError(t, err)
 	defer q2.Close()
 }
@@ -122,13 +121,13 @@ func TestQueuePersistence(t *testing.T) {
 	testValue := "persistence-test"
 
 	// Create queue and push value
-	q1, err := NewQueue(t.Context(), tmpDir, "test-topic")
+	q1, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
 	require.NoError(t, q1.Push(testValue))
 	q1.Close()
 
 	// Create new queue instance and verify value
-	q2, err := NewQueue(t.Context(), tmpDir, "test-topic")
+	q2, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
 	defer q2.Close()
 

@@ -11,7 +11,7 @@ import (
 
 const keyFormat = "%s:%08d"
 
-type Queue struct {
+type PebbleQueue struct {
 	db                *pebble.DB
 	topic             string
 	headKey           string
@@ -23,14 +23,14 @@ type Queue struct {
 	lastCommittedHead uint64
 }
 
-func NewQueue(ctx context.Context, dbPath, topic string) (*Queue, error) {
+func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, error) {
 	db, err := pebble.Open(dbPath, &pebble.Options{})
 	if err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	q := &Queue{
+	q := &PebbleQueue{
 		db:      db,
 		topic:   topic,
 		headKey: topic + ":head",
@@ -54,11 +54,11 @@ func NewQueue(ctx context.Context, dbPath, topic string) (*Queue, error) {
 	return q, nil
 }
 
-func (q *Queue) Push(value string) error {
+func (q *PebbleQueue) Push(value string) error {
 	return q.PushBatch([]string{value})
 }
 
-func (q *Queue) PushBatch(values []string) error {
+func (q *PebbleQueue) PushBatch(values []string) error {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 
@@ -75,7 +75,7 @@ func (q *Queue) PushBatch(values []string) error {
 	return batch.Commit(pebble.Sync)
 }
 
-func (q *Queue) Pop() (string, error) {
+func (q *PebbleQueue) Pop() (string, error) {
 	values, err := q.PopBatch(1)
 	if err != nil || len(values) == 0 {
 		return "", err
@@ -83,7 +83,7 @@ func (q *Queue) Pop() (string, error) {
 	return values[0], nil
 }
 
-func (q *Queue) PopBatch(count int) ([]string, error) {
+func (q *PebbleQueue) PopBatch(count int) ([]string, error) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 
@@ -123,7 +123,7 @@ func (q *Queue) PopBatch(count int) ([]string, error) {
 	return results, nil
 }
 
-func (q *Queue) getCounter(key string) (uint64, error) {
+func (q *PebbleQueue) getCounter(key string) (uint64, error) {
 	value, closer, err := q.db.Get([]byte(key))
 	if err == pebble.ErrNotFound {
 		return 0, nil
@@ -136,11 +136,11 @@ func (q *Queue) getCounter(key string) (uint64, error) {
 	return strconv.ParseUint(string(value), 10, 64)
 }
 
-func (q *Queue) updateCounter(key string, value uint64) error {
+func (q *PebbleQueue) updateCounter(key string, value uint64) error {
 	return q.db.Set([]byte(key), []byte(strconv.FormatUint(value, 10)), pebble.Sync)
 }
 
-func (q *Queue) Size() (uint64, error) {
+func (q *PebbleQueue) Size() (uint64, error) {
 	head, err := q.getCounter(q.headKey)
 	if err != nil {
 		return 0, err
@@ -154,7 +154,7 @@ func (q *Queue) Size() (uint64, error) {
 	return tail - head, nil
 }
 
-func (q *Queue) Close() error {
+func (q *PebbleQueue) Close() error {
 	q.cancel()
 	q.wg.Wait()
 	return q.db.Close()

@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-func setupBenchmarkQueue(b *testing.B) (*Queue, func()) {
+func setupBenchmarkQueue(b *testing.B) (Queue, func()) {
 	tmpDir, err := os.MkdirTemp("", "queue-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	q, err := NewQueue(context.Background(), tmpDir, "bench-topic")
+	q, err := NewPebbleQueue(context.Background(), tmpDir, "bench-topic")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		b.Fatal(err)
@@ -132,7 +132,7 @@ func BenchmarkQueueBatchOperations(b *testing.B) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	q, err := NewQueue(context.Background(), tmpDir, "bench-topic")
+	q, err := NewPebbleQueue(context.Background(), tmpDir, "bench-topic")
 	if err != nil {
 		b.Fatal(err)
 	}
