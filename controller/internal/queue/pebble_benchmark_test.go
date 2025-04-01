@@ -14,7 +14,7 @@ func setupBenchmarkQueue(b *testing.B) (*Queue, func()) {
 		b.Fatal(err)
 	}
 
-	q, err := NewQueue(context.Background(), tmpDir, "bench-topic", DefaultOptions())
+	q, err := NewQueue(context.Background(), tmpDir, "bench-topic")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		b.Fatal(err)
@@ -125,66 +125,14 @@ func BenchmarkQueueBatch(b *testing.B) {
 	}
 }
 
-func BenchmarkQueueWithDifferentOptions(b *testing.B) {
-	configs := map[string]*QueueOptions{
-		"small-batch": {
-			BatchSize:    10,
-			MemTableSize: 64 << 20,
-			BytesPerSync: 256 << 10,
-		},
-		"medium-batch": {
-			BatchSize:    100,
-			MemTableSize: 64 << 20,
-			BytesPerSync: 512 << 10,
-		},
-		"large-batch": {
-			BatchSize:    1000,
-			MemTableSize: 128 << 20,
-			BytesPerSync: 1 << 20,
-		},
-	}
-
-	for name, opts := range configs {
-		b.Run(name, func(b *testing.B) {
-			tmpDir, err := os.MkdirTemp("", "queue-bench-*")
-			if err != nil {
-				b.Fatal(err)
-			}
-			defer os.RemoveAll(tmpDir)
-
-			q, err := NewQueue(context.Background(), tmpDir, "bench-topic", opts)
-			if err != nil {
-				b.Fatal(err)
-			}
-			defer q.Close()
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if err := q.Push("test message"); err != nil {
-					b.Fatal(err)
-				}
-				if _, err := q.Pop(); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
 func BenchmarkQueueBatchOperations(b *testing.B) {
-	opts := &QueueOptions{
-		BatchSize:    1000,
-		MemTableSize: 128 << 20,
-		BytesPerSync: 1 << 20,
-	}
-
 	tmpDir, err := os.MkdirTemp("", "queue-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	q, err := NewQueue(context.Background(), tmpDir, "bench-topic", opts)
+	q, err := NewQueue(context.Background(), tmpDir, "bench-topic")
 	if err != nil {
 		b.Fatal(err)
 	}

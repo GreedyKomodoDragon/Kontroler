@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +14,7 @@ func setupTestQueue(t *testing.T) (*Queue, string, func()) {
 	tmpDir, err := os.MkdirTemp("", "queue-test-*")
 	require.NoError(t, err)
 
-	q, err := NewQueue(t.Context(), tmpDir, "test-topic", DefaultOptions())
+	q, err := NewQueue(t.Context(), tmpDir, "test-topic")
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		require.NoError(t, err)
@@ -36,7 +35,7 @@ func TestNewQueue(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(nonexistentDir)
 
-	q1, err := NewQueue(t.Context(), filepath.Join(nonexistentDir, "subdir"), "test-topic", nil)
+	q1, err := NewQueue(t.Context(), filepath.Join(nonexistentDir, "subdir"), "test-topic")
 	require.NoError(t, err)
 	defer q1.Close()
 
@@ -45,13 +44,7 @@ func TestNewQueue(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(optsDir)
 
-	opts := &QueueOptions{
-		BatchSize:    100,
-		MemTableSize: 32 << 20,
-		Timeout:      1 * time.Second,
-	}
-
-	q2, err := NewQueue(context.Background(), optsDir, "test-topic-opts", opts)
+	q2, err := NewQueue(context.Background(), optsDir, "test-topic-opts")
 	require.NoError(t, err)
 	defer q2.Close()
 }
@@ -102,10 +95,6 @@ func TestEmptyQueue(t *testing.T) {
 	_, err := q.Pop()
 	require.Error(t, err)
 
-	// Test peek on empty queue
-	_, err = q.Peek()
-	require.Error(t, err)
-
 	// Test size on empty queue
 	size, err := q.Size()
 	require.NoError(t, err)
@@ -118,13 +107,6 @@ func TestPeek(t *testing.T) {
 
 	testValue := "peek-test"
 	require.NoError(t, q.Push(testValue))
-
-	// Test multiple peeks
-	for i := 0; i < 3; i++ {
-		val, err := q.Peek()
-		require.NoError(t, err)
-		require.Equal(t, testValue, val)
-	}
 
 	// Verify value is still there after peek
 	val, err := q.Pop()
@@ -140,13 +122,13 @@ func TestQueuePersistence(t *testing.T) {
 	testValue := "persistence-test"
 
 	// Create queue and push value
-	q1, err := NewQueue(t.Context(), tmpDir, "test-topic", DefaultOptions())
+	q1, err := NewQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
 	require.NoError(t, q1.Push(testValue))
 	q1.Close()
 
 	// Create new queue instance and verify value
-	q2, err := NewQueue(t.Context(), tmpDir, "test-topic", DefaultOptions())
+	q2, err := NewQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
 	defer q2.Close()
 
