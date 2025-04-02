@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -54,11 +55,11 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 	return q, nil
 }
 
-func (q *PebbleQueue) Push(value string) error {
-	return q.PushBatch([]string{value})
+func (q *PebbleQueue) Push(value *PodEvent) error {
+	return q.PushBatch([]*PodEvent{value})
 }
 
-func (q *PebbleQueue) PushBatch(values []string) error {
+func (q *PebbleQueue) PushBatch(values []*PodEvent) error {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 
@@ -68,22 +69,26 @@ func (q *PebbleQueue) PushBatch(values []string) error {
 	for _, value := range values {
 		tail++
 		key := fmt.Sprintf(keyFormat, q.topic, tail)
-		batch.Set([]byte(key), []byte(value), nil)
+		data, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		batch.Set([]byte(key), data, nil)
 	}
 
 	batch.Set([]byte(q.tailKey), []byte(strconv.FormatUint(tail, 10)), nil)
 	return batch.Commit(pebble.Sync)
 }
 
-func (q *PebbleQueue) Pop() (string, error) {
+func (q *PebbleQueue) Pop() (*PodEvent, error) {
 	values, err := q.PopBatch(1)
-	if err != nil || len(values) == 0 {
-		return "", err
+	if err != nil {
+		return nil, err
 	}
 	return values[0], nil
 }
 
-func (q *PebbleQueue) PopBatch(count int) ([]string, error) {
+func (q *PebbleQueue) PopBatch(count int) ([]*PodEvent, error) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 
@@ -92,14 +97,14 @@ func (q *PebbleQueue) PopBatch(count int) ([]string, error) {
 
 	available := int(tail - head)
 	if available <= 0 {
-		return nil, fmt.Errorf("queue is empty")
+		return nil, ErrQueueIsEmpty
 	}
 
 	if count > available {
 		count = available
 	}
 
-	results := make([]string, 0, count)
+	results := make([]*PodEvent, 0, count)
 	batch := q.db.NewBatch()
 
 	for i := 0; i < count; i++ {
@@ -109,7 +114,12 @@ func (q *PebbleQueue) PopBatch(count int) ([]string, error) {
 		if err != nil {
 			return results, err
 		}
-		results = append(results, string(value))
+		var event PodEvent
+		if err := json.Unmarshal(value, &event); err != nil {
+			closer.Close()
+			return results, err
+		}
+		results = append(results, &event)
 		closer.Close()
 		batch.Delete([]byte(key), nil)
 	}

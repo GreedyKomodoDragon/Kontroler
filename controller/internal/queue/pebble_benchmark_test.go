@@ -34,7 +34,10 @@ func BenchmarkQueuePush(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := q.Push("test message"); err != nil {
+		if err := q.Push(&PodEvent{
+			Pod:   nil,
+			Event: "test message",
+		}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -46,7 +49,10 @@ func BenchmarkQueuePop(b *testing.B) {
 
 	// Pre-fill queue
 	for i := 0; i < b.N; i++ {
-		if err := q.Push("test message"); err != nil {
+		if err := q.Push(&PodEvent{
+			Pod:   nil,
+			Event: "test message",
+		}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -65,7 +71,10 @@ func BenchmarkQueuePushPop(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := q.Push("test message"); err != nil {
+		if err := q.Push(&PodEvent{
+			Pod:   nil,
+			Event: "test message",
+		}); err != nil {
 			b.Fatal(err)
 		}
 		if _, err := q.Pop(); err != nil {
@@ -88,7 +97,10 @@ func BenchmarkQueueWithDifferentSizes(b *testing.B) {
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if err := q.Push(string(message)); err != nil {
+				if err := q.Push(&PodEvent{
+					Pod:   nil,
+					Event: string(message),
+				}); err != nil {
 					b.Fatal(err)
 				}
 				if _, err := q.Pop(); err != nil {
@@ -110,7 +122,10 @@ func BenchmarkQueueBatch(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				// Push batch
 				for j := 0; j < batchSize; j++ {
-					if err := q.Push("test message"); err != nil {
+					if err := q.Push(&PodEvent{
+						Pod:   nil,
+						Event: "test message",
+					}); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -139,9 +154,12 @@ func BenchmarkQueueBatchOperations(b *testing.B) {
 	defer q.Close()
 
 	batchSizes := []int{10, 100, 1000}
-	messages := make([]string, 1000)
+	messages := make([]*PodEvent, 1000)
 	for i := range messages {
-		messages[i] = "test message"
+		messages[i] = &PodEvent{
+			Pod:   nil,
+			Event: "test message",
+		}
 	}
 
 	for _, size := range batchSizes {

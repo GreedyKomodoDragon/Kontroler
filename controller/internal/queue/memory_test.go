@@ -26,10 +26,10 @@ func TestMemoryPushPop(t *testing.T) {
 	q := setupMemoryTestQueue(t)
 	defer q.Close()
 
-	testCases := []string{
-		"test1",
-		"test2",
-		"test3",
+	testCases := []*PodEvent{
+		{Pod: nil, Event: "test1"},
+		{Pod: nil, Event: "test2"},
+		{Pod: nil, Event: "test3"},
 	}
 
 	// Test push
@@ -78,7 +78,11 @@ func TestMemoryBatchOperations(t *testing.T) {
 	defer q.Close()
 
 	// Test PushBatch
-	values := []string{"batch1", "batch2", "batch3"}
+	values := []*PodEvent{
+		{Pod: nil, Event: "test1"},
+		{Pod: nil, Event: "test2"},
+		{Pod: nil, Event: "test3"},
+	}
 	require.NoError(t, q.PushBatch(values))
 
 	size, err := q.Size()
@@ -108,7 +112,10 @@ func TestMemoryLargeQueue(t *testing.T) {
 	// Push many items
 	itemCount := 1000
 	for i := 0; i < itemCount; i++ {
-		require.NoError(t, q.Push(strconv.Itoa(i)))
+		require.NoError(t, q.Push(&PodEvent{
+			Pod:   nil,
+			Event: strconv.Itoa(i),
+		}))
 	}
 
 	size, err := q.Size()
@@ -146,7 +153,10 @@ func TestMemoryQueueConcurrency(t *testing.T) {
 	// Start producer
 	go func() {
 		for i := 0; i < itemCount; i++ {
-			require.NoError(t, q.Push(strconv.Itoa(i)))
+			require.NoError(t, q.Push(&PodEvent{
+				Pod:   nil,
+				Event: strconv.Itoa(i),
+			}))
 		}
 		done <- true
 	}()

@@ -41,7 +41,9 @@ import (
 	"kontroler-controller/internal/dag"
 	"kontroler-controller/internal/db"
 	"kontroler-controller/internal/object"
+	"kontroler-controller/internal/queue"
 	kontrolerWebhook "kontroler-controller/internal/webhook"
+	"kontroler-controller/internal/workers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -256,19 +258,26 @@ func main() {
 		}
 	}()
 
-	taskAllocator := dag.NewTaskAllocator(clientset, id)
+	taskAllocator := workers.NewTaskAllocator(clientset, id)
 	watchers := make([]dag.TaskWatcher, len(configController.Namespaces))
+	wrkers := make([]workers.Worker, len(configController.Namespaces))
 
 	for i, namespace := range configController.Namespaces {
 		namespaceTrimmed := strings.TrimSpace(namespace)
 
-		taskWatcher, err := dag.NewTaskWatcher(namespaceTrimmed, clientset, taskAllocator,
-			dbDAGManager, id, logStore, webhookChannel)
+		// create memory queue
+		que := queue.NewMemoryQueue(context.Background())
+
+		// create listener
+		eventHandler := workers.NewPodEventHandler(que)
+
+		taskWatcher, err := dag.NewTaskWatcher(id, namespaceTrimmed, clientset, eventHandler)
 		if err != nil {
 			setupLog.Error(err, "failed to create task watcher", "namespace", namespaceTrimmed)
 			os.Exit(1)
 		}
 
+		wrkers[i] = workers.NewWorker(que, logStore, webhookChannel, dbDAGManager, clientset, taskAllocator)
 		watchers[i] = taskWatcher
 	}
 
@@ -330,6 +339,7 @@ func main() {
 
 		for i := 0; i < len(configController.Namespaces); i++ {
 			go watchers[i].StartWatching(closeChannels[i])
+			go wrkers[i].Run(ctx)
 		}
 
 		// Watch for context cancellation (graceful shutdown when leadership is lost or signal is caught)

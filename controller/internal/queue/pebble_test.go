@@ -60,7 +60,10 @@ func TestPushPop(t *testing.T) {
 
 	// Test push
 	for _, tc := range testCases {
-		require.NoError(t, q.Push(tc))
+		require.NoError(t, q.Push(&PodEvent{
+			Pod:   nil,
+			Event: tc,
+		}))
 	}
 
 	// Test size
@@ -104,7 +107,11 @@ func TestPeek(t *testing.T) {
 	q, _, cleanup := setupTestQueue(t)
 	defer cleanup()
 
-	testValue := "peek-test"
+	testValue := &PodEvent{
+		Pod:   nil,
+		Event: "peek-test",
+	}
+
 	require.NoError(t, q.Push(testValue))
 
 	// Verify value is still there after peek
@@ -118,7 +125,10 @@ func TestQueuePersistence(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
-	testValue := "persistence-test"
+	testValue := &PodEvent{
+		Pod:   nil,
+		Event: "persist-test",
+	}
 
 	// Create queue and push value
 	q1, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
@@ -143,7 +153,10 @@ func TestLargeQueue(t *testing.T) {
 	// Push many items
 	itemCount := 1000
 	for i := 0; i < itemCount; i++ {
-		require.NoError(t, q.Push(strconv.Itoa(i)))
+		require.NoError(t, q.Push(&PodEvent{
+			Pod:   nil,
+			Event: strconv.Itoa(i),
+		}))
 	}
 
 	size, err := q.Size()
