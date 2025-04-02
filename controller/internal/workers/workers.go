@@ -79,6 +79,7 @@ func (w *worker) Run(ctx context.Context) error {
 				w.handleAdd(podEvent.Pod, podEvent.EventTime)
 			case "update":
 				log.Log.Info("pod was updated", "podUID", podEvent.Pod.UID, "name", podEvent.Pod.Name)
+				w.handleUpdate(podEvent.Pod, podEvent.EventTime)
 			default:
 				log.Log.Info("unknown event", "event", podEvent.Event)
 			}
