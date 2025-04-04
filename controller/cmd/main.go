@@ -114,9 +114,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create map of unique namespaces from worker configs
 	namespaceConfigMap := map[string]cache.Config{}
-	for _, namespace := range configController.Namespaces {
-		namespaceConfigMap[strings.TrimSpace(namespace)] = cache.Config{}
+	for _, worker := range configController.Workers.Workers {
+		namespaceConfigMap[strings.TrimSpace(worker.Namespace)] = cache.Config{}
 	}
 
 	// Get kubernetes config
@@ -259,35 +260,44 @@ func main() {
 	}()
 
 	taskAllocator := workers.NewTaskAllocator(clientset, id)
-	watchers := make([]dag.TaskWatcher, len(configController.Namespaces))
-	wrkers := make([]workers.Worker, len(configController.Namespaces))
+	var totalWorkers int
+	for _, workerConfig := range configController.Workers.Workers {
+		totalWorkers += workerConfig.Count
+	}
 
-	for i, namespace := range configController.Namespaces {
-		namespaceTrimmed := strings.TrimSpace(namespace)
+	// Initialize slices to hold watchers and workers
+	watchers := make([]dag.TaskWatcher, len(configController.Workers.Workers))
+	wrkers := make([]workers.Worker, totalWorkers)
+	closeChannels := make([]chan struct{}, totalWorkers)
 
-		// create memory queue
-		que := queue.NewMemoryQueue(context.Background())
+	// Initialize workers and watchers based on config
+	currentIndex := 0
+	for i, workerConfig := range configController.Workers.Workers {
+		queues := make([]queue.Queue, workerConfig.Count)
+
+		for i := 0; i < workerConfig.Count; i++ {
+			// create memory queue
+			que := queue.NewMemoryQueue(context.Background())
+			queues[i] = que
+
+			wrkers[currentIndex] = workers.NewWorker(que, logStore, webhookChannel, dbDAGManager, clientset, taskAllocator)
+			currentIndex++
+		}
 
 		// create listener
-		eventHandler := workers.NewPodEventHandler(que)
+		eventHandler := workers.NewPodEventHandler(queues)
 
-		taskWatcher, err := dag.NewTaskWatcher(id, namespaceTrimmed, clientset, eventHandler)
+		taskWatcher, err := dag.NewTaskWatcher(id, workerConfig.Namespace, clientset, eventHandler)
 		if err != nil {
-			setupLog.Error(err, "failed to create task watcher", "namespace", namespaceTrimmed)
+			setupLog.Error(err, "failed to create task watcher", "namespace", workerConfig.Namespace)
 			os.Exit(1)
 		}
 
-		wrkers[i] = workers.NewWorker(que, logStore, webhookChannel, dbDAGManager, clientset, taskAllocator)
 		watchers[i] = taskWatcher
+		closeChannels[i] = make(chan struct{})
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
-
-	closeChannels := make([]chan struct{}, len(configController.Namespaces))
-	for i := 0; i < len(configController.Namespaces); i++ {
-		closeChan := make(chan struct{})
-		closeChannels[i] = closeChan
-	}
 
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
@@ -337,9 +347,14 @@ func main() {
 		log.Log.Info("Became the leader, starting the controller.")
 		go taskScheduler.Run(ctx)
 
-		for i := 0; i < len(configController.Namespaces); i++ {
+		// Start the task watchers
+		currentIndex := 0
+		for i, workerConfig := range configController.Workers.Workers {
 			go watchers[i].StartWatching(closeChannels[i])
-			go wrkers[i].Run(ctx)
+			for i := 0; i < workerConfig.Count; i++ {
+				go wrkers[currentIndex].Run(ctx)
+				currentIndex++
+			}
 		}
 
 		// Watch for context cancellation (graceful shutdown when leadership is lost or signal is caught)
@@ -369,7 +384,7 @@ func main() {
 	log.Log.Info("shutting controller down")
 
 	// Shutdown the server gracefully
-	for i := 0; i < len(closeChannels); i++ {
+	for i := 0; i < totalWorkers; i++ {
 		close(closeChannels[i])
 	}
 

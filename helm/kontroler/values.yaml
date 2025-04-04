@@ -81,6 +81,11 @@ controller:
     path: /etc/kontroler/config/
     value:
       kubeConfigPath: ""
+      workers:
+        workerType: "memory"
+        workers:
+          - namespace: "default"
+            count: 2
     configmapOverride: ""
   leaderElectionID: "610a3770.greedykomodo"
   db:

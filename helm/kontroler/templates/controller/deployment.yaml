@@ -77,8 +77,6 @@ spec:
           env:
             - name: LEADER_ELECTION_ID
               value: {{ .Values.controller.leaderElectionID }}
-            - name: NAMESPACES
-              value: {{ .Values.rbac.namespaces | join "," }}
             - name: DB_TYPE
               value: {{ .Values.db.type }}
             {{ if eq .Values.db.type "sqlite" }}

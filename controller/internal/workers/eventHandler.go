@@ -7,6 +7,7 @@ import (
 
 	"kontroler-controller/internal/queue"
 
+	"github.com/cespare/xxhash/v2"
 	v1 "k8s.io/api/core/v1"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -24,12 +25,12 @@ type ResourceEventHandler interface {
 }
 
 type podEventHandler struct {
-	queue queue.Queue
+	queues []queue.Queue
 }
 
-func NewPodEventHandler(queue queue.Queue) ResourceEventHandler {
+func NewPodEventHandler(queues []queue.Queue) ResourceEventHandler {
 	return &podEventHandler{
-		queue: queue,
+		queues: queues,
 	}
 }
 
@@ -43,7 +44,8 @@ func (p *podEventHandler) HandleAdd(obj interface{}) {
 	}
 
 	log.Log.Info("pod was added", "podUID", pod.UID, "name", pod.Name)
-	p.queue.Push(&queue.PodEvent{
+
+	p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
 		Pod:       pod,
 		Event:     "add",
 		EventTime: &eventTime,
@@ -70,7 +72,8 @@ func (p *podEventHandler) HandleUpdate(old, obj interface{}) {
 	}
 
 	log.Log.Info("pod was updated", "podUID", pod.UID, "name", pod.Name, "newPhase", pod.Status.Phase)
-	p.queue.Push(&queue.PodEvent{
+
+	p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
 		Pod:       pod,
 		Event:     "update",
 		EventTime: &eventTime,
@@ -85,4 +88,12 @@ func (p *podEventHandler) HandleDelete(obj interface{}) {
 	}
 
 	log.Log.Info("pod was deleted", "podUid", pod.UID)
+}
+
+func (p *podEventHandler) getQueueIndex(pod *v1.Pod) int {
+	hasher := xxhash.NewWithSeed(0xABC)
+	hasher.Write([]byte(pod.Name))
+	hasher.Write([]byte(pod.Namespace))
+	index := int(hasher.Sum64() % uint64(len(p.queues)))
+	return index
 }
