@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -293,12 +295,30 @@ func main() {
 	for i, workerConfig := range configController.Workers.Workers {
 		queues := make([]queue.Queue, workerConfig.Count)
 
-		for i := 0; i < workerConfig.Count; i++ {
-			// create memory queue
-			que := queue.NewMemoryQueue(context.Background())
-			queues[i] = que
+		for j := 0; j < workerConfig.Count; j++ {
+			var que queue.Queue
+			var err error
 
-			wrkers[currentIndex] = workers.NewWorker(que, logStore, webhookChannel, dbDAGManager, clientset, taskAllocator)
+			// Generate unique worker ID
+			workerID := fmt.Sprintf("%s-worker-%d", workerConfig.Namespace, j)
+
+			switch configController.Workers.WorkerType {
+			case "memory":
+				que = queue.NewMemoryQueue(context.Background())
+			case "pebble":
+				queuePath := filepath.Join(configController.Workers.QueueDir, workerID)
+				que, err = queue.NewPebbleQueue(rootCtx, queuePath, workerConfig.Namespace)
+				if err != nil {
+					setupLog.Error(err, "failed to create pebble queue",
+						"worker_id", workerID,
+						"namespace", workerConfig.Namespace)
+					os.Exit(1)
+				}
+			}
+			queues[j] = que
+
+			wrkers[currentIndex] = workers.NewWorker(que, logStore, webhookChannel,
+				dbDAGManager, clientset, taskAllocator)
 			currentIndex++
 		}
 

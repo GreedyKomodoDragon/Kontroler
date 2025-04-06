@@ -82,7 +82,8 @@ controller:
     value:
       kubeConfigPath: ""
       workers:
-        workerType: "memory"
+        workerType: "memory"  # or "pebble"
+        queueDir: "/queue"    # mount path for pebble queue storage
         workers:
           - namespace: "default"
             count: 2
@@ -106,6 +107,14 @@ controller:
         key:
           path: /etc/kontroler/ssl/
           filename: client.key
+  queueStorage:
+    pvc:
+      existing: ""
+      accessModes: ["ReadWriteOnce"]
+      size: 1Gi
+      storageClassName: ""
+      selector: {}
+      retain: true
   serviceAccount:
     create: true
     annotations: {}

@@ -68,6 +68,15 @@ spec:
                 path: {{ .Values.controller.db.ssl.paths.key.filename }}
               {{ end }}
         {{ end }}
+        {{- if eq .Values.controller.config.value.workers.workerType "pebble" }}
+        - name: queue-storage
+          persistentVolumeClaim:
+            {{- if empty .Values.controller.queueStorage.pvc.existing }}
+            claimName: {{ .Release.Name }}-queue-storage
+            {{- else }}
+            claimName: {{ .Values.controller.queueStorage.pvc.existing }}
+            {{- end }}
+        {{- end }}
       containers:
         - args:
             - --health-probe-bind-address=:8081
@@ -176,5 +185,9 @@ spec:
               mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.key.path .Values.controller.db.ssl.paths.key.filename }}
               subPath: {{ .Values.controller.db.ssl.paths.key.filename }}
             {{ end }}
+            {{- if eq .Values.controller.config.value.workers.workerType "pebble" }}
+            - name: queue-storage
+              mountPath: {{ .Values.controller.config.value.workers.queueDir }}
+            {{- end }}
       serviceAccountName: operator-controller-manager
 {{ end }}

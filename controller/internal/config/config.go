@@ -15,7 +15,8 @@ type ControllerConfig struct {
 }
 
 type WorkerConfigs struct {
-	WorkerType string         `yaml:"workerType"`
+	WorkerType string         `yaml:"workerType"` // "memory" or "pebble"
+	QueueDir   string         `yaml:"queueDir"`   // directory for pebble queue storage
 	Workers    []WorkerConfig `yaml:"workers"`
 }
 
@@ -42,19 +43,22 @@ func ParseConfig(configPath string) (*ControllerConfig, error) {
 		return nil, fmt.Errorf("missing worker configs, must provide at least one worker config")
 	}
 
-	// validate worker type - only memory is supported
-	if cConfig.Workers.WorkerType != "memory" {
-		return nil, fmt.Errorf("missing worker type, must provide worker type")
+	// validate worker type and queue directory
+	switch cConfig.Workers.WorkerType {
+	case "memory", "pebble":
+		if cConfig.Workers.WorkerType == "pebble" && cConfig.Workers.QueueDir == "" {
+			return nil, fmt.Errorf("queueDir must be specified when using pebble worker type")
+		}
+	default:
+		return nil, fmt.Errorf("invalid worker type %q, must be 'memory' or 'pebble'", cConfig.Workers.WorkerType)
 	}
 
-	// env overrides
-
-	// // namespaces
-	// if namespaces := os.Getenv("NAMESPACES"); namespaces != "" {
-	// 	cConfig.Namespaces = strings.Split(namespaces, ",")
-	// } else if cConfig.Namespaces == nil {
-	// 	cConfig.Namespaces = []string{"default"}
-	// }
+	// Ensure directory exists for pebble
+	if cConfig.Workers.WorkerType == "pebble" {
+		if err := os.MkdirAll(cConfig.Workers.QueueDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create queue directory: %w", err)
+		}
+	}
 
 	// leaderElectionID
 	if leaderElectionID := os.Getenv("LEADER_ELECTION_ID"); leaderElectionID != "" {

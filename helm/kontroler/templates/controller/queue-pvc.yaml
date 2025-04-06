@@ -1,0 +1,22 @@
+{{- if and .Values.controller.enabled (eq .Values.controller.config.value.workers.workerType "pebble") (empty .Values.controller.queueStorage.pvc.existing) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-queue-storage
+  annotations:
+    {{- if .Values.controller.queueStorage.pvc.retain }}
+    helm.sh/resource-policy: "keep"
+    {{- end }}
+spec:
+  accessModes: {{ .Values.controller.queueStorage.pvc.accessModes }}
+  resources:
+    requests:
+      storage: {{ .Values.controller.queueStorage.pvc.size }}
+  {{- if not (empty .Values.controller.queueStorage.pvc.storageClassName) }}
+  storageClassName: {{ .Values.controller.queueStorage.pvc.storageClassName }}
+  {{- end }}
+  {{- if not (empty .Values.controller.queueStorage.pvc.selector) }}
+  selector:
+    {{- toYaml .Values.controller.queueStorage.pvc.selector | nindent 4 }}
+  {{- end }}
+{{- end }}
