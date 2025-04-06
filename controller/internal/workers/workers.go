@@ -14,6 +14,7 @@ import (
 	"kontroler-controller/internal/queue"
 	"kontroler-controller/internal/webhook"
 
+	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -32,6 +33,7 @@ type worker struct {
 	taskAllocator   TaskAllocator
 	logStore        object.LogStore
 	webhookNotifier webhook.WebhookNotifier
+	id              string
 }
 
 func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan webhook.WebhookPayload, dbManager db.DBDAGManager, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator) Worker {
@@ -42,6 +44,7 @@ func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan web
 		dbManager:       dbManager,
 		clientSet:       clientSet,
 		taskAllocator:   taskAllocator,
+		id:              uuid.NewString(),
 	}
 }
 
@@ -105,7 +108,7 @@ func (t *worker) handleUpdate(pod *v1.Pod, eventTime *time.Time) {
 
 func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) {
 	ctx := context.Background()
-	log.Log.Info("pod event", "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
+	log.Log.Info("pod event", "worker", w.id, "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
 	taskRunId, err := w.getTaskRunID(pod)
 	if err != nil {
