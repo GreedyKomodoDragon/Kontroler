@@ -45,11 +45,14 @@ func (p *podEventHandler) HandleAdd(obj interface{}) {
 
 	log.Log.Info("pod was added", "podUID", pod.UID, "name", pod.Name)
 
-	p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
+	if err := p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
 		Pod:       pod,
 		Event:     "add",
 		EventTime: &eventTime,
-	})
+	}); err != nil {
+		log.Log.Error(err, "failed to push pod event to queue", "podUID", pod.UID)
+		return
+	}
 }
 
 func (p *podEventHandler) HandleUpdate(old, obj interface{}) {
@@ -73,11 +76,14 @@ func (p *podEventHandler) HandleUpdate(old, obj interface{}) {
 
 	log.Log.Info("pod was updated", "podUID", pod.UID, "name", pod.Name, "newPhase", pod.Status.Phase)
 
-	p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
+	if err := p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
 		Pod:       pod,
 		Event:     "update",
 		EventTime: &eventTime,
-	})
+	}); err != nil {
+		log.Log.Error(err, "failed to push pod event to queue", "podUID", pod.UID)
+		return
+	}
 }
 
 func (p *podEventHandler) HandleDelete(obj interface{}) {

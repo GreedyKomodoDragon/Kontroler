@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -245,16 +246,33 @@ func main() {
 		setupLog.Info("log collection not enabled for s3")
 	}
 
+	// Create root context with cancellation
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
+	// Create a WaitGroup to track all running goroutines
+	var wg sync.WaitGroup
+
+	// Setup graceful shutdown
+	shutdown := make(chan struct{})
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		setupLog.Info("shutdown signal received")
+		rootCancel() // Cancel root context
+		close(shutdown)
+	}()
+
+	// Create webhook context as child of root context
 	webhookChannel := make(chan kontrolerWebhook.WebhookPayload, 10)
 	webhookManager := kontrolerWebhook.NewWebhookManager(webhookChannel)
 
-	// Create a cancellable context
-	webhookContext, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Start the webhook manager in a separate goroutine
+	wg.Add(1)
 	go func() {
-		if err := webhookManager.Listen(webhookContext); err != nil {
+		defer wg.Done()
+		if err := webhookManager.Listen(rootCtx); err != nil {
 			setupLog.Error(err, "webhook manager stopped")
 		}
 	}()
@@ -268,7 +286,7 @@ func main() {
 	// Initialize slices to hold watchers and workers
 	watchers := make([]dag.TaskWatcher, len(configController.Workers.Workers))
 	wrkers := make([]workers.Worker, totalWorkers)
-	closeChannels := make([]chan struct{}, totalWorkers)
+	closeChannels := make([]chan struct{}, len(configController.Workers.Workers))
 
 	// Initialize workers and watchers based on config
 	currentIndex := 0
@@ -341,52 +359,64 @@ func main() {
 		os.Exit(1)
 	}
 
-	stopCh := ctrl.SetupSignalHandler()
-
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		log.Log.Info("Became the leader, starting the controller.")
-		go taskScheduler.Run(ctx)
 
-		// Start the task watchers
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			taskScheduler.Run(ctx)
+		}()
+
+		// Start the task watchers and workers
 		currentIndex := 0
 		for i, workerConfig := range configController.Workers.Workers {
-			go watchers[i].StartWatching(closeChannels[i])
-			for i := 0; i < workerConfig.Count; i++ {
-				go wrkers[currentIndex].Run(ctx)
+			watcher := watchers[i]
+			closeChannel := closeChannels[i]
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				watcher.StartWatching(closeChannel)
+			}()
+
+			for j := 0; j < workerConfig.Count; j++ {
+				worker := wrkers[currentIndex]
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					worker.Run(ctx)
+				}()
 				currentIndex++
 			}
 		}
 
-		// Watch for context cancellation (graceful shutdown when leadership is lost or signal is caught)
 		<-ctx.Done()
-
-		log.Log.Info("Losing leadership or shutting down, cleaning up...")
+		log.Log.Info("Leadership lost or context cancelled, initiating cleanup...")
 		return nil
 	})); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
+		setupLog.Error(err, "unable to add controller runnable")
 		os.Exit(1)
 	}
-
-	// Create a channel to listen for OS signals
-	quit := make(chan os.Signal, 1)
-
-	// syscall.SIGTERM is for kubernetes
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(stopCh); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
-	}
+	go func() {
+		if err := mgr.Start(rootCtx); err != nil {
+			setupLog.Error(err, "problem running manager")
+			rootCancel()
+		}
+	}()
 
-	// Wait for OS signal to gracefully shutdown the server
-	<-quit
-	log.Log.Info("shutting controller down")
+	// Wait for shutdown signal
+	<-shutdown
+	setupLog.Info("initiating graceful shutdown")
 
-	// Shutdown the server gracefully
-	for i := 0; i < totalWorkers; i++ {
+	// Close all watcher channels
+	for i := 0; i < len(configController.Workers.Workers); i++ {
 		close(closeChannels[i])
 	}
 
-	log.Log.Info("Controller gracefully stopped")
+	// Wait for all goroutines to finish
+	wg.Wait()
+	setupLog.Info("graceful shutdown completed")
 }
