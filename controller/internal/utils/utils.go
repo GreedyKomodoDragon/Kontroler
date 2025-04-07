@@ -45,7 +45,7 @@ func GenerateRandomName() string {
 func SetupPostgresContainer(ctx context.Context) (*pgxpool.Pool, error) {
 	// Request a PostgreSQL container
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:13",
+		Image:        "postgres:16",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_PASSWORD": "password",
