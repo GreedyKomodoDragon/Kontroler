@@ -2004,3 +2004,90 @@ func testDAGManager_MarkConnectingTasksAsSuspended_deduplicate_tasks(t *testing.
 	require.Contains(t, taskNames, "task4")
 
 }
+func testDAGManager_MarkConnectingTasksAsSuspended_overlapping_dependencies(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Overlapping suspended tasks", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:   "start-1",
+						Script: "echo Hello",
+						Image:  "busybox",
+					},
+					{
+						Name:   "start-2",
+						Script: "echo Hello",
+						Image:  "busybox",
+					},
+					{
+						Name:     "middle-1",
+						Script:   "echo Hello",
+						Image:    "busybox",
+						RunAfter: []string{"start-1"},
+					},
+					{
+						Name:     "middle-2",
+						Script:   "echo Hello",
+						Image:    "busybox",
+						RunAfter: []string{"start-2"},
+					},
+					{
+						Name:     "shared-1",
+						Script:   "echo Hello",
+						Image:    "alpine:latest",
+						RunAfter: []string{"middle-1", "middle-2"},
+					},
+					{
+						Name:     "end-1",
+						Script:   "echo Hello",
+						Image:    "alpine:latest",
+						RunAfter: []string{"shared-1"},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		runId, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+			DagName: "test_dag",
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.NoError(t, err)
+
+		// Get and start both initial tasks
+		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", runId)
+		require.NoError(t, err)
+		require.Len(t, tasks, 2)
+
+		var start1TaskRun, start2TaskRun int
+		for _, task := range tasks {
+			taskRunId, err := dm.MarkTaskAsStarted(context.Background(), runId, task.Id)
+			require.NoError(t, err)
+			if task.Name == "start-1" {
+				start1TaskRun = taskRunId
+			} else {
+				start2TaskRun = taskRunId
+			}
+		}
+
+		// Fail first task and check suspended tasks
+		require.NoError(t, dm.MarkTaskAsFailed(context.Background(), start1TaskRun))
+		suspendedTasks1, err := dm.MarkConnectingTasksAsSuspended(context.Background(), runId, tasks[0].Id)
+		require.NoError(t, err)
+		require.Len(t, suspendedTasks1, 3)
+		require.Contains(t, suspendedTasks1, "middle-1")
+		require.Contains(t, suspendedTasks1, "shared-1")
+		require.Contains(t, suspendedTasks1, "end-1")
+
+		// Fail second task and check additional suspended tasks
+		require.NoError(t, dm.MarkTaskAsFailed(context.Background(), start2TaskRun))
+		suspendedTasks2, err := dm.MarkConnectingTasksAsSuspended(context.Background(), runId, tasks[1].Id)
+		require.NoError(t, err)
+		require.Len(t, suspendedTasks2, 1) // Should only contain middle-2 since shared-1 and end-1 are already suspended
+		require.Contains(t, suspendedTasks2, "middle-2")
+	})
+}

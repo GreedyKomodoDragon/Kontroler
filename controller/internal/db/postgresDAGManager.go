@@ -495,7 +495,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		}
 
 		if _, err := tx.Exec(ctx, `
-			UPDATE DAG_Runs 
+			UPDATE DAG_Runs
 			SET successfulCount = successfulCount + 1
 			WHERE run_id = $1;`, runId); err != nil {
 			return err
@@ -1433,6 +1433,26 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 	}
 	defer tx.Rollback(ctx)
 
+	// Get existing task runs first to avoid duplicates
+	existingRuns, err := tx.Query(ctx, `
+		SELECT task_id
+		FROM Task_Runs
+		WHERE run_id = $1;
+	`, dagRunId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch existing task runs: %w", err)
+	}
+	existingTaskRuns := make(map[int]bool)
+	for existingRuns.Next() {
+		var taskID int
+		if err := existingRuns.Scan(&taskID); err != nil {
+			existingRuns.Close()
+			return nil, fmt.Errorf("failed to scan existing task run: %w", err)
+		}
+		existingTaskRuns[taskID] = true
+	}
+	existingRuns.Close()
+
 	// Fetch all dependencies in one query
 	dependencyRows, err := tx.Query(ctx, `
 		SELECT d.depends_on_task_id, d.task_id
@@ -1456,7 +1476,6 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 		}
 		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
 	}
-
 	dependencyRows.Close()
 
 	var startingTaskID int
@@ -1484,6 +1503,11 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 
 		if dependentTasks, exists := dependencies[currentTaskID]; exists {
 			for _, taskID := range dependentTasks {
+				// Skip if task already has a status
+				if existingTaskRuns[taskID] {
+					continue
+				}
+
 				if _, exists := uniqueUpdates[taskID]; !exists {
 					uniqueUpdates[taskID] = struct{}{}
 					taskIdsSuspended = append(taskIdsSuspended, taskID)
@@ -1506,7 +1530,7 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 
 	// Update DAG Runs count
 	if _, err := tx.Exec(ctx, `
-		UPDATE DAG_Runs 
+		UPDATE DAG_Runs
 		SET suspendedCount = suspendedCount + $1
 		WHERE run_id = $2;`, len(updates), dagRunId); err != nil {
 		return nil, fmt.Errorf("failed to update DAG runs: %w", err)
