@@ -2,7 +2,7 @@
 <img src="./ui/public/logo.svg" width="150" />
 </p>
 <h1 align="center">
-    Always in control - Always on time
+    Always in Kontrol
     <p align="center">
         <img src="https://img.shields.io/badge/Go-00ADD8?style=&logo=go&logoColor=white" alt="Golang">
     </p>

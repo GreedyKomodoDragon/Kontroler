@@ -62,7 +62,7 @@ const (
 		RETURNING run_id`
 
 	QueryUpdateSuccessCount = `
-		UPDATE DAG_Runs 
+		UPDATE DAG_Runs
 		SET successfulCount = successfulCount + 1
 		WHERE run_id = $1;`
 

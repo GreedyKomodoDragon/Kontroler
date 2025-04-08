@@ -11,11 +11,6 @@ crds:
   install: true
   retain: false
 
-rbac:
-  namespaces:
-    - "default"
-    - "dev"
-
 db:
   # sqlite or postgresql
   type: sqlite
@@ -81,6 +76,12 @@ controller:
     path: /etc/kontroler/config/
     value:
       kubeConfigPath: ""
+      workers:
+        workerType: "memory"  # or "pebble"
+        queueDir: "/queue"    # mount path for pebble queue storage
+        workers:
+          - namespace: "default"
+            count: 2
     configmapOverride: ""
   leaderElectionID: "610a3770.greedykomodo"
   db:
@@ -101,6 +102,14 @@ controller:
         key:
           path: /etc/kontroler/ssl/
           filename: client.key
+  queueStorage:
+    pvc:
+      existing: ""
+      accessModes: ["ReadWriteOnce"]
+      size: 1Gi
+      storageClassName: ""
+      selector: {}
+      retain: true
   serviceAccount:
     create: true
     annotations: {}

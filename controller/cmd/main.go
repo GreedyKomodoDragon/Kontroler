@@ -5,9 +5,12 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -41,7 +44,9 @@ import (
 	"kontroler-controller/internal/dag"
 	"kontroler-controller/internal/db"
 	"kontroler-controller/internal/object"
+	"kontroler-controller/internal/queue"
 	kontrolerWebhook "kontroler-controller/internal/webhook"
+	"kontroler-controller/internal/workers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -112,9 +117,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create map of unique namespaces from worker configs
 	namespaceConfigMap := map[string]cache.Config{}
-	for _, namespace := range configController.Namespaces {
-		namespaceConfigMap[strings.TrimSpace(namespace)] = cache.Config{}
+	for _, worker := range configController.Workers.Workers {
+		namespaceConfigMap[strings.TrimSpace(worker.Namespace)] = cache.Config{}
 	}
 
 	// Get kubernetes config
@@ -242,43 +248,97 @@ func main() {
 		setupLog.Info("log collection not enabled for s3")
 	}
 
+	// Create root context with cancellation
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
+	// Create a WaitGroup to track all running goroutines
+	var wg sync.WaitGroup
+
+	// Setup graceful shutdown
+	shutdown := make(chan struct{})
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		setupLog.Info("shutdown signal received")
+		rootCancel() // Cancel root context
+		close(shutdown)
+	}()
+
+	// Create webhook context as child of root context
 	webhookChannel := make(chan kontrolerWebhook.WebhookPayload, 10)
 	webhookManager := kontrolerWebhook.NewWebhookManager(webhookChannel)
 
-	// Create a cancellable context
-	webhookContext, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Start the webhook manager in a separate goroutine
+	wg.Add(1)
 	go func() {
-		if err := webhookManager.Listen(webhookContext); err != nil {
+		defer wg.Done()
+		if err := webhookManager.Listen(rootCtx); err != nil {
 			setupLog.Error(err, "webhook manager stopped")
 		}
 	}()
 
-	taskAllocator := dag.NewTaskAllocator(clientset, id)
-	watchers := make([]dag.TaskWatcher, len(configController.Namespaces))
+	taskAllocator := workers.NewTaskAllocator(clientset, id)
+	var totalWorkers int
+	for _, workerConfig := range configController.Workers.Workers {
+		totalWorkers += workerConfig.Count
+	}
 
-	for i, namespace := range configController.Namespaces {
-		namespaceTrimmed := strings.TrimSpace(namespace)
+	// Initialize slices to hold watchers and workers
+	watchers := make([]dag.TaskWatcher, len(configController.Workers.Workers))
+	wrkers := make([]workers.Worker, totalWorkers)
+	closeChannels := make([]chan struct{}, len(configController.Workers.Workers))
 
-		taskWatcher, err := dag.NewTaskWatcher(namespaceTrimmed, clientset, taskAllocator,
-			dbDAGManager, id, logStore, webhookChannel)
+	// Initialize workers and watchers based on config
+	currentIndex := 0
+	for i, workerConfig := range configController.Workers.Workers {
+		queues := make([]queue.Queue, workerConfig.Count)
+
+		for j := 0; j < workerConfig.Count; j++ {
+			var que queue.Queue
+			var err error
+
+			// Generate unique worker ID
+			workerID := fmt.Sprintf("%s-worker-%d", workerConfig.Namespace, j)
+
+			switch configController.Workers.WorkerType {
+			case "memory":
+				que = queue.NewMemoryQueue(context.Background())
+			case "pebble":
+				queuePath := filepath.Join(configController.Workers.QueueDir, workerID)
+				que, err = queue.NewPebbleQueue(rootCtx, queuePath, workerConfig.Namespace)
+				if err != nil {
+					setupLog.Error(err, "failed to create pebble queue",
+						"worker_id", workerID,
+						"namespace", workerConfig.Namespace)
+					os.Exit(1)
+				}
+			default:
+				setupLog.Error(err, "unsupported worker type provided, 'memory' or 'pebble'")
+				os.Exit(1)
+			}
+			queues[j] = que
+
+			wrkers[currentIndex] = workers.NewWorker(que, logStore, webhookChannel,
+				dbDAGManager, clientset, taskAllocator)
+			currentIndex++
+		}
+
+		// create listener
+		eventHandler := workers.NewPodEventHandler(queues)
+
+		taskWatcher, err := dag.NewTaskWatcher(id, workerConfig.Namespace, clientset, eventHandler)
 		if err != nil {
-			setupLog.Error(err, "failed to create task watcher", "namespace", namespaceTrimmed)
+			setupLog.Error(err, "failed to create task watcher", "namespace", workerConfig.Namespace)
 			os.Exit(1)
 		}
 
 		watchers[i] = taskWatcher
+		closeChannels[i] = make(chan struct{})
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
-
-	closeChannels := make([]chan struct{}, len(configController.Namespaces))
-	for i := 0; i < len(configController.Namespaces); i++ {
-		closeChan := make(chan struct{})
-		closeChannels[i] = closeChan
-	}
 
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
@@ -322,46 +382,70 @@ func main() {
 		os.Exit(1)
 	}
 
-	stopCh := ctrl.SetupSignalHandler()
-
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		log.Log.Info("Became the leader, starting the controller.")
-		go taskScheduler.Run(ctx)
 
-		for i := 0; i < len(configController.Namespaces); i++ {
-			go watchers[i].StartWatching(closeChannels[i])
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			taskScheduler.Run(ctx)
+		}()
+
+		// Start the task watchers and workers
+		currentIndex := 0
+		for i, workerConfig := range configController.Workers.Workers {
+			watcher := watchers[i]
+			closeChannel := closeChannels[i]
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				watcher.StartWatching(closeChannel)
+			}()
+
+			for j := 0; j < workerConfig.Count; j++ {
+				worker := wrkers[currentIndex]
+				if err := worker.Queue().Start(); err != nil {
+					setupLog.Error(err, "failed to start queue", "worker_id", worker.ID())
+					os.Exit(1)
+				}
+
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					// Start the worker
+					worker.Run(ctx)
+				}()
+				currentIndex++
+			}
 		}
 
-		// Watch for context cancellation (graceful shutdown when leadership is lost or signal is caught)
 		<-ctx.Done()
-
-		log.Log.Info("Losing leadership or shutting down, cleaning up...")
+		log.Log.Info("Leadership lost or context cancelled, initiating cleanup...")
 		return nil
 	})); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
+		setupLog.Error(err, "unable to add controller runnable")
 		os.Exit(1)
 	}
-
-	// Create a channel to listen for OS signals
-	quit := make(chan os.Signal, 1)
-
-	// syscall.SIGTERM is for kubernetes
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(stopCh); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
-	}
+	go func() {
+		if err := mgr.Start(rootCtx); err != nil {
+			setupLog.Error(err, "problem running manager")
+			rootCancel()
+		}
+	}()
 
-	// Wait for OS signal to gracefully shutdown the server
-	<-quit
-	log.Log.Info("shutting controller down")
+	// Wait for shutdown signal
+	<-shutdown
+	setupLog.Info("initiating graceful shutdown")
 
-	// Shutdown the server gracefully
-	for i := 0; i < len(closeChannels); i++ {
+	// Close all watcher channels
+	for i := 0; i < len(configController.Workers.Workers); i++ {
 		close(closeChannels[i])
 	}
 
-	log.Log.Info("Controller gracefully stopped")
+	// Wait for all goroutines to finish
+	wg.Wait()
+	setupLog.Info("graceful shutdown completed")
 }

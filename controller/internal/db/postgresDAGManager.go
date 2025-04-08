@@ -495,7 +495,7 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		}
 
 		if _, err := tx.Exec(ctx, `
-			UPDATE DAG_Runs 
+			UPDATE DAG_Runs
 			SET successfulCount = successfulCount + 1
 			WHERE run_id = $1;`, runId); err != nil {
 			return err
@@ -1427,106 +1427,107 @@ func (p *postgresDAGManager) GetWorkspacePVCTemplate(ctx context.Context, dagId 
 }
 
 func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunId, taskRunId int) ([]string, error) {
-	tx, err := p.pool.Begin(ctx)
+	var taskNames []string
+
+	err := p.withTx(ctx, func(tx pgx.Tx) error {
+		// Get all dependent tasks that need to be suspended using recursive CTE
+		rows, err := tx.Query(ctx, `
+            WITH RECURSIVE 
+                existing_runs AS (
+                    SELECT task_id
+                    FROM Task_Runs
+                    WHERE run_id = $1
+                ),
+                task_chain AS (
+                    -- Base case: direct dependencies of the failed task
+                    SELECT 
+                        d.task_id,
+                        dt.name,
+                        1 as depth
+                    FROM Task_Runs tr
+                    JOIN Dependencies d ON tr.task_id = d.depends_on_task_id
+                    JOIN DAG_Tasks dt ON d.task_id = dt.dag_task_id
+                    WHERE tr.task_run_id = $2
+
+                    UNION ALL
+
+                    -- Recursive case: downstream dependencies
+                    SELECT 
+                        d.task_id,
+                        dt.name,
+                        tc.depth + 1
+                    FROM task_chain tc
+                    JOIN Dependencies d ON tc.task_id = d.depends_on_task_id
+                    JOIN DAG_Tasks dt ON d.task_id = dt.dag_task_id
+                )
+            SELECT DISTINCT task_id, name, depth
+            FROM task_chain tc
+            WHERE NOT EXISTS (
+                SELECT 1 FROM existing_runs er WHERE er.task_id = tc.task_id
+            )
+            ORDER BY depth;
+        `, dagRunId, taskRunId)
+
+		if err != nil {
+			return fmt.Errorf("failed to get dependent tasks: %w", err)
+		}
+		defer rows.Close()
+
+		var updates [][]interface{}
+		seen := make(map[int]struct{})
+
+		for rows.Next() {
+			var taskID int
+			var taskName string
+			var depth int
+			if err := rows.Scan(&taskID, &taskName, &depth); err != nil {
+				return fmt.Errorf("failed to scan task: %w", err)
+			}
+
+			if _, exists := seen[taskID]; !exists {
+				seen[taskID] = struct{}{}
+				updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
+				taskNames = append(taskNames, taskName)
+			}
+		}
+
+		if err = rows.Err(); err != nil {
+			return fmt.Errorf("error iterating tasks: %w", err)
+		}
+
+		// Early return if no tasks to suspend
+		if len(updates) == 0 {
+			return nil
+		}
+
+		// Batch insert suspended tasks
+		_, err = tx.CopyFrom(
+			ctx,
+			pgx.Identifier{"task_runs"},
+			[]string{"run_id", "task_id", "status", "attempts"},
+			pgx.CopyFromRows(updates),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert suspended tasks: %w", err)
+		}
+
+		// Update suspended count
+		if _, err := tx.Exec(ctx, `
+            UPDATE DAG_Runs
+            SET suspendedCount = suspendedCount + $1
+            WHERE run_id = $2
+        `, len(updates), dagRunId); err != nil {
+			return fmt.Errorf("failed to update suspended count: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
 
-	// Fetch all dependencies in one query
-	dependencyRows, err := tx.Query(ctx, `
-		SELECT d.depends_on_task_id, d.task_id
-		FROM Dependencies d
-		JOIN DAG_Tasks dt ON d.depends_on_task_id = dt.dag_task_id
-		WHERE dt.dag_id = (
-			SELECT dag_id FROM DAG_Runs WHERE run_id = $1
-		);
-	`, dagRunId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch dependencies: %w", err)
-	}
-
-	// Store dependencies in a map for fast lookups
-	dependencies := make(map[int][]int)
-	for dependencyRows.Next() {
-		var parentTaskID, dependentTaskID int
-		if err := dependencyRows.Scan(&parentTaskID, &dependentTaskID); err != nil {
-			dependencyRows.Close()
-			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
-		}
-		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
-	}
-
-	dependencyRows.Close()
-
-	var startingTaskID int
-	if err := tx.QueryRow(ctx, `
-		SELECT task_id FROM Task_Runs WHERE task_run_id = $1;
-	`, taskRunId).Scan(&startingTaskID); err != nil {
-		return nil, fmt.Errorf("failed to get task id: %w", err)
-	}
-
-	// DFS using stack
-	stack := []int{startingTaskID}
-	seen := make(map[int]bool)
-	uniqueUpdates := make(map[int]struct{})
-	var updates [][]interface{}
-	taskIdsSuspended := []int{}
-
-	for len(stack) > 0 {
-		currentTaskID := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-
-		if seen[currentTaskID] {
-			continue
-		}
-		seen[currentTaskID] = true
-
-		if dependentTasks, exists := dependencies[currentTaskID]; exists {
-			for _, taskID := range dependentTasks {
-				if _, exists := uniqueUpdates[taskID]; !exists {
-					uniqueUpdates[taskID] = struct{}{}
-					taskIdsSuspended = append(taskIdsSuspended, taskID)
-					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
-					stack = append(stack, taskID)
-				}
-			}
-		}
-	}
-
-	// Batch Insert using CopyFrom
-	if len(updates) > 0 {
-		columns := []string{"run_id", "task_id", "status", "attempts"}
-		copySrc := pgx.CopyFromRows(updates)
-		_, err := tx.CopyFrom(ctx, pgx.Identifier{"task_runs"}, columns, copySrc)
-		if err != nil {
-			return nil, fmt.Errorf("failed to bulk insert task runs: %w", err)
-		}
-	}
-
-	// Update DAG Runs count
-	if _, err := tx.Exec(ctx, `
-		UPDATE DAG_Runs 
-		SET suspendedCount = suspendedCount + $1
-		WHERE run_id = $2;`, len(updates), dagRunId); err != nil {
-		return nil, fmt.Errorf("failed to update DAG runs: %w", err)
-	}
-
-	// get task names
-	taskNames := []string{}
-	for _, taskID := range taskIdsSuspended {
-		var taskName string
-		if err := tx.QueryRow(ctx, `
-			SELECT name
-			FROM DAG_Tasks
-			WHERE dag_task_id = $1;
-		`, taskID).Scan(&taskName); err != nil {
-			return nil, fmt.Errorf("failed to get task name: %w", err)
-		}
-		taskNames = append(taskNames, taskName)
-	}
-
-	return taskNames, tx.Commit(ctx)
+	return taskNames, nil
 }
 
 func (p *postgresDAGManager) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
