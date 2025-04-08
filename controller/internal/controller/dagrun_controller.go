@@ -30,8 +30,8 @@ import (
 
 	"kontroler-controller/api/v1alpha1"
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
-	"kontroler-controller/internal/dag"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/workers"
 )
 
 // DagRunReconciler reconciles a DagRun object
@@ -39,7 +39,7 @@ type DagRunReconciler struct {
 	client.Client
 	Scheme        *runtime.Scheme
 	DbManager     db.DBDAGManager
-	TaskAllocator dag.TaskAllocator
+	TaskAllocator workers.TaskAllocator
 }
 
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns,verbs=get;list;watch;create;update;patch;delete

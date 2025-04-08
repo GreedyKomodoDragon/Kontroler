@@ -1,10 +1,10 @@
-package dag_test
+package workers_test
 
 import (
 	"testing"
 
-	"kontroler-controller/internal/dag"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/workers"
 )
 
 func FuzzCreateEnvs(f *testing.F) {
@@ -26,7 +26,7 @@ func FuzzCreateEnvs(f *testing.F) {
 		}
 
 		// Create a taskAllocator instance
-		ta := dag.NewTaskAllocator(nil, "random")
+		ta := workers.NewTaskAllocator(nil, "random")
 
 		// Run CreateEnvs function
 		envs := ta.CreateEnvs(&task)

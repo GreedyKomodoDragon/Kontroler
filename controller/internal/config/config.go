@@ -3,15 +3,26 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"gopkg.in/yaml.v2"
 )
 
 type ControllerConfig struct {
-	KubeConfigPath   string   `yaml:"kubeConfigPath"`
-	Namespaces       []string `yaml:"namespaces"`
-	LeaderElectionID string   `yaml:"leaderElectionID"`
+	KubeConfigPath   string        `yaml:"kubeConfigPath"`
+	Namespaces       []string      `yaml:"namespaces"`
+	LeaderElectionID string        `yaml:"leaderElectionID"`
+	Workers          WorkerConfigs `yaml:"workers"`
+}
+
+type WorkerConfigs struct {
+	WorkerType string         `yaml:"workerType"` // "memory" or "pebble"
+	QueueDir   string         `yaml:"queueDir"`   // directory for pebble queue storage
+	Workers    []WorkerConfig `yaml:"workers"`
+}
+
+type WorkerConfig struct {
+	Namespace string `yaml:"namespace"`
+	Count     int    `yaml:"count"`
 }
 
 func ParseConfig(configPath string) (*ControllerConfig, error) {
@@ -27,13 +38,26 @@ func ParseConfig(configPath string) (*ControllerConfig, error) {
 		return nil, err
 	}
 
-	// env overrides
+	// validate worker configs
+	if len(cConfig.Workers.Workers) == 0 {
+		return nil, fmt.Errorf("missing worker configs, must provide at least one worker config")
+	}
 
-	// namespaces
-	if namespaces := os.Getenv("NAMESPACES"); namespaces != "" {
-		cConfig.Namespaces = strings.Split(namespaces, ",")
-	} else if cConfig.Namespaces == nil {
-		cConfig.Namespaces = []string{"default"}
+	// validate worker type and queue directory
+	switch cConfig.Workers.WorkerType {
+	case "memory", "pebble":
+		if cConfig.Workers.WorkerType == "pebble" && cConfig.Workers.QueueDir == "" {
+			return nil, fmt.Errorf("queueDir must be specified when using pebble worker type")
+		}
+	default:
+		return nil, fmt.Errorf("invalid worker type %q, must be 'memory' or 'pebble'", cConfig.Workers.WorkerType)
+	}
+
+	// Ensure directory exists for pebble
+	if cConfig.Workers.WorkerType == "pebble" {
+		if err := os.MkdirAll(cConfig.Workers.QueueDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create queue directory: %w", err)
+		}
 	}
 
 	// leaderElectionID

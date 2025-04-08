@@ -20,6 +20,10 @@ profiles:
               tls.certificatesSecret: postgresql-tls
               tls.certFilename: postgresql.crt
               tls.certKeyFilename: postgresql.key
+              resources.limits.cpu: "1"
+              resources.limits.memory: "1Gi"
+              resources.requests.cpu: "500m"
+              resources.requests.memory: "512Mi"
 
           - name: minio
             remoteChart: oci://registry-1.docker.io/bitnamicharts/minio
