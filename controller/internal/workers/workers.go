@@ -24,6 +24,8 @@ import (
 type Worker interface {
 	Push(pod *v1.Pod, event string) error
 	Run(ctx context.Context) error
+	Queue() queue.Queue
+	ID() string
 }
 
 type worker struct {
@@ -46,6 +48,14 @@ func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan web
 		taskAllocator:   taskAllocator,
 		id:              uuid.NewString(),
 	}
+}
+
+func (w *worker) ID() string {
+	return w.id
+}
+
+func (w *worker) Queue() queue.Queue {
+	return w.queue
 }
 
 func (w *worker) Push(pod *v1.Pod, event string) error {

@@ -14,6 +14,7 @@ const keyFormat = "%s:%08d"
 
 type PebbleQueue struct {
 	db                *pebble.DB
+	dbPath            string
 	topic             string
 	headKey           string
 	tailKey           string
@@ -25,14 +26,9 @@ type PebbleQueue struct {
 }
 
 func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, error) {
-	db, err := pebble.Open(dbPath, &pebble.Options{})
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
-	q := &PebbleQueue{
-		db:      db,
+	return &PebbleQueue{
+		dbPath:  dbPath,
 		topic:   topic,
 		headKey: topic + ":head",
 		tailKey: topic + ":tail",
@@ -40,7 +36,15 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 		ctx:     ctx,
 		cancel:  cancel,
 		wg:      sync.WaitGroup{},
+	}, nil
+}
+
+func (q *PebbleQueue) Start() error {
+	db, err := pebble.Open(q.dbPath, &pebble.Options{})
+	if err != nil {
+		return err
 	}
+	q.db = db
 
 	head, _ := q.getCounter(q.headKey)
 	tail, _ := q.getCounter(q.tailKey)
@@ -51,8 +55,7 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 	}
 
 	q.lastCommittedHead = head
-
-	return q, nil
+	return nil
 }
 
 func (q *PebbleQueue) Push(value *PodEvent) error {

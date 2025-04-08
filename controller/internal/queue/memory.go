@@ -22,6 +22,10 @@ func NewMemoryQueue(ctx context.Context) *MemoryQueue {
 	}
 }
 
+func (q *MemoryQueue) Start() error {
+	return nil
+}
+
 func (q *MemoryQueue) Push(value *PodEvent) error {
 	return q.PushBatch([]*PodEvent{value})
 }

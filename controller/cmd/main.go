@@ -314,6 +314,9 @@ func main() {
 						"namespace", workerConfig.Namespace)
 					os.Exit(1)
 				}
+			default:
+				setupLog.Error(err, "unsupported worker type provided, 'memory' or 'pebble'")
+				os.Exit(1)
 			}
 			queues[j] = que
 
@@ -402,9 +405,15 @@ func main() {
 
 			for j := 0; j < workerConfig.Count; j++ {
 				worker := wrkers[currentIndex]
+				if err := worker.Queue().Start(); err != nil {
+					setupLog.Error(err, "failed to start queue", "worker_id", worker.ID())
+					os.Exit(1)
+				}
+
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					// Start the worker
 					worker.Run(ctx)
 				}()
 				currentIndex++
