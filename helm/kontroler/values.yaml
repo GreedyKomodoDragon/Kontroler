@@ -11,11 +11,6 @@ crds:
   install: true
   retain: false
 
-rbac:
-  namespaces:
-    - "default"
-    - "dev"
-
 db:
   # sqlite or postgresql
   type: sqlite
