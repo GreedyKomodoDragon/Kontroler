@@ -70,4 +70,5 @@ type DBDAGManager interface {
 	CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
 	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) ([]string, error)
 	AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error
+	DeleteDagRun(ctx context.Context, dagRunId int) error
 }

@@ -1164,3 +1164,79 @@ func TestPostgresDAGManager_MarkConnectingTasksAsSuspended_overlapping_dependenc
 
 	testDAGManager_MarkConnectingTasksAsSuspended_overlapping_dependencies(t, dm)
 }
+
+func TestPostgresDAGManager_DeleteDagRun(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_DeleteDagRun_Simple(t, dm)
+	// query the database to check if the dag run was deleted
+	var count int
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM DAG_Runs
+	WHERE run_id = 1;`).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	// check tasks are deleted
+	var taskCount int
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM Task_Runs
+	WHERE run_id = 1;`).Scan(&taskCount)
+	require.NoError(t, err)
+	require.Equal(t, 0, taskCount)
+
+	testDAGManager_DeleteDagRun_WithTasks(t, dm)
+
+	// query the database to check if the dag run was deleted
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM DAG_Runs
+	WHERE run_id = 2;`).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+	// check tasks are deleted
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM Task_Runs
+	WHERE run_id = 2;`).Scan(&taskCount)
+	require.NoError(t, err)
+	require.Equal(t, 0, taskCount)
+
+	testDAGManager_DeleteDagRun_WithParameters(t, dm)
+
+	// query the database to check if the dag run was deleted
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM DAG_Runs
+	WHERE run_id = 3;`).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+	// check tasks are deleted
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM Task_Runs
+	WHERE run_id = 3;`).Scan(&taskCount)
+	require.NoError(t, err)
+	require.Equal(t, 0, taskCount)
+	// check parameters are deleted
+	var paramCount int
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM DAG_Run_Parameters
+	WHERE run_id = 3;`).Scan(&paramCount)
+	require.NoError(t, err)
+	require.Equal(t, 0, paramCount)
+}

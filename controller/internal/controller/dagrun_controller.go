@@ -34,6 +34,10 @@ import (
 	"kontroler-controller/internal/workers"
 )
 
+const (
+	dagRunFinalizer = "kontroler.greedykomodo/dagrun.finalizer"
+)
+
 // DagRunReconciler reconciles a DagRun object
 type DagRunReconciler struct {
 	client.Client
@@ -63,8 +67,27 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Fetch the Schedule object that triggered the reconciliation
 	var dagRun kontrolerv1alpha1.DagRun
 	if err := r.Get(ctx, req.NamespacedName, &dagRun); err != nil {
-		// Return error if unable to fetch Schedule object
-		return ctrl.Result{}, err
+		// Check if the object was deleted
+		if err := client.IgnoreNotFound(err); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		log.Log.Info("DagRun deleted", "req.Name", req.Name, "req.Namespace", req.Namespace)
+		return ctrl.Result{}, nil
+	}
+
+	// Check if the DagRun is being deleted
+	if !dagRun.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &dagRun)
+	}
+
+	// Add finalizer if it doesn't exist
+	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
+		dagRun.Finalizers = append(dagRun.Finalizers, dagRunFinalizer)
+		if err := r.Update(ctx, &dagRun); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// check if dag exists
@@ -230,4 +253,44 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 
 	log.Log.Info("PVC created successfully", "pvc", pvc.Name)
 	return pvcName, nil
+}
+
+func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontrolerv1alpha1.DagRun) (ctrl.Result, error) {
+	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	// Delete the DAG run from database
+	if err := r.DbManager.DeleteDagRun(ctx, dagRun.Status.DagRunId); err != nil {
+		log.Log.Error(err, "failed to delete dag run from database", "dagRunId", dagRun.Status.DagRunId)
+		return ctrl.Result{}, err
+	}
+
+	// Remove the finalizer
+	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
+	if err := r.Update(ctx, dagRun); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// Helper functions for finalizer management
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) []string {
+	result := make([]string, 0, len(slice))
+	for _, item := range slice {
+		if item != s {
+			result = append(result, item)
+		}
+	}
+	return result
 }

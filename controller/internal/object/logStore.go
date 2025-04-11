@@ -28,6 +28,7 @@ type LogStore interface {
 	MarkAsFetching(dagRunId int, pod *v1.Pod) error
 	UnlistFetching(dagRunId int, pod *v1.Pod)
 	UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error
+	DeleteLogs(ctx context.Context, dagrunId int, pod *v1.Pod) error
 }
 
 type s3LogStore struct {
@@ -233,4 +234,19 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	defer s.lock.Unlock()
 
 	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
+}
+
+func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int, pod *v1.Pod) error {
+	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
+
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: s.bucketName,
+		Key:    aws.String(objectKey),
+	})
+	if err != nil {
+		return fmt.Errorf("error deleting logs from S3: %v", err)
+	}
+
+	log.Log.Info("Logs successfully deleted from S3 bucket", "bucket", *s.bucketName, "key", objectKey)
+	return nil
 }

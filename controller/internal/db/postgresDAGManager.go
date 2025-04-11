@@ -1561,3 +1561,16 @@ func (p *postgresDAGManager) AddPodDuration(ctx context.Context, taskRunId int, 
 		return nil
 	})
 }
+
+func (p *postgresDAGManager) DeleteDagRun(ctx context.Context, dagRunId int) error {
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		// Delete DAG run and all related data will cascade due to foreign key constraints
+		if _, err := tx.Exec(ctx, `
+            DELETE FROM DAG_Runs
+            WHERE run_id = $1;
+        `, dagRunId); err != nil {
+			return fmt.Errorf("failed to delete dag run: %w", err)
+		}
+		return nil
+	})
+}
