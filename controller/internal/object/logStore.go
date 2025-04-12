@@ -28,7 +28,7 @@ type LogStore interface {
 	MarkAsFetching(dagRunId int, pod *v1.Pod) error
 	UnlistFetching(dagRunId int, pod *v1.Pod)
 	UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error
-	DeleteLogs(ctx context.Context, dagrunId int, pod *v1.Pod) error
+	DeleteLogs(ctx context.Context, dagrunId int) error
 }
 
 type s3LogStore struct {
@@ -236,17 +236,44 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
 }
 
-func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int, pod *v1.Pod) error {
-	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
-
-	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
+	// List all objects with the dagrun prefix
+	prefix := fmt.Sprintf("/%v/", dagrunId)
+	output, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: s.bucketName,
-		Key:    aws.String(objectKey),
+		Prefix: aws.String(prefix),
 	})
 	if err != nil {
-		return fmt.Errorf("error deleting logs from S3: %v", err)
+		return fmt.Errorf("error listing objects: %v", err)
 	}
 
-	log.Log.Info("Logs successfully deleted from S3 bucket", "bucket", *s.bucketName, "key", objectKey)
+	if len(output.Contents) == 0 {
+		// No objects to delete
+		return nil
+	}
+
+	// Create object identifiers for all objects
+	objectIds := make([]types.ObjectIdentifier, len(output.Contents))
+	for i, object := range output.Contents {
+		objectIds[i] = types.ObjectIdentifier{
+			Key: object.Key,
+		}
+	}
+
+	ptrTrue := true
+
+	// Delete all objects in a single batch
+	_, err = s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		Bucket: s.bucketName,
+		Delete: &types.Delete{
+			Objects: objectIds,
+			Quiet:   &ptrTrue,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error deleting objects: %v", err)
+	}
+
+	log.Log.Info("Successfully deleted all logs", "bucket", *s.bucketName, "prefix", prefix)
 	return nil
 }

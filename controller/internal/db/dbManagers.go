@@ -33,6 +33,12 @@ type ConditionalRetry struct {
 	RetryCodes []int32
 }
 
+// Add new struct for pod info
+type RunningPodInfo struct {
+	Name      string
+	Namespace string
+}
+
 type DBDAGManager interface {
 	// InitaliseDatabase will ensure all create requires components such as tables in a relational database are within the database
 	InitaliseDatabase(ctx context.Context) error
@@ -70,5 +76,6 @@ type DBDAGManager interface {
 	CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)
 	MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) ([]string, error)
 	AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error
+	SuspendDagRun(ctx context.Context, dagRunId int) ([]RunningPodInfo, error)
 	DeleteDagRun(ctx context.Context, dagRunId int) error
 }

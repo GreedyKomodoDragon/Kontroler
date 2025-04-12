@@ -1574,3 +1574,48 @@ func (p *postgresDAGManager) DeleteDagRun(ctx context.Context, dagRunId int) err
 		return nil
 	})
 }
+
+func (p *postgresDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]RunningPodInfo, error) {
+	var pods []RunningPodInfo
+
+	err := p.withTx(ctx, func(tx pgx.Tx) error {
+		// Get all running pods first
+		rows, err := tx.Query(ctx, `
+            SELECT p.name, p.namespace
+            FROM Task_Pods p
+            JOIN Task_Runs tr ON p.task_run_id = tr.task_run_id
+            WHERE tr.run_id = $1 AND tr.status = 'running';
+        `, dagRunId)
+		if err != nil {
+			return fmt.Errorf("failed to query running pods: %w", err)
+		}
+		defer rows.Close()
+
+		// Collect pod information
+		for rows.Next() {
+			var pod RunningPodInfo
+			if err := rows.Scan(&pod.Name, &pod.Namespace); err != nil {
+				return fmt.Errorf("failed to scan pod info: %w", err)
+			}
+			pods = append(pods, pod)
+		}
+
+		// Update DAG run status to suspended
+		_, err = tx.Exec(ctx, `
+            UPDATE DAG_Runs 
+            SET status = 'suspended'
+            WHERE run_id = $1
+        `, dagRunId)
+		if err != nil {
+			return fmt.Errorf("failed to suspend dag run: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pods, nil
+}

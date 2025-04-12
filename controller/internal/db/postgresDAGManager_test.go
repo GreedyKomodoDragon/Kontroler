@@ -1240,3 +1240,20 @@ func TestPostgresDAGManager_DeleteDagRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, paramCount)
 }
+
+func TestPostgresDAGManager_SuspendDagRun(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_SuspendDagRun(t, dm)
+}

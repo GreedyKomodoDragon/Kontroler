@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -260,6 +261,20 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 		return ctrl.Result{}, nil
 	}
 
+	// suspend the dag run first
+	pods, err := r.DbManager.SuspendDagRun(ctx, dagRun.Status.DagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to suspend dag run", "dagRunId", dagRun.Status.DagRunId)
+		return ctrl.Result{}, err
+	}
+
+	for _, pod := range pods {
+		if err := deletePodByNameAndNamespace(ctx, r.Client, pod.Name, pod.Namespace); err != nil {
+			log.Log.Error(err, "failed to delete pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+			continue
+		}
+	}
+
 	// Delete the DAG run from database
 	if err := r.DbManager.DeleteDagRun(ctx, dagRun.Status.DagRunId); err != nil {
 		log.Log.Error(err, "failed to delete dag run from database", "dagRunId", dagRun.Status.DagRunId)
@@ -293,4 +308,40 @@ func removeString(slice []string, s string) []string {
 		}
 	}
 	return result
+}
+
+func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name string, namespace string) error {
+	// Create a Pod object with only the metadata needed to identify it
+	pod := &corev1.Pod{}
+	key := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	// First, fetch the Pod (optional if you're sure it exists and just want to delete)
+	err := c.Get(ctx, key, pod)
+	if err != nil {
+		return err // Pod not found or other error
+	}
+
+	// remove the finalizer "kontroler/logcollection"
+	if pod.ObjectMeta.Annotations != nil {
+		if _, ok := pod.ObjectMeta.Annotations["kontroler/logcollection"]; ok {
+			delete(pod.ObjectMeta.Annotations, "kontroler/logcollection")
+
+			// Update the Pod to remove the finalizer
+			err = c.Update(ctx, pod)
+			if err != nil {
+				return err // Handle update error
+			}
+		}
+	}
+
+	// Delete the Pod
+	err = c.Delete(ctx, pod)
+	if err != nil {
+		return err // Handle delete error
+	}
+
+	return nil // Success
 }
