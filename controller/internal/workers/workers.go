@@ -241,7 +241,14 @@ func (w *worker) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskR
 }
 
 func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
-	log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+	// mark exitcode as -1 if pod was deleted before it started - means something odd happened
+	var exitcode int32 = -1
+	if len(pod.Status.ContainerStatuses) == 0 {
+		log.Log.Info("task failed without container status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+	} else {
+		log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+		exitcode = pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+	}
 
 	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
@@ -254,11 +261,12 @@ func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId
 			log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
 		} else {
 			log.Log.Error(err, "failed to delete pod in failed,", "podUId", pod.UID)
+			return
 		}
-		return
 	}
 
-	ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+	// For pods that failed before container start, always attempt a retry
+	ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, exitcode)
 	if err != nil {
 		log.Log.Error(err, "failed to determine if pod should be re-ran", "pod", pod.Name)
 		return
@@ -267,7 +275,7 @@ func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId
 	container := pod.Spec.Containers[0]
 
 	if !ok {
-		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId)
+		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId, exitcode)
 		return
 	}
 
@@ -343,6 +351,7 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 
 	var exitCode *int32 = nil
 	var duration int64 = 0
+
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 
@@ -354,6 +363,10 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 		if err := w.dbManager.AddPodDuration(context.Background(), taskRunId, duration); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 		}
+	} else if pod.Status.Phase == v1.PodFailed {
+		// Handle case where pod failed before container started
+		defaultExitCode := int32(-1)
+		exitCode = &defaultExitCode
 	}
 
 	if err := w.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name,
@@ -381,8 +394,8 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 	return nil
 }
 
-func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {
-	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int, exitCode int32) {
+	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", exitCode)
 
 	if err := w.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
 		log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
@@ -397,7 +410,7 @@ func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunI
 
 	taskNames, err := w.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId)
 	if err == nil {
-		if webhook.URL != "" {
+		if webhook != nil && webhook.URL != "" {
 			for _, taskName := range taskNames {
 				log.Log.Info("task marked as suspended", "taskName", taskName)
 				go w.webhookNotifier.NotifyTaskRun(taskName, "suspended", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)

@@ -318,10 +318,8 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 		Namespace: namespace,
 	}
 
-	// First, fetch the Pod (optional if you're sure it exists and just want to delete)
-	err := c.Get(ctx, key, pod)
-	if err != nil {
-		return err // Pod not found or other error
+	if err := c.Get(ctx, key, pod); err != nil {
+		return err
 	}
 
 	// remove the finalizer "kontroler/logcollection"
@@ -330,18 +328,16 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 			delete(pod.ObjectMeta.Annotations, "kontroler/logcollection")
 
 			// Update the Pod to remove the finalizer
-			err = c.Update(ctx, pod)
-			if err != nil {
-				return err // Handle update error
+			if err := c.Update(ctx, pod); err != nil {
+				return err
 			}
 		}
 	}
 
 	// Delete the Pod
-	err = c.Delete(ctx, pod)
-	if err != nil {
-		return err // Handle delete error
+	if err := c.Delete(ctx, pod); err != nil {
+		return err
 	}
 
-	return nil // Success
+	return nil
 }
