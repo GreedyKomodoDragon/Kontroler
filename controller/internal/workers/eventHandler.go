@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -24,82 +27,113 @@ type ResourceEventHandler interface {
 	HandleDelete(obj interface{})
 }
 
-type podEventHandler struct {
-	queues []queue.Queue
+type eventHandler struct {
+	queues    []queue.Queue
+	clientset kubernetes.Interface
 }
 
-func NewPodEventHandler(queues []queue.Queue) ResourceEventHandler {
-	return &podEventHandler{
-		queues: queues,
+func NewEventHandler(queues []queue.Queue, clientset kubernetes.Interface) ResourceEventHandler {
+	return &eventHandler{
+		queues:    queues,
+		clientset: clientset,
 	}
 }
 
-func (p *podEventHandler) HandleAdd(obj interface{}) {
-	eventTime := time.Now()
-
-	pod, ok := obj.(*v1.Pod)
+func (e *eventHandler) HandleAdd(obj interface{}) {
+	event, ok := obj.(*v1.Event)
 	if !ok {
-		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse pod object")
+		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse event object")
 		return
 	}
 
-	log.Log.Info("pod was added", "podUID", pod.UID, "name", pod.Name)
+	// Check if the involved object has required labels and get the pod
+	ok, pod := hasRequiredLabels(&event.InvolvedObject, e.clientset)
+	if !ok || pod == nil {
+		return
+	}
 
-	if err := p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
+	if event.Type == "Warning" {
+		log.Log.Info("warning event detected",
+			"reason", event.Reason,
+			"message", event.Message,
+			"involvedObject", event.InvolvedObject.Name)
+
+		eventTime := time.Now()
+		if err := e.queues[e.getQueueIndex(event)].Push(&queue.PodEvent{
+			Pod:       pod,
+			Event:     "warning",
+			EventTime: &eventTime,
+		}); err != nil {
+			log.Log.Error(err, "failed to push event to queue")
+			return
+		}
+	}
+}
+
+func (e *eventHandler) HandleUpdate(old, obj interface{}) {
+	event, ok := obj.(*v1.Event)
+	if !ok {
+		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse event object")
+		return
+	}
+
+	if event.Type != "Warning" {
+		return // We only care about warning events
+	}
+
+	// Check if the involved object has required labels and get the pod
+	ok, pod := hasRequiredLabels(&event.InvolvedObject, e.clientset)
+	if !ok || pod == nil {
+		return
+	}
+
+	eventTime := time.Now()
+	if err := e.queues[e.getQueueIndex(event)].Push(&queue.PodEvent{
 		Pod:       pod,
-		Event:     "add",
+		Event:     "pending",
 		EventTime: &eventTime,
 	}); err != nil {
-		log.Log.Error(err, "failed to push pod event to queue", "podUID", pod.UID)
+		log.Log.Error(err, "failed to push event to queue")
 		return
 	}
 }
 
-func (p *podEventHandler) HandleUpdate(old, obj interface{}) {
-	eventTime := time.Now()
-	oldPod, ok := old.(*v1.Pod)
-	if !ok {
-		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse old pod object in handleUpdate")
-		return
-	}
-
-	pod, ok := obj.(*v1.Pod)
-	if !ok {
-		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse pod object")
-		return
-	}
-
-	// TODO: See if this is an issue
-	if oldPod.Status.Phase == pod.Status.Phase {
-		return
-	}
-
-	log.Log.Info("pod was updated", "podUID", pod.UID, "name", pod.Name, "newPhase", pod.Status.Phase)
-
-	if err := p.queues[p.getQueueIndex(pod)].Push(&queue.PodEvent{
-		Pod:       pod,
-		Event:     "update",
-		EventTime: &eventTime,
-	}); err != nil {
-		log.Log.Error(err, "failed to push pod event to queue", "podUID", pod.UID)
-		return
-	}
+func (e *eventHandler) HandleDelete(obj interface{}) {
+	// We  don't need to handle event deletions
+	return
 }
 
-func (p *podEventHandler) HandleDelete(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
-	if !ok {
-		log.Log.Error(fmt.Errorf("invalid object"), "failed to parse pod object")
-		return
-	}
-
-	log.Log.Info("pod was deleted", "podUid", pod.UID)
-}
-
-func (p *podEventHandler) getQueueIndex(pod *v1.Pod) int {
+func (e *eventHandler) getQueueIndex(event *v1.Event) int {
 	hasher := xxhash.NewWithSeed(0xABC)
-	hasher.Write([]byte(pod.Name))
-	hasher.Write([]byte(pod.Namespace))
-	index := int(hasher.Sum64() % uint64(len(p.queues)))
+	hasher.Write([]byte(event.InvolvedObject.Name))
+	hasher.Write([]byte(event.InvolvedObject.Namespace))
+	index := int(hasher.Sum64() % uint64(len(e.queues)))
 	return index
+}
+
+// Update hasRequiredLabels to return both the result and the pod
+func hasRequiredLabels(obj *v1.ObjectReference, clientset kubernetes.Interface) (bool, *v1.Pod) {
+	if obj == nil || obj.Kind != "Pod" {
+		return false, nil
+	}
+
+	pod, err := clientset.CoreV1().Pods(obj.Namespace).Get(context.Background(), obj.Name, metav1.GetOptions{})
+	if err != nil {
+		log.Log.Error(err, "failed to get pod from reference",
+			"name", obj.Name,
+			"namespace", obj.Namespace)
+		return false, nil
+	}
+
+	if pod.Labels == nil {
+		return false, nil
+	}
+
+	if managedBy, ok := pod.Labels["managed-by"]; ok && managedBy == "kontroler" {
+		if _, ok := pod.Labels["kontroler/id"]; ok {
+			return true, pod
+		}
+	}
+
+	return false, nil
 }

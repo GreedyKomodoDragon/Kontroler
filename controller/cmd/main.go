@@ -16,6 +16,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -287,7 +288,7 @@ func main() {
 
 	// Initialize slices to hold watchers and workers
 	watchers := make([]dag.TaskWatcher, len(configController.Workers.Workers))
-	wrkers := make([]workers.Worker, totalWorkers)
+	wrkers := make([]workers.Worker[*v1.Pod], totalWorkers)
 	closeChannels := make([]chan struct{}, len(configController.Workers.Workers))
 
 	// Initialize workers and watchers based on config

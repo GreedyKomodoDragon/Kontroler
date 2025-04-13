@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,7 +79,7 @@ func NewLogStore() (LogStore, error) {
 
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
 	defer func() {
-		if err := removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
+		if err := RemoveFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
 			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
 		}
 	}()
@@ -89,6 +90,10 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 
 	logStream, err := req.Stream(ctx)
 	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
+			return nil // Return nil as this is an expected case
+		}
 		return fmt.Errorf("error in opening stream: %v", err)
 	}
 	defer logStream.Close()
@@ -113,6 +118,25 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	for {
 		chunk := make([]byte, 1024*1024) // 1 MB read buffer
 		n, readErr := reader.Read(chunk)
+
+		if readErr != nil && readErr != io.EOF {
+			// Check for pod deletion related errors
+			if strings.Contains(readErr.Error(), "not found") ||
+				strings.Contains(readErr.Error(), "connection refused") ||
+				strings.Contains(readErr.Error(), "has been terminated") {
+				log.Log.Info("pod deleted while reading logs, uploading partial logs", "pod", pod.Name)
+				// Continue with upload of partial logs by breaking the read loop
+				break
+			}
+			// For other errors, abort the upload
+			_, _ = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+				Bucket:   s.bucketName,
+				Key:      aws.String(objectKey),
+				UploadId: uploadID,
+			})
+			return fmt.Errorf("error reading logs: %v", readErr)
+		}
+
 		if n > 0 {
 			buffer.Write(chunk[:n])
 		}
@@ -129,12 +153,8 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		if readErr == io.EOF {
 			break
 		}
-		if readErr != nil {
-			return fmt.Errorf("error reading logs: %v", readErr)
-		}
 
 		// Wait to avoid burning CPU
-		// Waiting also helps avoids the stream closing in the case when there are no logs being generated for a bit
 		time.Sleep(time.Second)
 	}
 
