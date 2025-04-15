@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -298,6 +299,12 @@ func main() {
 	for i, workerConfig := range configController.Workers.Workers {
 		queues := make([]queue.Queue, workerConfig.Count)
 
+		pollDuration, err := time.ParseDuration(configController.Workers.PollDuration)
+		if err != nil {
+			setupLog.Error(err, "invalid poll duration", "duration", configController.Workers.PollDuration)
+			os.Exit(1)
+		}
+
 		for j := 0; j < workerConfig.Count; j++ {
 			var que queue.Queue
 			var err error
@@ -324,7 +331,7 @@ func main() {
 			queues[j] = que
 
 			wrkers[currentIndex] = workers.NewWorker(que, logStore, webhookChannel,
-				dbDAGManager, clientset, taskAllocator)
+				dbDAGManager, clientset, taskAllocator, pollDuration)
 			currentIndex++
 		}
 

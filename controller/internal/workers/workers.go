@@ -36,9 +36,12 @@ type worker struct {
 	logStore        object.LogStore
 	webhookNotifier webhook.WebhookNotifier
 	id              string
+	pollDuration    time.Duration
 }
 
-func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan webhook.WebhookPayload, dbManager db.DBDAGManager, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator) Worker[*v1.Pod] {
+func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan webhook.WebhookPayload,
+	dbManager db.DBDAGManager, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator,
+	pollDuration time.Duration) Worker[*v1.Pod] {
 	return &worker{
 		queue:           queue,
 		logStore:        logStore,
@@ -47,6 +50,7 @@ func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan web
 		clientSet:       clientSet,
 		taskAllocator:   taskAllocator,
 		id:              uuid.NewString(),
+		pollDuration:    pollDuration,
 	}
 }
 
@@ -67,14 +71,14 @@ func (w *worker) Push(pod *v1.Pod, event string) error {
 
 func (w *worker) Run(ctx context.Context) error {
 	log.Log.Info("worker started")
-	tmr := time.NewTimer(1 * time.Second)
+	tmr := time.NewTimer(w.pollDuration)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tmr.C:
-			tmr.Reset(1 * time.Second)
+			tmr.Reset(w.pollDuration)
 
 			podEvent, err := w.queue.Pop()
 			if err != nil {
