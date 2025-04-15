@@ -288,8 +288,10 @@ func main() {
 
 	// Initialize slices to hold watchers and workers
 	watchers := make([]dag.TaskWatcher, len(configController.Workers.Workers))
+	eventWatchers := make([]dag.EventWatcher, len(configController.Workers.Workers))
 	wrkers := make([]workers.Worker[*v1.Pod], totalWorkers)
 	closeChannels := make([]chan struct{}, len(configController.Workers.Workers))
+	closeEventChannels := make([]chan struct{}, len(configController.Workers.Workers))
 
 	// Initialize workers and watchers based on config
 	currentIndex := 0
@@ -326,7 +328,7 @@ func main() {
 			currentIndex++
 		}
 
-		// create listener
+		// create listeners
 		eventHandler := workers.NewPodEventHandler(queues)
 
 		taskWatcher, err := dag.NewTaskWatcher(id, workerConfig.Namespace, clientset, eventHandler)
@@ -335,8 +337,17 @@ func main() {
 			os.Exit(1)
 		}
 
+		eventListener := workers.NewEventHandler(queues, clientset)
+		eventWatcher, err := dag.NewEventWatcher(id, workerConfig.Namespace, clientset, eventListener)
+		if err != nil {
+			setupLog.Error(err, "failed to create event watcher", "namespace", workerConfig.Namespace)
+			os.Exit(1)
+		}
+
 		watchers[i] = taskWatcher
+		eventWatchers[i] = eventWatcher
 		closeChannels[i] = make(chan struct{})
+		closeEventChannels[i] = make(chan struct{})
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
@@ -395,13 +406,16 @@ func main() {
 		// Start the task watchers and workers
 		currentIndex := 0
 		for i, workerConfig := range configController.Workers.Workers {
-			watcher := watchers[i]
-			closeChannel := closeChannels[i]
 
-			wg.Add(1)
+			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				watcher.StartWatching(closeChannel)
+				watchers[i].StartWatching(closeChannels[i])
+			}()
+
+			go func() {
+				defer wg.Done()
+				eventWatchers[i].StartWatching(closeEventChannels[i])
 			}()
 
 			for j := 0; j < workerConfig.Count; j++ {

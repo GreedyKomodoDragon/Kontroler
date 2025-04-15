@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"kontroler-controller/internal/queue"
@@ -61,7 +62,7 @@ func (e *eventHandler) HandleAdd(obj interface{}) {
 		eventTime := time.Now()
 		if err := e.queues[e.getQueueIndex(event)].Push(&queue.PodEvent{
 			Pod:       pod,
-			Event:     "warning",
+			Event:     "update",
 			EventTime: &eventTime,
 		}); err != nil {
 			log.Log.Error(err, "failed to push event to queue")
@@ -90,7 +91,7 @@ func (e *eventHandler) HandleUpdate(old, obj interface{}) {
 	eventTime := time.Now()
 	if err := e.queues[e.getQueueIndex(event)].Push(&queue.PodEvent{
 		Pod:       pod,
-		Event:     "pending",
+		Event:     "update",
 		EventTime: &eventTime,
 	}); err != nil {
 		log.Log.Error(err, "failed to push event to queue")
@@ -119,6 +120,11 @@ func hasRequiredLabels(obj *v1.ObjectReference, clientset kubernetes.Interface) 
 
 	pod, err := clientset.CoreV1().Pods(obj.Namespace).Get(context.Background(), obj.Name, metav1.GetOptions{})
 	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			// silently ignore if the pod is not found
+			return false, nil
+		}
+
 		log.Log.Error(err, "failed to get pod from reference",
 			"name", obj.Name,
 			"namespace", obj.Namespace)
