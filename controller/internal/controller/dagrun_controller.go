@@ -32,11 +32,13 @@ import (
 	"kontroler-controller/api/v1alpha1"
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/object"
 	"kontroler-controller/internal/workers"
 )
 
 const (
 	dagRunFinalizer = "kontroler.greedykomodo/dagrun.finalizer"
+	pvcNameFormat   = "%s-pvc"
 )
 
 // DagRunReconciler reconciles a DagRun object
@@ -45,21 +47,13 @@ type DagRunReconciler struct {
 	Scheme        *runtime.Scheme
 	DbManager     db.DBDAGManager
 	TaskAllocator workers.TaskAllocator
+	LogStore      object.LogStore
 }
 
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the DagRun object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
@@ -221,7 +215,7 @@ func (r *DagRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alpha1.DagRun, pvcTemplate *v1alpha1.PVC) (string, error) {
-	pvcName := fmt.Sprintf("%s-pvc", dagRun.Name)
+	pvcName := fmt.Sprintf(pvcNameFormat, dagRun.Name)
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -285,6 +279,27 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
 	if err := r.Update(ctx, dagRun); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	// remove logs
+	if err := r.LogStore.DeleteLogs(ctx, dagRun.Status.DagRunId); err != nil {
+		log.Log.Error(err, "failed to delete logs", "dagRunId", dagRun.Status.DagRunId)
+		return ctrl.Result{}, err
+	}
+
+	// delete the PVC
+	if err := r.Client.Delete(ctx, &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf(pvcNameFormat, dagRun.Name),
+			Namespace: dagRun.Namespace,
+		},
+	}); err != nil {
+		// ignore if already deleted
+		if err := client.IgnoreNotFound(err); err != nil {
+			log.Log.Error(err, "failed to delete pvc", "pvcName", fmt.Sprintf(pvcNameFormat, dagRun.Name), "namespace", dagRun.Namespace)
+
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil

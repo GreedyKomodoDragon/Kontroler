@@ -258,7 +258,7 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 
 func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 	// List all objects with the dagrun prefix
-	prefix := fmt.Sprintf("/%v/", dagrunId)
+	prefix := fmt.Sprintf("%v/", dagrunId)
 	output, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: s.bucketName,
 		Prefix: aws.String(prefix),
