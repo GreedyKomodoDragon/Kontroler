@@ -288,21 +288,40 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 	}
 
 	// delete the PVC
-	if err := r.Client.Delete(ctx, &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf(pvcNameFormat, dagRun.Name),
-			Namespace: dagRun.Namespace,
-		},
-	}); err != nil {
-		// ignore if already deleted
+	pvcName := fmt.Sprintf(pvcNameFormat, dagRun.Name)
+	if err := deletePVCByNameAndNamespace(ctx, r.Client, pvcName, dagRun.Namespace); err != nil {
 		if err := client.IgnoreNotFound(err); err != nil {
-			log.Log.Error(err, "failed to delete pvc", "pvcName", fmt.Sprintf(pvcNameFormat, dagRun.Name), "namespace", dagRun.Namespace)
-
+			log.Log.Error(err, "failed to delete pvc", "pvcName", pvcName, "namespace", dagRun.Namespace)
 			return ctrl.Result{}, err
 		}
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func deletePVCByNameAndNamespace(ctx context.Context, c client.Client, name string, namespace string) error {
+	pvc := &corev1.PersistentVolumeClaim{}
+	key := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	if err := c.Get(ctx, key, pvc); err != nil {
+		return err
+	}
+
+	// Remove all finalizers from the PVC
+	pvc.Finalizers = []string{}
+	if err := c.Update(ctx, pvc); err != nil {
+		return err
+	}
+
+	// Delete the PVC
+	if err := c.Delete(ctx, pvc); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Helper functions for finalizer management
