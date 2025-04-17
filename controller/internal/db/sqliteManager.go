@@ -1972,3 +1972,18 @@ func (s *sqliteDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]R
 
 	return pods, nil
 }
+
+func (s *sqliteDAGManager) DagrunExists(ctx context.Context, dagrunId int) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1 
+            FROM DAG_Runs 
+            WHERE run_id = ?
+        )
+    `, dagrunId).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check dagrun existence: %w", err)
+	}
+	return exists, nil
+}

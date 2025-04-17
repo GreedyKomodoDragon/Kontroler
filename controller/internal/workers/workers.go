@@ -583,6 +583,18 @@ func (w *worker) handleLogCollection(ctx context.Context, pod *v1.Pod) {
 			if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
 				log.Log.Error(err, "failed to uploadLogs")
 			}
+
+			// Check if dagrun still exists after log collection
+			exists, err := w.dbManager.DagrunExists(ctx, dagRunId)
+			if err != nil {
+				log.Log.Error(err, "failed to check if dagrun exists", "dagrunId", dagRunId)
+			} else if !exists {
+				// Dagrun was deleted during log collection, clean up the logs
+				if err := w.logStore.DeleteLogs(ctx, dagRunId); err != nil {
+					log.Log.Error(err, "failed to delete logs for deleted dagrun", "dagrunId", dagRunId)
+				}
+				log.Log.Info("deleted logs for non-existent dagrun", "dagrunId", dagRunId)
+			}
 		}()
 	}
 }

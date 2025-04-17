@@ -1619,3 +1619,18 @@ func (p *postgresDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([
 
 	return pods, nil
 }
+
+func (p *postgresDAGManager) DagrunExists(ctx context.Context, dagrunId int) (bool, error) {
+	var exists bool
+	err := p.pool.QueryRow(ctx, `
+        SELECT EXISTS (
+            SELECT 1 
+            FROM DAG_Runs 
+            WHERE run_id = $1
+        )
+    `, dagrunId).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check dagrun existence: %w", err)
+	}
+	return exists, nil
+}

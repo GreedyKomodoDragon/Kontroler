@@ -78,4 +78,5 @@ type DBDAGManager interface {
 	AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error
 	SuspendDagRun(ctx context.Context, dagRunId int) ([]RunningPodInfo, error)
 	DeleteDagRun(ctx context.Context, dagRunId int) error
+	DagrunExists(ctx context.Context, dagrunId int) (bool, error)
 }
