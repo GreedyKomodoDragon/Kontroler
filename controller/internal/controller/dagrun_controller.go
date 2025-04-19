@@ -356,16 +356,16 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 		return err
 	}
 
-	// remove the finalizer "kontroler/logcollection"
-	if pod.ObjectMeta.Annotations != nil {
-		if _, ok := pod.ObjectMeta.Annotations["kontroler/logcollection"]; ok {
-			delete(pod.ObjectMeta.Annotations, "kontroler/logcollection")
-
-			// Update the Pod to remove the finalizer
-			if err := c.Update(ctx, pod); err != nil {
-				return err
-			}
+	// Remove the actual finaliser (not an annotation)
+	var finalisers []string
+	for _, f := range pod.ObjectMeta.Finalizers {
+		if f != "kontroler/logcollection" {
+			finalisers = append(finalisers, f)
 		}
+	}
+	pod.ObjectMeta.Finalizers = finalisers
+	if err := c.Update(ctx, pod); err != nil {
+		return err
 	}
 
 	// Delete the Pod

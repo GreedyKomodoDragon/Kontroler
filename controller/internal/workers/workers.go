@@ -71,15 +71,14 @@ func (w *worker) Push(pod *v1.Pod, event string) error {
 
 func (w *worker) Run(ctx context.Context) error {
 	log.Log.Info("worker started")
-	tmr := time.NewTimer(w.pollDuration)
+	tkr := time.NewTicker(w.pollDuration)
+	defer tkr.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-tmr.C:
-			tmr.Reset(w.pollDuration)
-
+		case <-tkr.C:
 			podEvent, err := w.queue.Pop()
 			if err != nil {
 				if errors.Is(err, queue.ErrQueueIsEmpty) {
@@ -469,6 +468,11 @@ func (t *worker) handleConfigError(ctx context.Context, pod *v1.Pod, taskRunId, 
 	// Config errors are typically unrecoverable, so mark as failed immediately
 	if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
 		log.Log.Error(err, "failed to mark config error task as failed", "podUID", pod.UID, "name", pod.Name)
+	}
+
+	// Mark pod as failed
+	if err := t.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name, taskRunId, v1.PodFailed, time.Now(), nil, pod.Namespace); err != nil {
+		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", v1.PodFailed)
 	}
 
 	// remove finalizer as no logs will be collected

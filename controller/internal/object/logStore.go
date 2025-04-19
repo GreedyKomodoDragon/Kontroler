@@ -266,43 +266,55 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 }
 
 func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
-	// List all objects with the dagrun prefix
 	prefix := fmt.Sprintf("%v/", dagrunId)
-	output, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+	var objectIds []types.ObjectIdentifier
+	ptrTrue := true
+
+	// List all objects with pagination
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
 		Bucket: s.bucketName,
 		Prefix: aws.String(prefix),
 	})
-	if err != nil {
-		return fmt.Errorf("error listing objects: %v", err)
-	}
 
-	if len(output.Contents) == 0 {
-		// No objects to delete
-		return nil
-	}
+	for paginator.HasMorePages() {
+		output, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("error listing objects: %v", err)
+		}
 
-	// Create object identifiers for all objects
-	objectIds := make([]types.ObjectIdentifier, len(output.Contents))
-	for i, object := range output.Contents {
-		objectIds[i] = types.ObjectIdentifier{
-			Key: object.Key,
+		// Collect object identifiers from this page
+		for _, object := range output.Contents {
+			objectIds = append(objectIds, types.ObjectIdentifier{
+				Key: object.Key,
+			})
 		}
 	}
 
-	ptrTrue := true
-
-	// Delete all objects in a single batch
-	_, err = s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-		Bucket: s.bucketName,
-		Delete: &types.Delete{
-			Objects: objectIds,
-			Quiet:   &ptrTrue,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("error deleting objects: %v", err)
+	if len(objectIds) == 0 {
+		return nil
 	}
 
-	log.Log.Info("Successfully deleted all logs", "bucket", *s.bucketName, "prefix", prefix)
+	// Delete objects in batches of 1000 (S3's maximum batch size)
+	const maxBatchSize = 1000
+	for i := 0; i < len(objectIds); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(objectIds) {
+			end = len(objectIds)
+		}
+
+		batch := objectIds[i:end]
+		_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: s.bucketName,
+			Delete: &types.Delete{
+				Objects: batch,
+				Quiet:   &ptrTrue,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("error deleting objects batch: %v", err)
+		}
+	}
+
+	log.Log.Info("Successfully deleted all logs", "bucket", *s.bucketName, "prefix", prefix, "count", len(objectIds))
 	return nil
 }

@@ -297,6 +297,8 @@ func main() {
 	// Initialize workers and watchers based on config
 	currentIndex := 0
 	for i, workerConfig := range configController.Workers.Workers {
+		i := i // capture range variable
+
 		queues := make([]queue.Queue, workerConfig.Count)
 
 		pollDuration, err := time.ParseDuration(configController.Workers.PollDuration)
@@ -414,6 +416,7 @@ func main() {
 		// Start the task watchers and workers
 		currentIndex := 0
 		for i, workerConfig := range configController.Workers.Workers {
+			i := i // capture range variable
 
 			wg.Add(2)
 			go func() {
