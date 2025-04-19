@@ -12,10 +12,12 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -287,13 +289,23 @@ func main() {
 
 	// Initialize slices to hold watchers and workers
 	watchers := make([]dag.TaskWatcher, len(configController.Workers.Workers))
-	wrkers := make([]workers.Worker, totalWorkers)
+	eventWatchers := make([]dag.EventWatcher, len(configController.Workers.Workers))
+	wrkers := make([]workers.Worker[*v1.Pod], totalWorkers)
 	closeChannels := make([]chan struct{}, len(configController.Workers.Workers))
+	closeEventChannels := make([]chan struct{}, len(configController.Workers.Workers))
 
 	// Initialize workers and watchers based on config
 	currentIndex := 0
 	for i, workerConfig := range configController.Workers.Workers {
+		i := i // capture range variable
+
 		queues := make([]queue.Queue, workerConfig.Count)
+
+		pollDuration, err := time.ParseDuration(configController.Workers.PollDuration)
+		if err != nil {
+			setupLog.Error(err, "invalid poll duration", "duration", configController.Workers.PollDuration)
+			os.Exit(1)
+		}
 
 		for j := 0; j < workerConfig.Count; j++ {
 			var que queue.Queue
@@ -321,11 +333,11 @@ func main() {
 			queues[j] = que
 
 			wrkers[currentIndex] = workers.NewWorker(que, logStore, webhookChannel,
-				dbDAGManager, clientset, taskAllocator)
+				dbDAGManager, clientset, taskAllocator, pollDuration)
 			currentIndex++
 		}
 
-		// create listener
+		// create listeners
 		eventHandler := workers.NewPodEventHandler(queues)
 
 		taskWatcher, err := dag.NewTaskWatcher(id, workerConfig.Namespace, clientset, eventHandler)
@@ -334,8 +346,17 @@ func main() {
 			os.Exit(1)
 		}
 
+		eventListener := workers.NewEventHandler(queues, clientset)
+		eventWatcher, err := dag.NewEventWatcher(id, workerConfig.Namespace, clientset, eventListener)
+		if err != nil {
+			setupLog.Error(err, "failed to create event watcher", "namespace", workerConfig.Namespace)
+			os.Exit(1)
+		}
+
 		watchers[i] = taskWatcher
+		eventWatchers[i] = eventWatcher
 		closeChannels[i] = make(chan struct{})
+		closeEventChannels[i] = make(chan struct{})
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
@@ -353,6 +374,7 @@ func main() {
 		Scheme:        mgr.GetScheme(),
 		DbManager:     dbDAGManager,
 		TaskAllocator: taskAllocator,
+		LogStore:      logStore,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DagRun")
 		os.Exit(1)
@@ -394,13 +416,17 @@ func main() {
 		// Start the task watchers and workers
 		currentIndex := 0
 		for i, workerConfig := range configController.Workers.Workers {
-			watcher := watchers[i]
-			closeChannel := closeChannels[i]
+			i := i // capture range variable
 
-			wg.Add(1)
+			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				watcher.StartWatching(closeChannel)
+				watchers[i].StartWatching(closeChannels[i])
+			}()
+
+			go func() {
+				defer wg.Done()
+				eventWatchers[i].StartWatching(closeEventChannels[i])
 			}()
 
 			for j := 0; j < workerConfig.Count; j++ {

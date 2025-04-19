@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,7 @@ type LogStore interface {
 	MarkAsFetching(dagRunId int, pod *v1.Pod) error
 	UnlistFetching(dagRunId int, pod *v1.Pod)
 	UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error
+	DeleteLogs(ctx context.Context, dagrunId int) error
 }
 
 type s3LogStore struct {
@@ -77,10 +79,13 @@ func NewLogStore() (LogStore, error) {
 
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
 	defer func() {
-		if err := removeFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
+		if err := RemoveFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
 			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
 		}
 	}()
+
+	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
+	buffer := bytes.NewBuffer(nil)
 
 	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
 		Follow: true,
@@ -88,12 +93,14 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 
 	logStream, err := req.Stream(ctx)
 	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
+			return nil
+		}
 		return fmt.Errorf("error in opening stream: %v", err)
 	}
 	defer logStream.Close()
 
-	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
-	buffer := bytes.NewBuffer(nil)
 	reader := bufio.NewReader(logStream)
 
 	createOutput, err := s.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
@@ -109,14 +116,36 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	var partNumber int32 = 1
 	hasUploadedParts := false
 
+	// Ensure cleanup of partial upload on any error
+	defer func() {
+		if !hasUploadedParts || err != nil {
+			s.cleanupPartialUpload(ctx, objectKey, uploadID)
+		}
+	}()
+
 	for {
 		chunk := make([]byte, 1024*1024) // 1 MB read buffer
 		n, readErr := reader.Read(chunk)
+
+		if readErr != nil && readErr != io.EOF {
+			// Check if pod was deleted
+			isPodDeleted := strings.Contains(readErr.Error(), "not found") ||
+				strings.Contains(readErr.Error(), "connection refused") ||
+				strings.Contains(readErr.Error(), "has been terminated")
+
+			if isPodDeleted {
+				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
+				// Clean up any partial upload
+				s.cleanupPartialUpload(ctx, objectKey, uploadID)
+				return nil
+			}
+			return fmt.Errorf("error reading logs: %v", readErr)
+		}
+
 		if n > 0 {
 			buffer.Write(chunk[:n])
 		}
 
-		// Check if buffer has enough data to upload a part
 		if buffer.Len() >= minPartSize {
 			hasUploadedParts = true
 			if err := s.uploadPart(ctx, buffer, uploadID, &completedParts, partNumber, objectKey); err != nil {
@@ -128,56 +157,47 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		if readErr == io.EOF {
 			break
 		}
-		if readErr != nil {
-			return fmt.Errorf("error reading logs: %v", readErr)
-		}
 
-		// Wait to avoid burning CPU
-		// Waiting also helps avoids the stream closing in the case when there are no logs being generated for a bit
 		time.Sleep(time.Second)
 	}
 
-	// If no parts were uploaded (logs < 5 MB), abort multipart and use PutObject for small data
-	if !hasUploadedParts {
-		_, _ = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
-			Bucket:   s.bucketName,
-			Key:      aws.String(objectKey),
-			UploadId: uploadID,
-		})
-
-		// Upload the log data as a single object instead of using a multi-part upload
-		_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
-			Bucket: s.bucketName,
-			Key:    aws.String(objectKey),
-			Body:   bytes.NewReader(buffer.Bytes()),
-		})
-		if err != nil {
-			return fmt.Errorf("error uploading small log file: %v", err)
-		}
-		log.Log.Info("Logs successfully uploaded to S3 bucket with PutObject", "bucket", *s.bucketName, "key", objectKey)
-		return nil
-	}
-
-	// Upload remaining data as the final part if multipart was used
+	// Handle remaining data
 	if buffer.Len() > 0 {
+		if buffer.Len() < minPartSize && !hasUploadedParts {
+			// Upload small file as single object
+			_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+				Bucket: s.bucketName,
+				Key:    aws.String(objectKey),
+				Body:   bytes.NewReader(buffer.Bytes()),
+			})
+			if err != nil {
+				return fmt.Errorf("error uploading small log file: %v", err)
+			}
+			log.Log.Info("Logs successfully uploaded to S3 bucket with PutObject", "bucket", *s.bucketName, "key", objectKey)
+			return nil
+		}
+
+		// Upload final part for multipart upload
 		if err := s.uploadPart(ctx, buffer, uploadID, &completedParts, partNumber, objectKey); err != nil {
 			return err
 		}
 	}
 
-	// Complete multipart upload
-	if _, err = s.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
-		Bucket:   s.bucketName,
-		Key:      aws.String(objectKey),
-		UploadId: uploadID,
-		MultipartUpload: &types.CompletedMultipartUpload{
-			Parts: completedParts,
-		},
-	}); err != nil {
-		return fmt.Errorf("error completing multipart upload: %v", err)
+	// Complete multipart upload if we have parts
+	if hasUploadedParts {
+		if _, err = s.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+			Bucket:   s.bucketName,
+			Key:      aws.String(objectKey),
+			UploadId: uploadID,
+			MultipartUpload: &types.CompletedMultipartUpload{
+				Parts: completedParts,
+			},
+		}); err != nil {
+			return fmt.Errorf("error completing multipart upload: %v", err)
+		}
+		log.Log.Info("Logs successfully uploaded to S3 bucket with multipart upload", "bucket", *s.bucketName, "key", objectKey)
 	}
 
-	log.Log.Info("Logs successfully uploaded to S3 bucket with multipart upload", "bucket", *s.bucketName, "key", objectKey)
 	return nil
 }
 
@@ -208,6 +228,16 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 	return nil
 }
 
+func (s *s3LogStore) cleanupPartialUpload(ctx context.Context, objectKey string, uploadID *string) {
+	if _, err := s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+		Bucket:   s.bucketName,
+		Key:      aws.String(objectKey),
+		UploadId: uploadID,
+	}); err != nil {
+		log.Log.Error(err, "failed to abort multipart upload", "bucket", *s.bucketName, "key", objectKey)
+	}
+}
+
 func (s *s3LogStore) IsFetching(dagRunId int, pod *v1.Pod) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
@@ -233,4 +263,58 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	defer s.lock.Unlock()
 
 	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
+}
+
+func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
+	prefix := fmt.Sprintf("%v/", dagrunId)
+	var objectIds []types.ObjectIdentifier
+	ptrTrue := true
+
+	// List all objects with pagination
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: s.bucketName,
+		Prefix: aws.String(prefix),
+	})
+
+	for paginator.HasMorePages() {
+		output, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("error listing objects: %v", err)
+		}
+
+		// Collect object identifiers from this page
+		for _, object := range output.Contents {
+			objectIds = append(objectIds, types.ObjectIdentifier{
+				Key: object.Key,
+			})
+		}
+	}
+
+	if len(objectIds) == 0 {
+		return nil
+	}
+
+	// Delete objects in batches of 1000 (S3's maximum batch size)
+	const maxBatchSize = 1000
+	for i := 0; i < len(objectIds); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(objectIds) {
+			end = len(objectIds)
+		}
+
+		batch := objectIds[i:end]
+		_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: s.bucketName,
+			Delete: &types.Delete{
+				Objects: batch,
+				Quiet:   &ptrTrue,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("error deleting objects batch: %v", err)
+		}
+	}
+
+	log.Log.Info("Successfully deleted all logs", "bucket", *s.bucketName, "prefix", prefix, "count", len(objectIds))
+	return nil
 }

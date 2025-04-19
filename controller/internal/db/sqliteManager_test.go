@@ -1188,5 +1188,19 @@ func Test_SQLite__MarkConnectingTasksAsSuspended_overlapping_dependencies(t *tes
 	require.NoError(t, err)
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
+
 	testDAGManager_MarkConnectingTasksAsSuspended_overlapping_dependencies(t, dm)
+}
+
+func TestSqliteDAGManager_SuspendDagRun(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_SuspendDagRun(t, dm)
 }

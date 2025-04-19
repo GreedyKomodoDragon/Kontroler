@@ -2091,3 +2091,184 @@ func testDAGManager_MarkConnectingTasksAsSuspended_overlapping_dependencies(t *t
 		require.Contains(t, suspendedTasks2, "middle-2")
 	})
 }
+
+func testDAGManager_DeleteDagRun_Simple(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Delete Simple DAG Run", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+			DagName: "test_dag",
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.NoError(t, err)
+
+		err = dm.DeleteDagRun(context.Background(), runID)
+		require.NoError(t, err)
+
+		// Verify run is deleted by trying to check if all tasks are done
+		done, err := dm.CheckIfAllTasksDone(context.Background(), runID)
+		require.Error(t, err) // Should error since run doesn't exist
+		require.False(t, done)
+	})
+}
+
+func testDAGManager_DeleteDagRun_WithTasks(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Delete DAG Run With Running Tasks", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_with_tasks",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+					{
+						Name:     "task2",
+						Command:  []string{"echo", "Hello"},
+						Args:     []string{"arg1", "arg2"},
+						Image:    "busybox",
+						RunAfter: []string{"task1"},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+			DagName: "test_dag_with_tasks",
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.NoError(t, err)
+
+		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag_with_tasks", runID)
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+
+		err = dm.DeleteDagRun(context.Background(), runID)
+		require.NoError(t, err)
+	})
+}
+
+func testDAGManager_DeleteDagRun_WithParameters(t *testing.T, dm db.DBDAGManager) {
+	t.Run("Delete DAG Run With Parameters", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_with_params",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Parameters: []v1alpha1.DagParameterSpec{
+					{
+						Name:         "param1",
+						DefaultValue: "value1",
+					},
+				},
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:       "task1",
+						Command:    []string{"echo"},
+						Args:       []string{"$(param1)"},
+						Image:      "busybox",
+						Parameters: []string{"param1"},
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		params := map[string]v1alpha1.ParameterSpec{
+			"param1": {
+				Name:  "param1",
+				Value: "test-value",
+			},
+		}
+
+		runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
+			DagName: "test_dag_with_params",
+		}, params, nil)
+		require.NoError(t, err)
+
+		err = dm.DeleteDagRun(context.Background(), runID)
+		require.NoError(t, err)
+	})
+}
+
+func testDAGManager_SuspendDagRun(t *testing.T, dm db.DBDAGManager) {
+	ctx := context.Background()
+
+	// Setup: Create a DAG with multiple tasks
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-dag",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Schedule: "*/5 * * * *",
+			Task: []v1alpha1.TaskSpec{
+				{Name: "task1", Command: []string{"echo"}, Image: "alpine"},
+				{Name: "task2", Command: []string{"echo"}, Image: "alpine"},
+			},
+		},
+	}
+
+	// Insert the DAG
+	err := dm.InsertDAG(ctx, dag, "default")
+	require.NoError(t, err)
+
+	dagRun := &v1alpha1.DagRunSpec{DagName: "test-dag"}
+	runID, err := dm.CreateDAGRun(ctx, "test-run", dagRun, nil, nil)
+	require.NoError(t, err)
+
+	// Get and start initial tasks
+	tasks, err := dm.GetStartingTasks(ctx, "test-dag", runID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+
+	// Start both tasks
+	taskRun1, err := dm.MarkTaskAsStarted(ctx, runID, tasks[0].Id)
+	require.NoError(t, err)
+	taskRun2, err := dm.MarkTaskAsStarted(ctx, runID, tasks[1].Id)
+	require.NoError(t, err)
+
+	// Record running pods
+	err = dm.MarkPodStatus(ctx, types.UID("pod1-uid"), "pod1", taskRun1, v1.PodRunning, time.Now(), nil, "default")
+	require.NoError(t, err)
+	err = dm.MarkPodStatus(ctx, types.UID("pod2-uid"), "pod2", taskRun2, v1.PodRunning, time.Now(), nil, "default")
+	require.NoError(t, err)
+
+	// Test suspension
+	pods, err := dm.SuspendDagRun(ctx, runID)
+	require.NoError(t, err)
+	require.Len(t, pods, 2, "Should return info for both running pods")
+
+	// Verify pod information
+	podNames := []string{"pod1", "pod2"}
+	for _, pod := range pods {
+		require.Contains(t, podNames, pod.Name)
+		require.Equal(t, "default", pod.Namespace)
+	}
+}

@@ -15,9 +15,10 @@ type ControllerConfig struct {
 }
 
 type WorkerConfigs struct {
-	WorkerType string         `yaml:"workerType"` // "memory" or "pebble"
-	QueueDir   string         `yaml:"queueDir"`   // directory for pebble queue storage
-	Workers    []WorkerConfig `yaml:"workers"`
+	WorkerType   string         `yaml:"workerType"` // "memory" or "pebble"
+	QueueDir     string         `yaml:"queueDir"`   // directory for pebble queue storage
+	Workers      []WorkerConfig `yaml:"workers"`
+	PollDuration string         `yaml:"pollDuration"`
 }
 
 type WorkerConfig struct {
@@ -58,6 +59,11 @@ func ParseConfig(configPath string) (*ControllerConfig, error) {
 		if err := os.MkdirAll(cConfig.Workers.QueueDir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create queue directory: %w", err)
 		}
+	}
+
+	// Parse and validate poll duration
+	if cConfig.Workers.PollDuration == "" {
+		cConfig.Workers.PollDuration = "100ms"
 	}
 
 	// leaderElectionID

@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -31,7 +32,13 @@ import (
 	"kontroler-controller/api/v1alpha1"
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/object"
 	"kontroler-controller/internal/workers"
+)
+
+const (
+	dagRunFinalizer = "kontroler.greedykomodo/dagrun.finalizer"
+	pvcNameFormat   = "%s-pvc"
 )
 
 // DagRunReconciler reconciles a DagRun object
@@ -40,21 +47,13 @@ type DagRunReconciler struct {
 	Scheme        *runtime.Scheme
 	DbManager     db.DBDAGManager
 	TaskAllocator workers.TaskAllocator
+	LogStore      object.LogStore
 }
 
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dagruns/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the DagRun object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
@@ -63,8 +62,27 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Fetch the Schedule object that triggered the reconciliation
 	var dagRun kontrolerv1alpha1.DagRun
 	if err := r.Get(ctx, req.NamespacedName, &dagRun); err != nil {
-		// Return error if unable to fetch Schedule object
-		return ctrl.Result{}, err
+		// Check if the object was deleted
+		if err := client.IgnoreNotFound(err); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		log.Log.Info("DagRun deleted", "req.Name", req.Name, "req.Namespace", req.Namespace)
+		return ctrl.Result{}, nil
+	}
+
+	// Check if the DagRun is being deleted
+	if !dagRun.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &dagRun)
+	}
+
+	// Add finalizer if it doesn't exist
+	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
+		dagRun.Finalizers = append(dagRun.Finalizers, dagRunFinalizer)
+		if err := r.Update(ctx, &dagRun); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// check if dag exists
@@ -197,7 +215,7 @@ func (r *DagRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alpha1.DagRun, pvcTemplate *v1alpha1.PVC) (string, error) {
-	pvcName := fmt.Sprintf("%s-pvc", dagRun.Name)
+	pvcName := fmt.Sprintf(pvcNameFormat, dagRun.Name)
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -230,4 +248,130 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 
 	log.Log.Info("PVC created successfully", "pvc", pvc.Name)
 	return pvcName, nil
+}
+
+func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontrolerv1alpha1.DagRun) (ctrl.Result, error) {
+	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	// suspend the dag run first
+	pods, err := r.DbManager.SuspendDagRun(ctx, dagRun.Status.DagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to suspend dag run", "dagRunId", dagRun.Status.DagRunId)
+		return ctrl.Result{}, err
+	}
+
+	for _, pod := range pods {
+		if err := deletePodByNameAndNamespace(ctx, r.Client, pod.Name, pod.Namespace); err != nil {
+			log.Log.Error(err, "failed to delete pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+			continue
+		}
+	}
+
+	// Delete the DAG run from database
+	if err := r.DbManager.DeleteDagRun(ctx, dagRun.Status.DagRunId); err != nil {
+		log.Log.Error(err, "failed to delete dag run from database", "dagRunId", dagRun.Status.DagRunId)
+		return ctrl.Result{}, err
+	}
+
+	// Remove the finalizer
+	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
+	if err := r.Update(ctx, dagRun); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// remove logs
+	if err := r.LogStore.DeleteLogs(ctx, dagRun.Status.DagRunId); err != nil {
+		log.Log.Error(err, "failed to delete logs", "dagRunId", dagRun.Status.DagRunId)
+		return ctrl.Result{}, err
+	}
+
+	// delete the PVC
+	pvcName := fmt.Sprintf(pvcNameFormat, dagRun.Name)
+	if err := deletePVCByNameAndNamespace(ctx, r.Client, pvcName, dagRun.Namespace); err != nil {
+		if err := client.IgnoreNotFound(err); err != nil {
+			log.Log.Error(err, "failed to delete pvc", "pvcName", pvcName, "namespace", dagRun.Namespace)
+			return ctrl.Result{}, err
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func deletePVCByNameAndNamespace(ctx context.Context, c client.Client, name string, namespace string) error {
+	pvc := &corev1.PersistentVolumeClaim{}
+	key := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	if err := c.Get(ctx, key, pvc); err != nil {
+		return err
+	}
+
+	// Remove all finalizers from the PVC
+	pvc.Finalizers = []string{}
+	if err := c.Update(ctx, pvc); err != nil {
+		return err
+	}
+
+	// Delete the PVC
+	if err := c.Delete(ctx, pvc); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Helper functions for finalizer management
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) []string {
+	result := make([]string, 0, len(slice))
+	for _, item := range slice {
+		if item != s {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name string, namespace string) error {
+	// Create a Pod object with only the metadata needed to identify it
+	pod := &corev1.Pod{}
+	key := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	if err := c.Get(ctx, key, pod); err != nil {
+		return err
+	}
+
+	// Remove the actual finaliser (not an annotation)
+	var finalisers []string
+	for _, f := range pod.ObjectMeta.Finalizers {
+		if f != "kontroler/logcollection" {
+			finalisers = append(finalisers, f)
+		}
+	}
+	pod.ObjectMeta.Finalizers = finalisers
+	if err := c.Update(ctx, pod); err != nil {
+		return err
+	}
+
+	// Delete the Pod
+	if err := c.Delete(ctx, pod); err != nil {
+		return err
+	}
+
+	return nil
 }

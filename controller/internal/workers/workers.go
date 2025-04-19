@@ -21,8 +21,8 @@ import (
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type Worker interface {
-	Push(pod *v1.Pod, event string) error
+type Worker[T any] interface {
+	Push(item T, event string) error
 	Run(ctx context.Context) error
 	Queue() queue.Queue
 	ID() string
@@ -36,9 +36,12 @@ type worker struct {
 	logStore        object.LogStore
 	webhookNotifier webhook.WebhookNotifier
 	id              string
+	pollDuration    time.Duration
 }
 
-func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan webhook.WebhookPayload, dbManager db.DBDAGManager, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator) Worker {
+func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan webhook.WebhookPayload,
+	dbManager db.DBDAGManager, clientSet *kubernetes.Clientset, taskAllocator TaskAllocator,
+	pollDuration time.Duration) Worker[*v1.Pod] {
 	return &worker{
 		queue:           queue,
 		logStore:        logStore,
@@ -47,6 +50,7 @@ func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan web
 		clientSet:       clientSet,
 		taskAllocator:   taskAllocator,
 		id:              uuid.NewString(),
+		pollDuration:    pollDuration,
 	}
 }
 
@@ -67,15 +71,14 @@ func (w *worker) Push(pod *v1.Pod, event string) error {
 
 func (w *worker) Run(ctx context.Context) error {
 	log.Log.Info("worker started")
-	tmr := time.NewTimer(1 * time.Second)
+	tkr := time.NewTicker(w.pollDuration)
+	defer tkr.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-tmr.C:
-			tmr.Reset(1 * time.Second)
-
+		case <-tkr.C:
 			podEvent, err := w.queue.Pop()
 			if err != nil {
 				if errors.Is(err, queue.ErrQueueIsEmpty) {
@@ -103,17 +106,10 @@ func (w *worker) Run(ctx context.Context) error {
 func (w *worker) handleAdd(pod *v1.Pod, eventTime *time.Time) {
 	w.handleOutcome(pod, "add", eventTime)
 
-	if err := w.writeStatusToDB(pod, eventTime); err != nil {
-		log.Log.Error(err, "failed to writeStatusToDB")
-	}
 }
 
 func (t *worker) handleUpdate(pod *v1.Pod, eventTime *time.Time) {
 	t.handleOutcome(pod, "update", eventTime)
-
-	if err := t.writeStatusToDB(pod, eventTime); err != nil {
-		log.Log.Error(err, "failed to writeStatusToDB")
-	}
 }
 
 func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) {
@@ -126,42 +122,9 @@ func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) 
 		return
 	}
 
-	// log collection
-	readyForLogCollection := false
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.State.Running != nil || containerStatus.State.Terminated != nil {
-			readyForLogCollection = true
-			break
-		}
-	}
+	w.handleLogCollection(ctx, pod)
 
-	if w.logStore != nil && readyForLogCollection {
-		// Attempt to get logs, but we don't stop if we can't get them
-		go func() {
-			dagRunId, err := w.getDagRunID(pod)
-			if err != nil {
-				log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
-				return
-			}
-
-			if ok := w.logStore.IsFetching(dagRunId, pod); ok {
-				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name, "event", event)
-				return
-			}
-
-			if err := w.logStore.MarkAsFetching(dagRunId, pod); err != nil {
-				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name, "event", event)
-				return
-			}
-
-			defer w.logStore.UnlistFetching(dagRunId, pod)
-
-			log.Log.Info("started collecting logs", "pod", pod.Name)
-			if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
-				log.Log.Error(err, "failed to uploadLogs")
-			}
-		}()
-	}
+	writeState := true
 
 	switch pod.Status.Phase {
 	case v1.PodSucceeded:
@@ -171,9 +134,18 @@ func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) 
 	case v1.PodRunning:
 		w.handleStartedTaskRun(ctx, pod, taskRunId)
 	case v1.PodPending:
-		w.handlePendingTaskRun(ctx, pod, taskRunId)
+		// there is a special case if config error is detected
+		// in that case we treat it as a failure
+		// and do not write to db as handleConfigError will do that
+		writeState = w.handlePendingTaskRun(ctx, pod, taskRunId)
 	case v1.PodUnknown:
 		log.Log.Info("pod status unknown", "podUID", pod.UID, "name", pod.Name, "event", event)
+	}
+
+	if writeState {
+		if err := w.writeStatusToDB(pod, eventTime); err != nil {
+			log.Log.Error(err, "failed to writeStatusToDB")
+		}
 	}
 }
 
@@ -186,7 +158,7 @@ func (w *worker) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskR
 		return
 	}
 
-	if err := w.deletePod(ctx, pod); err != nil {
+	if err := w.deletePod(ctx, pod, false); err != nil {
 		log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
 		return
 	}
@@ -241,7 +213,14 @@ func (w *worker) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskR
 }
 
 func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
-	log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+	// mark exitcode as -1 if pod was deleted before it started - means something odd happened
+	var exitcode int32 = -1
+	if len(pod.Status.ContainerStatuses) == 0 {
+		log.Log.Info("task failed without container status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+	} else {
+		log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+		exitcode = pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+	}
 
 	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
@@ -249,16 +228,17 @@ func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId
 		return
 	}
 
-	if err := t.deletePod(ctx, pod); err != nil {
+	if err := t.deletePod(ctx, pod, false); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			log.Log.Info("pod has already been deleted/handled, skipping", "podUId", pod.UID)
 		} else {
 			log.Log.Error(err, "failed to delete pod in failed,", "podUId", pod.UID)
+			return
 		}
-		return
 	}
 
-	ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+	// For pods that failed before container start, always attempt a retry
+	ok, err := t.dbManager.ShouldRerun(ctx, taskRunId, exitcode)
 	if err != nil {
 		log.Log.Error(err, "failed to determine if pod should be re-ran", "pod", pod.Name)
 		return
@@ -267,7 +247,7 @@ func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId
 	container := pod.Spec.Containers[0]
 
 	if !ok {
-		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId)
+		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId, exitcode)
 		return
 	}
 
@@ -343,6 +323,7 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 
 	var exitCode *int32 = nil
 	var duration int64 = 0
+
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
 		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 
@@ -354,6 +335,10 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 		if err := w.dbManager.AddPodDuration(context.Background(), taskRunId, duration); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 		}
+	} else if pod.Status.Phase == v1.PodFailed {
+		// Handle case where pod failed before container started
+		defaultExitCode := int32(-1)
+		exitCode = &defaultExitCode
 	}
 
 	if err := w.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name,
@@ -381,8 +366,8 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 	return nil
 }
 
-func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {
-	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int, exitCode int32) {
+	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", exitCode)
 
 	if err := w.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
 		log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
@@ -397,7 +382,7 @@ func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunI
 
 	taskNames, err := w.dbManager.MarkConnectingTasksAsSuspended(ctx, dagRunId, taskRunId)
 	if err == nil {
-		if webhook.URL != "" {
+		if webhook != nil && webhook.URL != "" {
 			for _, taskName := range taskNames {
 				log.Log.Info("task marked as suspended", "taskName", taskName)
 				go w.webhookNotifier.NotifyTaskRun(taskName, "suspended", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
@@ -423,7 +408,13 @@ func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunI
 	}
 }
 
-func (t *worker) deletePod(ctx context.Context, pod *v1.Pod) error {
+func (t *worker) deletePod(ctx context.Context, pod *v1.Pod, removeFinaliser bool) error {
+	if removeFinaliser {
+		if err := object.RemoveFinalizer(t.clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
+			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
+		}
+	}
+
 	backgroundDeletion := metav1.DeletePropagationBackground
 	return t.clientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 		PropagationPolicy: &backgroundDeletion,
@@ -447,14 +438,21 @@ func (t *worker) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, taskRunI
 	}
 }
 
-func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
-	log.Log.Info("task pending", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
-
+func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) bool {
 	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
 		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
-		return
+		return true
 	}
+
+	if hasCreateContainerConfigError(pod) {
+		log.Log.Info("detected CreateContainerConfigError, treating as failure", "podUID", pod.UID, "name", pod.Name)
+		// Treat config error as a special kind of failure
+		t.handleConfigError(ctx, pod, taskRunId, dagRunId)
+		return false
+	}
+
+	log.Log.Info("task pending", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 
 	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
@@ -462,6 +460,37 @@ func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunI
 	} else if webhook.URL != "" {
 		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "pending", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
+
+	return true
+}
+
+func (t *worker) handleConfigError(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int) {
+	// Config errors are typically unrecoverable, so mark as failed immediately
+	if err := t.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
+		log.Log.Error(err, "failed to mark config error task as failed", "podUID", pod.UID, "name", pod.Name)
+	}
+
+	// Mark pod as failed
+	if err := t.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name, taskRunId, v1.PodFailed, time.Now(), nil, pod.Namespace); err != nil {
+		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", v1.PodFailed)
+	}
+
+	// remove finalizer as no logs will be collected
+	if err := t.deletePod(ctx, pod, true); err != nil {
+		if !strings.Contains(err.Error(), "not found") {
+			log.Log.Error(err, "failed to delete pod with config error", "podUId", pod.UID)
+		}
+	}
+
+	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+	} else if webhook.URL != "" {
+		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "failed", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
+	}
+
+	// Handle downstream tasks
+	t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId, -2) // -2 for config error
 }
 
 func (t *worker) deletePVC(ctx context.Context, pod *v1.Pod) error {
@@ -521,4 +550,74 @@ func (t *worker) getDagRunID(pod *v1.Pod) (int, error) {
 	}
 
 	return strconv.Atoi(dagRunStr)
+}
+
+func (w *worker) handleLogCollection(ctx context.Context, pod *v1.Pod) {
+	// log collection
+	readyForLogCollection := false
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Running != nil || containerStatus.State.Terminated != nil {
+			readyForLogCollection = true
+			break
+		}
+	}
+
+	if w.logStore != nil && readyForLogCollection {
+		// Attempt to get logs, but we don't stop if we can't get them
+		go func() {
+			dagRunId, err := w.getDagRunID(pod)
+			if err != nil {
+				log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
+				return
+			}
+
+			if ok := w.logStore.IsFetching(dagRunId, pod); ok {
+				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
+				return
+			}
+
+			if err := w.logStore.MarkAsFetching(dagRunId, pod); err != nil {
+				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
+				return
+			}
+
+			defer w.logStore.UnlistFetching(dagRunId, pod)
+
+			log.Log.Info("started collecting logs", "pod", pod.Name)
+			if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
+				log.Log.Error(err, "failed to uploadLogs")
+			}
+
+			// Check if dagrun still exists after log collection
+			exists, err := w.dbManager.DagrunExists(ctx, dagRunId)
+			if err != nil {
+				log.Log.Error(err, "failed to check if dagrun exists", "dagrunId", dagRunId)
+			} else if !exists {
+				// Dagrun was deleted during log collection, clean up the logs
+				if err := w.logStore.DeleteLogs(ctx, dagRunId); err != nil {
+					log.Log.Error(err, "failed to delete logs for deleted dagrun", "dagrunId", dagRunId)
+				}
+				log.Log.Info("deleted logs for non-existent dagrun", "dagrunId", dagRunId)
+			}
+		}()
+	}
+}
+
+func hasCreateContainerConfigError(pod *v1.Pod) bool {
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.State.Waiting != nil {
+			fmt.Println("Waiting reason:", status.State.Waiting.Reason)
+		}
+
+		if status.State.Waiting != nil && status.State.Waiting.Reason == "CreateContainerConfigError" {
+			return true
+		}
+	}
+	// Also check init containers
+	for _, status := range pod.Status.InitContainerStatuses {
+		if status.State.Waiting != nil && status.State.Waiting.Reason == "CreateContainerConfigError" {
+			return true
+		}
+	}
+	return false
 }

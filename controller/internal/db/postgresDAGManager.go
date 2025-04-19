@@ -1561,3 +1561,76 @@ func (p *postgresDAGManager) AddPodDuration(ctx context.Context, taskRunId int, 
 		return nil
 	})
 }
+
+func (p *postgresDAGManager) DeleteDagRun(ctx context.Context, dagRunId int) error {
+	return p.withTx(ctx, func(tx pgx.Tx) error {
+		// Delete DAG run and all related data will cascade due to foreign key constraints
+		if _, err := tx.Exec(ctx, `
+            DELETE FROM DAG_Runs
+            WHERE run_id = $1;
+        `, dagRunId); err != nil {
+			return fmt.Errorf("failed to delete dag run: %w", err)
+		}
+		return nil
+	})
+}
+
+func (p *postgresDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]RunningPodInfo, error) {
+	var pods []RunningPodInfo
+
+	err := p.withTx(ctx, func(tx pgx.Tx) error {
+		// Get all running pods first
+		rows, err := tx.Query(ctx, `
+            SELECT p.name, p.namespace
+            FROM Task_Pods p
+            JOIN Task_Runs tr ON p.task_run_id = tr.task_run_id
+            WHERE tr.run_id = $1 AND tr.status = 'running';
+        `, dagRunId)
+		if err != nil {
+			return fmt.Errorf("failed to query running pods: %w", err)
+		}
+		defer rows.Close()
+
+		// Collect pod information
+		for rows.Next() {
+			var pod RunningPodInfo
+			if err := rows.Scan(&pod.Name, &pod.Namespace); err != nil {
+				return fmt.Errorf("failed to scan pod info: %w", err)
+			}
+			pods = append(pods, pod)
+		}
+
+		// Update DAG run status to suspended
+		_, err = tx.Exec(ctx, `
+            UPDATE DAG_Runs 
+            SET status = 'suspended'
+            WHERE run_id = $1
+        `, dagRunId)
+		if err != nil {
+			return fmt.Errorf("failed to suspend dag run: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pods, nil
+}
+
+func (p *postgresDAGManager) DagrunExists(ctx context.Context, dagrunId int) (bool, error) {
+	var exists bool
+	err := p.pool.QueryRow(ctx, `
+        SELECT EXISTS (
+            SELECT 1 
+            FROM DAG_Runs 
+            WHERE run_id = $1
+        )
+    `, dagrunId).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check dagrun existence: %w", err)
+	}
+	return exists, nil
+}
