@@ -8,20 +8,26 @@ import { DeleteButton } from "./admin/deleteButton";
 import ConfirmDeletion from "./admin/confirmDeletion";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
 import Identicon from "./navbar/icon";
+import { useError } from "../providers/ErrorProvider";
 
 export default function ManageUsers() {
-  const queryClient = useQueryClient();
-
-  const [maxPage, setMaxPage] = createSignal(-1);
+  const { setGlobalErrorMessage, handleApiError } = useError();
   const [page, setPage] = createSignal(1);
+  const [maxPage, setMaxPage] = createSignal(1);
   const [show, setShow] = createSignal(false);
   const [selectedName, setSelectedName] = createSignal("");
-
   const [errorMsg, setErrorMsg] = createSignal("");
+  const queryClient = useQueryClient();
 
   const users = createQuery(() => ({
     queryKey: ["users", page().toString()],
-    queryFn: getUsers,
+    queryFn: async () => {
+      try {
+        return await getUsers({ queryKey: ["users", page().toString()] });
+      } catch (error) {
+        handleApiError(error);
+      }
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
   }));
 
@@ -29,7 +35,7 @@ export default function ManageUsers() {
     .then((count) => {
       setMaxPage(count);
     })
-    .catch((error) => console.error(error));
+    .catch((error) => handleApiError(error));
 
   return (
     <div class="mx-auto px-4">
