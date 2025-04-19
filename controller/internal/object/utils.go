@@ -28,7 +28,7 @@ func loadS3Config() (aws.Config, error) {
 	return config.LoadDefaultConfig(context.TODO())
 }
 
-func removeFinalizer(clientset *kubernetes.Clientset, podName, namespace, finalizer string) error {
+func RemoveFinalizer(clientset *kubernetes.Clientset, podName, namespace, finalizer string) error {
 	// Fetch the Pod
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, v1.GetOptions{})
 	if err != nil {

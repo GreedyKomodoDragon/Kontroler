@@ -88,6 +88,31 @@ func NewSqliteManager(ctx context.Context, parser *cron.Parser, config *SQLiteCo
 	}, db, nil
 }
 
+// Add this method after the NewSqliteManager function
+func (s *sqliteDAGManager) withTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			if err == sql.ErrTxDone {
+				return
+			}
+			log.Log.Error(err, "failed to rollback transaction")
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
+}
+
 func (s *sqliteDAGManager) InitaliseDatabase(ctx context.Context) error {
 	initScript := `
 -- SQLite does not support UUID generation directly. Use TEXT with UNIQUE constraint.
@@ -1882,4 +1907,83 @@ func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, taskRunId int, du
 	}
 
 	return tx.Commit()
+}
+
+func (s *sqliteDAGManager) DeleteDagRun(ctx context.Context, dagRunId int) error {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		// Delete in reverse order of dependencies to avoid foreign key issues
+		statements := []string{
+			`DELETE FROM Task_Pods WHERE task_run_id IN (SELECT task_run_id FROM Task_Runs WHERE run_id = ?);`,
+			`DELETE FROM Task_Runs WHERE run_id = ?;`,
+			`DELETE FROM DAG_Run_Parameters WHERE run_id = ?;`,
+			`DELETE FROM DAG_Runs WHERE run_id = ?;`,
+		}
+
+		for _, stmt := range statements {
+			if _, err := tx.ExecContext(ctx, stmt, dagRunId); err != nil {
+				return fmt.Errorf("failed to execute statement '%s': %w", stmt, err)
+			}
+		}
+		return nil
+	})
+}
+
+func (s *sqliteDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]RunningPodInfo, error) {
+	var pods []RunningPodInfo
+
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		// Get all running pods first
+		rows, err := tx.QueryContext(ctx, `
+            SELECT p.name, p.namespace
+            FROM Task_Pods p
+            JOIN Task_Runs tr ON p.task_run_id = tr.task_run_id
+            WHERE tr.run_id = ? AND tr.status = 'running';
+        `, dagRunId)
+		if err != nil {
+			return fmt.Errorf("failed to query running pods: %w", err)
+		}
+		defer rows.Close()
+
+		// Collect pod information
+		for rows.Next() {
+			var pod RunningPodInfo
+			if err := rows.Scan(&pod.Name, &pod.Namespace); err != nil {
+				return fmt.Errorf("failed to scan pod info: %w", err)
+			}
+			pods = append(pods, pod)
+		}
+
+		// Update DAG run status to suspended
+		_, err = tx.ExecContext(ctx, `
+            UPDATE DAG_Runs 
+            SET status = 'suspended'
+            WHERE run_id = ?
+        `, dagRunId)
+		if err != nil {
+			return fmt.Errorf("failed to suspend dag run: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pods, nil
+}
+
+func (s *sqliteDAGManager) DagrunExists(ctx context.Context, dagrunId int) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1 
+            FROM DAG_Runs 
+            WHERE run_id = ?
+        )
+    `, dagrunId).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check dagrun existence: %w", err)
+	}
+	return exists, nil
 }
