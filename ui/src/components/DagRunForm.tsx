@@ -6,6 +6,7 @@ import SelectMenu from "./inputs/selectMenu";
 import LabeledInput from "./inputs/labeledInput";
 import { createQuery } from "@tanstack/solid-query";
 import { createDagRun, getDagNames, getDagParameters } from "../api/dags";
+import { useError } from "../providers/ErrorProvider";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
 
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
@@ -17,6 +18,8 @@ function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
 }
 
 export default function DagRunForm() {
+  const { handleApiError } = useError();
+
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
   const [successMsg, setSuccessMsg] = createSignal<string>("");
   const [selectedDag, setSelectedDag] = createSignal<string>("");
@@ -70,11 +73,7 @@ export default function DagRunForm() {
       const param = parameters.data[i];
       const userValue = parameterStore[param.name];
 
-      // if it is empty and there is no default value then error
-      if (
-        (!userValue || userValue.trim() === "") &&
-        (param.defaultValue === undefined || param.defaultValue === "")
-      ) {
+      if ((!userValue || userValue.trim() === "") && (param.defaultValue === undefined || param.defaultValue === "")) {
         errors.push(`${param.name} is required but has no value.`);
       }
     }
@@ -84,13 +83,11 @@ export default function DagRunForm() {
       return;
     }
 
-    createDagRun(selectedDag(), { ...parameterStore }, namespace(), runName())
+    createDagRun(selectedDag(), parameterStore, namespace(), runName())
       .then(() => {
-        setSuccessMsg("DagRun was created!");
+        setSuccessMsg("DAG run created successfully.");
       })
-      .catch((e) => {
-        setErrorMsgs([e.message]);
-      });
+      .catch((error) => handleApiError(error));
   };
 
   return (

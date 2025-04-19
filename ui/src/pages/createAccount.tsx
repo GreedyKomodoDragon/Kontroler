@@ -1,10 +1,11 @@
 import { createSignal } from "solid-js";
-import ErrorAlert from "../components/errorAlert";
-import SuccessfulAlert from "../components/successfulAlert";
 import { createAccount } from "../api/admin";
 import { Role, roleDescriptions } from "../types/admin";
+import { useError } from "../providers/ErrorProvider";
 
 export default function CreateAccountPage() {
+  const { handleApiError } = useError();
+
   const [errorMsgs, setErrorMsgs] = createSignal<string[]>([]);
   const [successMsg, setSuccessMsg] = createSignal<string>("");
 
@@ -18,22 +19,22 @@ export default function CreateAccountPage() {
 
     let errors: string[] = [];
     if (username() === "") {
-      errors.push("username cannot be empty");
+      errors.push("Username cannot be empty");
     }
 
     if (password() === "") {
-      errors.push("password cannot be empty");
+      errors.push("Password cannot be empty");
     }
 
     if (password() !== passwordConfirm()) {
-      errors.push("passwords must match");
+      errors.push("Passwords must match");
     }
 
     if (["admin", "editor", "viewer"].indexOf(role()) === -1) {
-      errors.push("role must be either Admin, Editor, or Viewer");
+      errors.push("Role must be either Admin, Editor, or Viewer");
     }
 
-    if (errors.length != 0) {
+    if (errors.length !== 0) {
       setErrorMsgs(errors);
       return;
     }
@@ -42,16 +43,14 @@ export default function CreateAccountPage() {
       .then(() => {
         setSuccessMsg("Account has been successfully created!");
       })
-      .catch((e) => {
-        setErrorMsgs([e.message]);
-      });
+      .catch((error) => handleApiError(error));
   };
 
   return (
     <>
       <main class="w-full flex flex-col items-center justify-center px-4">
         <h2 class="text-4xl font-semibold mb-4">Create a new Account</h2>
-        <div class="max-w-sm w-full  space-y-5">
+        <div class="max-w-sm w-full space-y-5">
           <div>
             <label class="block text-lg font-medium my-4">Username</label>
             <input
@@ -75,9 +74,7 @@ export default function CreateAccountPage() {
             />
           </div>
           <div>
-            <label class="block text-lg font-medium my-4">
-              Confirm Password
-            </label>
+            <label class="block text-lg font-medium my-4">Confirm Password</label>
             <input
               type="password"
               class="mt-1 block w-full px-3 py-2 border border-gray-600 bg-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-200"
@@ -103,27 +100,24 @@ export default function CreateAccountPage() {
             </select>
             {role() && <h4 class="mt-2">Permission:</h4>}
             {role() &&
-              roleDescriptions[role() as Role]?.map(
-                (desc: string, index: number) => (
-                  <li class="flex items-center space-x-3 text-white p-2 rounded-md transition-colors">
-                    {/* green tick */}
-                    <svg
-                      class="w-5 h-5 text-green-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    <span>{desc}</span>
-                  </li>
-                )
-              )}
+              roleDescriptions[role() as Role]?.map((desc: string, index: number) => (
+                <li class="flex items-center space-x-3 text-white p-2 rounded-md transition-colors">
+                  <svg
+                    class="w-5 h-5 text-green-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  <span>{desc}</span>
+                </li>
+              ))}
           </div>
 
           <div class="flex justify-center">
@@ -138,13 +132,23 @@ export default function CreateAccountPage() {
         </div>
       </main>
       {errorMsgs().length !== 0 && (
-        <div class="mt-2 mx-10">
-          <ErrorAlert msgs={errorMsgs()} />
+        <div class="mt-4 mx-auto max-w-sm">
+          <div class="bg-red-50 border border-red-500 text-red-600 p-4 rounded-md">
+            <h3 class="font-semibold">Errors:</h3>
+            <ul class="list-disc list-inside">
+              {errorMsgs().map((msg) => (
+                <li>{msg}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
       {successMsg() && (
-        <div class="mt-6 mx-10">
-          <SuccessfulAlert msg={successMsg()} />
+        <div class="mt-6 mx-auto max-w-sm">
+          <div class="bg-green-50 border border-green-500 text-green-600 p-4 rounded-md">
+            <h3 class="font-semibold">Success:</h3>
+            <p>{successMsg()}</p>
+          </div>
         </div>
       )}
     </>
