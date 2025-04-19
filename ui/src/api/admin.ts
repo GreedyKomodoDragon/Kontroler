@@ -30,50 +30,22 @@ export async function getUserPageCount(): Promise<number> {
   return result.data.count;
 }
 
-class AccountError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AccountError';
-    Object.setPrototypeOf(this, AccountError.prototype);
-  }
-}
-
 export async function createAccount(
   username: string,
   password: string,
-  role: string,
+  role: string
 ): Promise<void> {
-  try {
-    await axios.post(
-      `${getApiUrl()}/api/v1/auth/create`,
-      {
-        username,
-        password,
-        role,
-      },
-      {
-        withCredentials: true,
-      }
-    );
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
-        case 400:
-          throw new AccountError('Invalid username or password format.');
-        case 401:
-          throw new AccountError('Authentication required. Please log in.');
-        case 403:
-          throw new AccountError('You do not have permission to create accounts, must be an Admin');
-        case 409:
-          throw new AccountError(`Username '${username}' already exists.`);
-        case 500:
-          throw new AccountError('Server error occurred while creating account.');
-        default:
-          throw new AccountError(error.message || 'Failed to create account.');
-      }
+  await axios.post(
+    `${getApiUrl()}/api/v1/auth/create`,
+    {
+      username,
+      password,
+      role,
+    },
+    {
+      withCredentials: true,
     }
-    throw new AccountError('Network error occurred while creating account.');
-  }
+  );
 }
 
 export async function deleteAccount(username: string): Promise<void> {

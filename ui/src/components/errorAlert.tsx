@@ -6,8 +6,11 @@ type errorAlertProps = {
 
 export default function ErrorAlert(props: errorAlertProps) {
   return (
-    <div class="mt-12 mx-4 px-4 rounded-md border-l-4 border-red-500 bg-red-50 md:mx-auto">
-      <div class="flex justify-between py-3">
+    <div
+      class="mt-6 mx-4 px-6 py-4 rounded-md border-l-4 border-red-500 bg-red-50 md:mx-auto"
+      style="z-index: 1000; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); width: 80%; max-width: 600px;"
+    >
+      <div class="flex justify-between">
         <div class="flex">
           <div>
             <svg
@@ -23,27 +26,15 @@ export default function ErrorAlert(props: errorAlertProps) {
               />
             </svg>
           </div>
-          <div class="self-center ml-3">
+          <div class="self-center ml-1">
             <span class="text-red-600 font-semibold">Error</span>
-            <For each={props.msgs}>
-              {(msg) => <p class="text-red-600 mt-1"> - {msg}</p>}
-            </For>
+            <For each={props.msgs}>{(msg: string, index) => (
+              <p class="text-red-600 mt-1">
+                {props.msgs.length > 1 ? `- ${msg}` : msg}
+              </p>
+            )}</For>
           </div>
         </div>
-        {/* <button class="self-start text-red-500">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button> */}
       </div>
     </div>
   );
