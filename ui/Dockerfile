@@ -1,5 +1,5 @@
 # Stage 1: Build the SolidJS project
-FROM node:alpine AS builder
+FROM node:22-alpine3.20 AS builder
 
 WORKDIR /app
 
