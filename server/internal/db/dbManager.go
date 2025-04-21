@@ -13,6 +13,7 @@ type Backoff struct {
 type DAGMetaData struct {
 	DagId       int           `json:"dagId"`
 	Name        string        `json:"name"`
+	Namespace   string        `json:"namespace"`
 	Schedule    *string       `json:"schedule"`
 	Version     int           `json:"version"`
 	Active      bool          `json:"active"`

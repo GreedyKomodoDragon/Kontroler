@@ -1,6 +1,7 @@
 export type Dag = {
   dagId: string;
   name: string;
+  namespace: string;
   schedule: string;
   version: number;
   active: boolean;

@@ -1,19 +1,29 @@
 type DeleteButtonProps = {
-  taskIndex: number;
-  delete: (index: number) => void;
+  taskIndex: any;
+  delete: (index: any) => void;
+  size?: 'sm' | 's' | 'md' | 'lg';
 };
 
 export function DeleteTaskButton(props: DeleteButtonProps) {
+  const sizes = {
+    sm: { container: 'p-1', svg: '24' },
+    s: { container: 'p-1', svg: '28' },
+    md: { container: 'p-2', svg: '32' },
+    lg: { container: 'p-3', svg: '40' },
+  };
+
+  const { container, svg } = sizes[props.size || 'md'];
+
   return (
     <div
-      class="bg-red-400 rounded-lg p-2 cursor-pointer"
+      class={`bg-red-400 rounded-lg ${container} cursor-pointer`}
       onClick={() => {
         props.delete(props.taskIndex);
       }}
     >
       <svg
-        width="32"
-        height="32"
+        width={svg}
+        height={svg}
         viewBox="0 0 24 24"
         fill="white"
         xmlns="http://www.w3.org/2000/svg"

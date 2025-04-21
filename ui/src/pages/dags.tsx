@@ -1,17 +1,18 @@
 import { Component, createSignal, Show } from "solid-js";
 import { getDagPageCount, getDags } from "../api/dags";
 import DagComponent from "../components/dagComponent";
-import { createQuery } from "@tanstack/solid-query";
+import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import Spinner from "../components/spinner";
 import PaginationComponent from "../components/pagination";
 
 const Dags: Component = () => {
   const [maxPage, setMaxPage] = createSignal(-1);
   const [page, setPage] = createSignal(1);
+  const queryClient = useQueryClient();
 
   const dags = createQuery(() => ({
-    queryKey: ["dagRuns", page().toString()],
-    queryFn: getDags,
+    queryKey: ["dags", page().toString()],
+    queryFn:  getDags,
     staleTime: 5 * 60 * 1000, // 5 minutes
   }));
 
@@ -34,7 +35,21 @@ const Dags: Component = () => {
       <Show when={dags.isSuccess}>
         <div>
           {dags.data ? (
-            dags.data.map((dag) => <DagComponent dag={dag} />)
+            dags.data.map((dag) => (
+              <DagComponent
+                dag={dag}
+                onDelete={() => {
+                  getDagPageCount()
+                    .then((count) => {
+                      setMaxPage(count);
+                      queryClient.invalidateQueries({
+                        queryKey: ["dags"],
+                      });
+                    })
+                    .catch((error) => console.error(error));
+                }}
+              />
+            ))
           ) : (
             <p>No DAG found!</p>
           )}

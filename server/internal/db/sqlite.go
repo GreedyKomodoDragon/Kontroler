@@ -53,7 +53,7 @@ func NewSQLiteReadOnlyManager(ctx context.Context, config *SQLiteReadOnlyConfig)
 
 func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT dag_id, name, version, schedule, active, nexttime
+		SELECT dag_id, name, namespace, version, schedule, active, nexttime
 		FROM DAGs
 		WHERE active = TRUE
 		ORDER BY dag_id DESC
@@ -67,7 +67,7 @@ func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset
 	metas := []*DAGMetaData{}
 	for rows.Next() {
 		var meta DAGMetaData
-		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Version, &meta.Schedule, &meta.Active, &meta.NextTime); err != nil {
+		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Namespace, &meta.Version, &meta.Schedule, &meta.Active, &meta.NextTime); err != nil {
 			return nil, err
 		}
 

@@ -237,3 +237,27 @@ export async function getDagTaskPageCount(): Promise<number> {
     throw error;
   }
 }
+
+export async function deleteDag(namespace: string, name: string): Promise<void> {
+  try {
+    await axios.delete(`${getApiUrl()}/api/v1/dag/dag/${namespace}/${name}`, {
+      withCredentials: true,
+    });
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error('Authentication required. Please log in.');
+        case 403:
+          throw new Error("You don't have permission to delete this DAG");
+        case 404:
+          throw new Error(`DAG '${name}' not found in namespace '${namespace}'`);
+        case 409:
+          throw new Error('The DAG has been modified, please try again');
+        default:
+          throw new Error('Failed to delete DAG');
+      }
+    }
+    throw new Error('Network error occurred while deleting DAG');
+  }
+}
