@@ -14,6 +14,20 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+var (
+	dagRunsGVR = schema.GroupVersionResource{
+		Group:    "kontroler.greedykomodo",
+		Version:  "v1alpha1",
+		Resource: "dagruns",
+	}
+
+	dagsGVR = schema.GroupVersionResource{
+		Group:    "kontroler.greedykomodo",
+		Version:  "v1alpha1",
+		Resource: "dags",
+	}
+)
+
 func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface) error {
 
 	if dagForm.Namespace == "" {
@@ -143,19 +157,12 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		"spec": spec,
 	}
 
-	// Define the GVR (Group, Version, Resource) for your custom resource
-	gvr := schema.GroupVersionResource{
-		Group:    "kontroler.greedykomodo",
-		Version:  "v1alpha1",
-		Resource: "dags",
-	}
-
 	// Define the custom resource object using an unstructured object
 	customResource := &unstructured.Unstructured{
 		Object: dag,
 	}
 
-	dagResource, err := client.Resource(gvr).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
+	dagResource, err := client.Resource(dagsGVR).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create DAG: %w", err)
 	}
@@ -173,7 +180,7 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 			return fmt.Errorf("timeout waiting for DAG reconciliation")
 		case <-ticker.C:
 			// Get latest DAG status
-			current, err := client.Resource(gvr).Namespace(dagForm.Namespace).Get(ctx, dagResource.GetName(), metav1.GetOptions{})
+			current, err := client.Resource(dagsGVR).Namespace(dagForm.Namespace).Get(ctx, dagResource.GetName(), metav1.GetOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to get DAG status: %w", err)
 			}
@@ -255,19 +262,12 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 		"spec": dagRunSpec,
 	}
 
-	// Define the GVR (Group, Version, Resource) for your custom resource
-	gvr := schema.GroupVersionResource{
-		Group:    "kontroler.greedykomodo",
-		Version:  "v1alpha1",
-		Resource: "dagruns",
-	}
-
 	// Define the custom resource object using an unstructured object
 	customResource := &unstructured.Unstructured{
 		Object: dagRun,
 	}
 
-	if _, err := client.Resource(gvr).Namespace(namespace).Create(ctx, customResource, metav1.CreateOptions{}); err != nil {
+	if _, err := client.Resource(dagRunsGVR).Namespace(namespace).Create(ctx, customResource, metav1.CreateOptions{}); err != nil {
 		return 0, err
 	}
 
@@ -294,16 +294,14 @@ func NewClients(config *rest.Config) (dynamic.Interface, *kubernetes.Clientset, 
 	return dynClient, clientset, nil
 }
 
-func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (int64, error) {
-	gvr := schema.GroupVersionResource{
-		Group:    "kontroler.greedykomodo",
-		Version:  "v1alpha1",
-		Resource: "dagruns",
-	}
+func DeleteDAG(ctx context.Context, namespace string, name string, client dynamic.Interface) error {
+	return client.Resource(dagsGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
 
+func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (int64, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		dagRun, err := client.Resource(gvr).Namespace(namespace).Get(ctx, runName, metav1.GetOptions{})
+		dagRun, err := client.Resource(dagRunsGVR).Namespace(namespace).Get(ctx, runName, metav1.GetOptions{})
 		if err != nil {
 			return 0, err
 		}
