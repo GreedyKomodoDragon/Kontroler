@@ -4,15 +4,25 @@ import { getTaskDetails } from "../api/dags";
 import ShellScriptViewer from "./code/shellScriptViewer";
 import JsonToYamlViewer from "./code/JsonToYamlViewer";
 import DagViz from "./dagViz";
+import { DeleteTaskButton } from "./deleteTaskButton";
 
 interface Props {
   dag: Dag;
+}
+
+type deleteArgs = {
+  namespace: string;
+  name: string;
 }
 
 const DagComponent = ({ dag }: Props) => {
   const [open, setOpen] = createSignal<boolean>(false);
   const [selectedTask, setSelectedTask] = createSignal<number>(-1);
   const [taskDetails, setTaskDetails] = createSignal<TaskDetails | undefined>();
+
+  const handleDelete = (arg: deleteArgs) => {
+    console.log("Delete DAG:", arg.namespace, arg.name);
+  };
 
   createEffect(() => {
     if (selectedTask() === -1) return;
@@ -26,12 +36,18 @@ const DagComponent = ({ dag }: Props) => {
         <h3 class="text-3xl font-bold tracking-tight text-gray-100">
           {dag.name}
         </h3>
-        <button
-          class="rounded-md bg-blue-600 hover:bg-blue-500 transition-colors duration-300 px-4 py-2 text-sm font-semibold relative z-10"
-          onClick={() => setOpen(!open())}
-        >
-          {open() ? "Hide Diagram" : "Show Diagram"}
-        </button>
+        <div class="flex gap-4 items-center">
+          <button
+            class="rounded-md bg-blue-600 hover:bg-blue-500 transition-colors duration-300 px-4 py-2 text-sm font-semibold relative z-10"
+            onClick={() => setOpen(!open())}
+          >
+            {open() ? "Hide Diagram" : "Show Diagram"}
+          </button>
+          <DeleteTaskButton delete={handleDelete} taskIndex={{
+            namespace: dag.namespace,
+            name: dag.dagId,
+          }} size="s" />
+        </div>
       </div>
       <div class="mt-4 space-y-2">
         {dag.schedule && (
