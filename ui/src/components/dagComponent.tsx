@@ -1,10 +1,11 @@
 import { createEffect, createSignal } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
-import { getTaskDetails } from "../api/dags";
+import { getTaskDetails, deleteDag } from "../api/dags";
 import ShellScriptViewer from "./code/shellScriptViewer";
 import JsonToYamlViewer from "./code/JsonToYamlViewer";
 import DagViz from "./dagViz";
 import { DeleteTaskButton } from "./deleteTaskButton";
+import { useError } from "../providers/ErrorProvider";
 
 interface Props {
   dag: Dag;
@@ -19,9 +20,16 @@ const DagComponent = ({ dag }: Props) => {
   const [open, setOpen] = createSignal<boolean>(false);
   const [selectedTask, setSelectedTask] = createSignal<number>(-1);
   const [taskDetails, setTaskDetails] = createSignal<TaskDetails | undefined>();
+  const { setGlobalErrorMessage } = useError();
 
-  const handleDelete = (arg: deleteArgs) => {
-    console.log("Delete DAG:", arg.namespace, arg.name);
+  const handleDelete = async (arg: deleteArgs) => {
+    try {
+      await deleteDag(arg.namespace, arg.name);
+      // Optionally trigger a refresh or show success message
+      window.location.reload(); // Simple refresh for now
+    } catch (err) {
+      setGlobalErrorMessage(err instanceof Error ? err.message : "An unknown error occurred");
+    }
   };
 
   createEffect(() => {
@@ -45,7 +53,7 @@ const DagComponent = ({ dag }: Props) => {
           </button>
           <DeleteTaskButton delete={handleDelete} taskIndex={{
             namespace: dag.namespace,
-            name: dag.dagId,
+            name: dag.name,
           }} size="s" />
         </div>
       </div>
