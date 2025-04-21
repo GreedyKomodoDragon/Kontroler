@@ -213,70 +213,113 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 	}
 }
 
-func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface) (int64, error) {
-	if drForm.Name == "" {
-		return 0, fmt.Errorf("cannot have an empty dagrun name")
+// CreateDagRunOpts allows for optional configuration of CreateDagRun
+type CreateDagRunOpts struct {
+	RunIDTimeout time.Duration
+	Cleanup      bool
+}
+
+// DefaultCreateDagRunOpts provides default options for CreateDagRun
+var DefaultCreateDagRunOpts = CreateDagRunOpts{
+	RunIDTimeout: 10 * time.Second,
+	Cleanup:      true,
+}
+
+func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string]bool, namespace string, client dynamic.Interface, opts *CreateDagRunOpts) (int64, error) {
+	if opts == nil {
+		opts = &DefaultCreateDagRunOpts
 	}
 
-	labels := map[string]string{
-		"app.kubernetes.io/name":       "dag",
-		"app.kubernetes.io/instance":   drForm.Name,
-		"app.kubernetes.io/part-of":    "kontroler",
-		"app.kubernetes.io/created-by": "server",
+	// Validate inputs
+	if err := validateDagRunInputs(drForm, namespace); err != nil {
+		return 0, fmt.Errorf("validation failed: %w", err)
 	}
 
-	dagRunSpec := map[string]interface{}{
-		"dagName": drForm.Name,
+	// Create DAG run resource
+	dagRun, err := createDagRunResource(drForm, isSecretMap, namespace)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create dag run resource: %w", err)
 	}
 
-	parameters := []interface{}{}
+	// Create the resource in Kubernetes
+	created, err := client.Resource(dagRunsGVR).Namespace(namespace).Create(ctx, dagRun, metav1.CreateOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to create dagrun in kubernetes: %w", err)
+	}
 
-	for k, v := range drForm.Parameters {
-		isSecret, ok := isSecretMap[k]
-		if !ok {
-			return 0, fmt.Errorf("missing parameter: %s", k)
+	// Wait for RunID with cleanup on failure
+	runID, err := waitForRunID(ctx, client, namespace, drForm.RunName, opts.RunIDTimeout)
+	if err != nil && opts.Cleanup {
+		// Attempt cleanup on failure
+		deleteCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if cleanupErr := client.Resource(dagRunsGVR).Namespace(namespace).Delete(deleteCtx, created.GetName(), metav1.DeleteOptions{}); cleanupErr != nil {
+			return 0, fmt.Errorf("run ID error: %v, cleanup error: %v", err, cleanupErr)
+		}
+		return 0, fmt.Errorf("failed to get run ID: %w", err)
+	}
+
+	return runID, err
+}
+
+func validateDagRunInputs(form DagRunForm, namespace string) error {
+	if form.Name == "" {
+		return fmt.Errorf("dagrun name cannot be empty")
+	}
+	if form.RunName == "" {
+		return fmt.Errorf("run name cannot be empty")
+	}
+	if namespace == "" {
+		return fmt.Errorf("namespace cannot be empty")
+	}
+	if len(form.Parameters) == 0 {
+		return fmt.Errorf("parameters cannot be empty")
+	}
+	return nil
+}
+
+func createDagRunResource(form DagRunForm, isSecretMap map[string]bool, namespace string) (*unstructured.Unstructured, error) {
+	parameters := make([]interface{}, 0, len(form.Parameters))
+
+	for paramName, paramValue := range form.Parameters {
+		isSecret, exists := isSecretMap[paramName]
+		if !exists {
+			return nil, fmt.Errorf("parameter %s not found in isSecretMap", paramName)
+		}
+
+		param := map[string]interface{}{
+			"name": paramName,
 		}
 
 		if isSecret {
-			parameters = append(parameters, SecretParameter{
-				Name:       k,
-				FromSecret: v,
-			})
+			param["fromSecret"] = paramValue
 		} else {
-			parameters = append(parameters, ValParameter{
-				Name:  k,
-				Value: v,
-			})
+			param["value"] = paramValue
 		}
-	}
 
-	dagRunSpec["parameters"] = parameters
+		parameters = append(parameters, param)
+	}
 
 	dagRun := map[string]interface{}{
 		"apiVersion": "kontroler.greedykomodo/v1alpha1",
 		"kind":       "DagRun",
 		"metadata": map[string]interface{}{
-			"labels": labels,
-			"name":   drForm.RunName,
+			"name": form.RunName,
+			"labels": map[string]string{
+				"app.kubernetes.io/name":       "dag",
+				"app.kubernetes.io/instance":   form.Name,
+				"app.kubernetes.io/part-of":    "kontroler",
+				"app.kubernetes.io/created-by": "server",
+			},
 		},
-		"spec": dagRunSpec,
+		"spec": map[string]interface{}{
+			"dagName":    form.Name,
+			"parameters": parameters,
+		},
 	}
 
-	// Define the custom resource object using an unstructured object
-	customResource := &unstructured.Unstructured{
-		Object: dagRun,
-	}
-
-	if _, err := client.Resource(dagRunsGVR).Namespace(namespace).Create(ctx, customResource, metav1.CreateOptions{}); err != nil {
-		return 0, err
-	}
-
-	runID, err := waitForRunID(ctx, client, namespace, drForm.RunName, 10*time.Second)
-	if err != nil {
-		return 0, err
-	}
-
-	return runID, err
+	return &unstructured.Unstructured{Object: dagRun}, nil
 }
 
 func NewClients(config *rest.Config) (dynamic.Interface, *kubernetes.Clientset, error) {
