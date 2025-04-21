@@ -11,7 +11,7 @@ import Identicon from "./navbar/icon";
 import { useError } from "../providers/ErrorProvider";
 
 export default function ManageUsers() {
-  const { setGlobalErrorMessage, handleApiError } = useError();
+  const { handleApiError } = useError();
   const [page, setPage] = createSignal(1);
   const [maxPage, setMaxPage] = createSignal(1);
   const [show, setShow] = createSignal(false);

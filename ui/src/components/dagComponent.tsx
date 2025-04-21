@@ -1,18 +1,36 @@
 import { createEffect, createSignal } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
-import { getTaskDetails } from "../api/dags";
+import { getTaskDetails, deleteDag } from "../api/dags";
 import ShellScriptViewer from "./code/shellScriptViewer";
 import JsonToYamlViewer from "./code/JsonToYamlViewer";
 import DagViz from "./dagViz";
+import { DeleteTaskButton } from "./deleteTaskButton";
+import { useError } from "../providers/ErrorProvider";
 
 interface Props {
   dag: Dag;
+  onDelete: () => void;
 }
 
-const DagComponent = ({ dag }: Props) => {
+type deleteArgs = {
+  namespace: string;
+  name: string;
+}
+
+const DagComponent = ({ dag, onDelete }: Props) => {
   const [open, setOpen] = createSignal<boolean>(false);
   const [selectedTask, setSelectedTask] = createSignal<number>(-1);
   const [taskDetails, setTaskDetails] = createSignal<TaskDetails | undefined>();
+  const { setGlobalErrorMessage } = useError();
+
+  const handleDelete = async (arg: deleteArgs) => {
+    try {
+      await deleteDag(arg.namespace, arg.name);
+      onDelete();
+    } catch (err) {
+      setGlobalErrorMessage(err instanceof Error ? err.message : "An unknown error occurred");
+    }
+  };
 
   createEffect(() => {
     if (selectedTask() === -1) return;
@@ -26,12 +44,18 @@ const DagComponent = ({ dag }: Props) => {
         <h3 class="text-3xl font-bold tracking-tight text-gray-100">
           {dag.name}
         </h3>
-        <button
-          class="rounded-md bg-blue-600 hover:bg-blue-500 transition-colors duration-300 px-4 py-2 text-sm font-semibold relative z-10"
-          onClick={() => setOpen(!open())}
-        >
-          {open() ? "Hide Diagram" : "Show Diagram"}
-        </button>
+        <div class="flex gap-4 items-center">
+          <button
+            class="rounded-md bg-blue-600 hover:bg-blue-500 transition-colors duration-300 px-4 py-2 text-sm font-semibold relative z-10"
+            onClick={() => setOpen(!open())}
+          >
+            {open() ? "Hide Diagram" : "Show Diagram"}
+          </button>
+          <DeleteTaskButton delete={handleDelete} taskIndex={{
+            namespace: dag.namespace,
+            name: dag.name,
+          }} size="s" />
+        </div>
       </div>
       <div class="mt-4 space-y-2">
         {dag.schedule && (

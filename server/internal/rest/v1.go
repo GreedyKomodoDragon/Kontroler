@@ -7,6 +7,7 @@ import (
 	kclient "kontroler-server/internal/kClient"
 	"kontroler-server/internal/logs"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -130,6 +131,44 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		}
 
 		return c.Status(fiber.StatusOK).JSON(dagRun)
+	})
+
+	dagRouter.Delete("/dag/:namespace/:name", roleMiddleware("editor"), func(c *fiber.Ctx) error {
+		namespace := c.Params("namespace")
+		name := c.Params("name")
+		if namespace == "" || name == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "namespace and name are required",
+			})
+		}
+
+		if err := kclient.DeleteDAG(c.Context(), namespace, name, kubClient); err != nil {
+			log.Error().Err(err).
+				Str("namespace", namespace).
+				Str("name", name).
+				Msg("failed to delete DAG")
+
+			switch {
+			case strings.Contains(err.Error(), "permission denied"):
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+					"error": "You don't have permission to delete this DAG",
+				})
+			case strings.Contains(err.Error(), "not found"):
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": fmt.Sprintf("DAG %q not found in namespace %q", name, namespace),
+				})
+			case strings.Contains(err.Error(), "conflict"):
+				return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+					"error": "The DAG has been modified, please try again",
+				})
+			default:
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to delete DAG",
+				})
+			}
+		}
+
+		return c.SendStatus(fiber.StatusAccepted)
 	})
 
 	dagRouter.Get("/run/all/:id", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
@@ -270,7 +309,7 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		runId, err := kclient.CreateDagRun(c.Context(), dagrunForm, isSecretMap, dagrunForm.Namespace, kubClient)
+		runId, err := kclient.CreateDagRun(c.Context(), dagrunForm, isSecretMap, dagrunForm.Namespace, kubClient, nil)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to create dagrun")
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
