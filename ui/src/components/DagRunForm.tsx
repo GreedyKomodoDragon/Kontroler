@@ -69,8 +69,8 @@ export default function DagRunForm() {
     }
 
     const errors: string[] = [];
-    for (let i = 0; i < parameters.data.length; i++) {
-      const param = parameters.data[i];
+    for (const element of parameters.data) {
+      const param = element;
       const userValue = parameterStore[param.name];
 
       if ((!userValue || userValue.trim() === "") && (param.defaultValue === undefined || param.defaultValue === "")) {
