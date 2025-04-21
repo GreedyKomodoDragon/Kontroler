@@ -9,6 +9,7 @@ import { useError } from "../providers/ErrorProvider";
 
 interface Props {
   dag: Dag;
+  onDelete: () => void;
 }
 
 type deleteArgs = {
@@ -16,7 +17,7 @@ type deleteArgs = {
   name: string;
 }
 
-const DagComponent = ({ dag }: Props) => {
+const DagComponent = ({ dag, onDelete }: Props) => {
   const [open, setOpen] = createSignal<boolean>(false);
   const [selectedTask, setSelectedTask] = createSignal<number>(-1);
   const [taskDetails, setTaskDetails] = createSignal<TaskDetails | undefined>();
@@ -25,8 +26,7 @@ const DagComponent = ({ dag }: Props) => {
   const handleDelete = async (arg: deleteArgs) => {
     try {
       await deleteDag(arg.namespace, arg.name);
-      // Optionally trigger a refresh or show success message
-      window.location.reload(); // Simple refresh for now
+      onDelete();
     } catch (err) {
       setGlobalErrorMessage(err instanceof Error ? err.message : "An unknown error occurred");
     }
