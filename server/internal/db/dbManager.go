@@ -32,6 +32,8 @@ type DagRunMeta struct {
 	Status          string `json:"status"`
 	SuccessfulCount int    `json:"successfulCount"`
 	FailedCount     int    `json:"failedCount"`
+	Namespace       string `json:"namespace"`
+	Name            string `json:"name"`
 }
 
 type DagRun struct {

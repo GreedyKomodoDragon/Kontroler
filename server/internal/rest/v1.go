@@ -322,6 +322,37 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		})
 	})
 
+	dagRouter.Delete("/run/remove", roleMiddleware("editor"), func(c *fiber.Ctx) error {
+		runName := c.Query("run")
+		namespace := c.Query("namespace")
+
+		if runName == "" || namespace == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "run name and namespace are required",
+			})
+		}
+
+		if err := kclient.DeleteDagRun(c.Context(), namespace, runName, kubClient); err != nil {
+			log.Error().Err(err).
+				Str("namespace", namespace).
+				Str("run", runName).
+				Msg("failed to delete DagRun")
+
+			switch {
+			case strings.Contains(err.Error(), "not found"):
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": fmt.Sprintf("DagRun %q not found in namespace %q", runName, namespace),
+				})
+			default:
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to delete DagRun",
+				})
+			}
+		}
+
+		return c.SendStatus(fiber.StatusAccepted)
+	})
+
 }
 
 func addStats(router fiber.Router, dbManager db.DbManager) {
