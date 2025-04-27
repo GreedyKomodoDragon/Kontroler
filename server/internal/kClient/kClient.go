@@ -341,6 +341,10 @@ func DeleteDAG(ctx context.Context, namespace string, name string, client dynami
 	return client.Resource(dagsGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
+func DeleteDagRun(ctx context.Context, namespace string, name string, client dynamic.Interface) error {
+	return client.Resource(dagRunsGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+}
+
 func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runName string, timeout time.Duration) (int64, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

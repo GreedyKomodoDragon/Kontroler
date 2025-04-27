@@ -142,8 +142,9 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, e
 
 func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT run_id, dag_id, status, successfulcount, failedcount
-		FROM dag_runs
+		SELECT run_id, d.dag_id, status, successfulcount, failedcount, d.namespace, r.name
+		FROM DAG_Runs r
+		JOIN DAGs d ON r.dag_id = d.dag_id
 		ORDER BY run_id DESC
 		LIMIT ? OFFSET ?`, limit, offset)
 
@@ -155,7 +156,7 @@ func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) (
 	metas := []*DagRunMeta{}
 	for rows.Next() {
 		var meta DagRunMeta
-		if err := rows.Scan(&meta.Id, &meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount); err != nil {
+		if err := rows.Scan(&meta.Id, &meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount, &meta.Namespace, &meta.Name); err != nil {
 			return nil, err
 		}
 		metas = append(metas, &meta)

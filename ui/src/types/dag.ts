@@ -15,6 +15,8 @@ export type DagRunMeta = {
   status: string;
   successfulCount: number;
   failedCount: number;
+  namespace: string;
+  name: string;
 };
 
 export type DagRunGraph = {

@@ -261,3 +261,29 @@ export async function deleteDag(namespace: string, name: string): Promise<void> 
     throw new Error('Network error occurred while deleting DAG');
   }
 }
+
+export async function deleteDagRun(namespace: string, run: string): Promise<void> {
+  try {
+    const params = new URLSearchParams({
+      namespace: namespace,
+      run: run
+    });
+    await axios.delete(`${getApiUrl()}/api/v1/dag/run/remove?${params.toString()}`, {
+      withCredentials: true,
+    });
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error('Authentication required. Please log in.');
+        case 403:
+          throw new Error("You don't have permission to delete this DagRun");
+        case 404:
+          throw new Error(`DagRun '${run}' not found in namespace '${namespace}'`);
+        default:
+          throw new Error('Failed to delete DagRun');
+      }
+    }
+    throw new Error('Network error occurred while deleting DagRun');
+  }
+}
