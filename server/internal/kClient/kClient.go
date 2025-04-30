@@ -273,9 +273,6 @@ func validateDagRunInputs(form DagRunForm, namespace string) error {
 	if namespace == "" {
 		return fmt.Errorf("namespace cannot be empty")
 	}
-	if len(form.Parameters) == 0 {
-		return fmt.Errorf("parameters cannot be empty")
-	}
 	return nil
 }
 
