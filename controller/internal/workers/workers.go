@@ -13,6 +13,7 @@ import (
 	"kontroler-controller/internal/object"
 	"kontroler-controller/internal/queue"
 	"kontroler-controller/internal/webhook"
+	"kontroler-controller/internal/workers/container"
 
 	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
@@ -446,7 +447,7 @@ func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunI
 	}
 
 	if hasConfigError(pod) {
-		log.Log.Info("detected CreateContainerConfigError, treating as failure", "podUID", pod.UID, "name", pod.Name)
+		log.Log.Info("detected config error, treating as failure", "podUID", pod.UID, "name", pod.Name)
 		// Treat config error as a special kind of failure
 		t.handleConfigError(ctx, pod, taskRunId, dagRunId)
 		return false
@@ -633,11 +634,13 @@ func isContainerError(state v1.ContainerState) bool {
 	}
 
 	switch state.Waiting.Reason {
-	case "ContainerCreating", "PodInitializing":
+	case container.StateContainerCreating, container.StatePodInitializing:
 		return false
-	case "CreateContainerError", "RunContainerError",
-		"CreateContainerConfigError", "ErrImagePull",
-		"ImagePullBackOff":
+	case container.StateCreateContainerError,
+		container.StateRunContainerError,
+		container.StateConfigError,
+		container.StateErrImagePull,
+		container.StateImagePullBackOff:
 		return true
 	default:
 		return false
