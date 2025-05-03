@@ -445,7 +445,7 @@ func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunI
 		return true
 	}
 
-	if hasCreateContainerConfigError(pod) {
+	if hasConfigError(pod) {
 		log.Log.Info("detected CreateContainerConfigError, treating as failure", "podUID", pod.UID, "name", pod.Name)
 		// Treat config error as a special kind of failure
 		t.handleConfigError(ctx, pod, taskRunId, dagRunId)
@@ -553,6 +553,10 @@ func (t *worker) getDagRunID(pod *v1.Pod) (int, error) {
 }
 
 func (w *worker) handleLogCollection(ctx context.Context, pod *v1.Pod) {
+	if w.logStore == nil {
+		return
+	}
+
 	// log collection
 	readyForLogCollection := false
 	for _, containerStatus := range pod.Status.ContainerStatuses {
@@ -562,62 +566,80 @@ func (w *worker) handleLogCollection(ctx context.Context, pod *v1.Pod) {
 		}
 	}
 
-	if w.logStore != nil && readyForLogCollection {
-		// Attempt to get logs, but we don't stop if we can't get them
-		go func() {
-			dagRunId, err := w.getDagRunID(pod)
-			if err != nil {
-				log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
-				return
-			}
-
-			if ok := w.logStore.IsFetching(dagRunId, pod); ok {
-				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
-				return
-			}
-
-			if err := w.logStore.MarkAsFetching(dagRunId, pod); err != nil {
-				log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
-				return
-			}
-
-			defer w.logStore.UnlistFetching(dagRunId, pod)
-
-			log.Log.Info("started collecting logs", "pod", pod.Name)
-			if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
-				log.Log.Error(err, "failed to uploadLogs")
-			}
-
-			// Check if dagrun still exists after log collection
-			exists, err := w.dbManager.DagrunExists(ctx, dagRunId)
-			if err != nil {
-				log.Log.Error(err, "failed to check if dagrun exists", "dagrunId", dagRunId)
-			} else if !exists {
-				// Dagrun was deleted during log collection, clean up the logs
-				if err := w.logStore.DeleteLogs(ctx, dagRunId); err != nil {
-					log.Log.Error(err, "failed to delete logs for deleted dagrun", "dagrunId", dagRunId)
-				}
-				log.Log.Info("deleted logs for non-existent dagrun", "dagrunId", dagRunId)
-			}
-		}()
+	if !readyForLogCollection {
+		return
 	}
+
+	// Attempt to get logs, but we don't stop if we can't get them
+	go func() {
+		dagRunId, err := w.getDagRunID(pod)
+		if err != nil {
+			log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
+			return
+		}
+
+		if ok := w.logStore.IsFetching(dagRunId, pod); ok {
+			log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
+			return
+		}
+
+		if err := w.logStore.MarkAsFetching(dagRunId, pod); err != nil {
+			log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
+			return
+		}
+
+		defer w.logStore.UnlistFetching(dagRunId, pod)
+
+		log.Log.Info("started collecting logs", "pod", pod.Name)
+		if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
+			log.Log.Error(err, "failed to uploadLogs")
+		}
+
+		// Check if dagrun still exists after log collection
+		exists, err := w.dbManager.DagrunExists(ctx, dagRunId)
+		if err != nil {
+			log.Log.Error(err, "failed to check if dagrun exists", "dagrunId", dagRunId)
+		} else if !exists {
+			// Dagrun was deleted during log collection, clean up the logs
+			if err := w.logStore.DeleteLogs(ctx, dagRunId); err != nil {
+				log.Log.Error(err, "failed to delete logs for deleted dagrun", "dagrunId", dagRunId)
+			}
+			log.Log.Info("deleted logs for non-existent dagrun", "dagrunId", dagRunId)
+		}
+	}()
 }
 
-func hasCreateContainerConfigError(pod *v1.Pod) bool {
+func hasConfigError(pod *v1.Pod) bool {
+	// Check regular containers
 	for _, status := range pod.Status.ContainerStatuses {
-		if status.State.Waiting != nil {
-			fmt.Println("Waiting reason:", status.State.Waiting.Reason)
+		if isContainerError(status.State) {
+			return true
 		}
+	}
 
-		if status.State.Waiting != nil && status.State.Waiting.Reason == "CreateContainerConfigError" {
-			return true
-		}
-	}
-	// Also check init containers
+	// Check init containers
 	for _, status := range pod.Status.InitContainerStatuses {
-		if status.State.Waiting != nil && status.State.Waiting.Reason == "CreateContainerConfigError" {
+		if isContainerError(status.State) {
 			return true
 		}
 	}
+
 	return false
+}
+
+func isContainerError(state v1.ContainerState) bool {
+	if state.Waiting == nil {
+		return false
+	}
+
+	switch state.Waiting.Reason {
+	case "ContainerCreating", "PodInitializing":
+		return false
+	case "CreateContainerError", "RunContainerError",
+		"CreateContainerConfigError", "ErrImagePull",
+		"ImagePullBackOff":
+		return true
+	default:
+		return false
+	}
 }
