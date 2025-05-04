@@ -54,12 +54,17 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	if err != nil {
 		return wrapError("begin_transaction", err)
 	}
+
+	var committed bool
 	defer func() {
+		if committed {
+			return
+		}
+
 		if err := tx.Rollback(ctx); err != nil {
 			if err == pgx.ErrTxClosed {
 				return
 			}
-
 			log.Log.Error(err, "failed to rollback transaction")
 		}
 	}()
@@ -71,6 +76,7 @@ func (p *postgresDAGManager) withTx(ctx context.Context, fn func(pgx.Tx) error) 
 	if err := tx.Commit(ctx); err != nil {
 		return wrapError("commit_transaction", err)
 	}
+	committed = true
 	return nil
 }
 
