@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db/migrations"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -21,14 +22,10 @@ import (
 	_ "embed"
 )
 
-var (
-	//go:embed postgresSchema.sql
-	progresSchema string
-)
-
 type postgresDAGManager struct {
-	pool   *pgxpool.Pool
-	parser *cron.Parser
+	pool       *pgxpool.Pool
+	parser     *cron.Parser
+	migrations migrations.MigrationsManager
 }
 
 func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron.Parser) (DBDAGManager, error) {
@@ -36,16 +33,20 @@ func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron
 		return nil, fmt.Errorf("missing parser")
 	}
 
+	migrationManager := NewMigrationManager(pool)
+	if err := migrations.RegisterMigrations(migrationManager, "postgresql"); err != nil {
+		return nil, fmt.Errorf("failed to register migrations: %w", err)
+	}
+
 	return &postgresDAGManager{
-		pool:   pool,
-		parser: parser,
+		pool:       pool,
+		parser:     parser,
+		migrations: migrationManager,
 	}, nil
 }
 
 func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
-	// Initialize the database schema
-	_, err := p.pool.Exec(ctx, progresSchema)
-	return err
+	return p.migrations.MigrateUp(ctx)
 }
 
 // Add new transaction helper
@@ -1570,11 +1571,7 @@ func (p *postgresDAGManager) AddPodDuration(ctx context.Context, taskRunId int, 
 
 func (p *postgresDAGManager) DeleteDagRun(ctx context.Context, dagRunId int) error {
 	return p.withTx(ctx, func(tx pgx.Tx) error {
-		// Delete DAG run and all related data will cascade due to foreign key constraints
-		if _, err := tx.Exec(ctx, `
-            DELETE FROM DAG_Runs
-            WHERE run_id = $1;
-        `, dagRunId); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM DAG_Runs WHERE run_id = $1;`, dagRunId); err != nil {
 			return fmt.Errorf("failed to delete dag run: %w", err)
 		}
 		return nil
