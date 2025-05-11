@@ -73,7 +73,6 @@ func (m *sqliteMigrationManager) MigrateUp(ctx context.Context) error {
 
 	// Apply pending migrations in order
 	for _, m := range m.migrations {
-		fmt.Println("Applying migration:", m.version, m.description)
 		if !applied[m.version] {
 			if _, err := tx.ExecContext(ctx, m.up); err != nil {
 				return fmt.Errorf("failed to apply migration %d: %w", m.version, err)

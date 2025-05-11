@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/created-by: operator
   name: dag-sample-tall
 spec:
+  suspended: true
   parameters:
     - name: first
       defaultFromSecret: secret-name

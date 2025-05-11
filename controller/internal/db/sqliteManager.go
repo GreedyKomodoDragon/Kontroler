@@ -148,7 +148,7 @@ func (s *sqliteDAGManager) GetID(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("failed to query IdTable: %w", err)
 }
 
-func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
+func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.Time) ([]*DagInfo, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -158,8 +158,8 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagI
 	rows, err := tx.Query(`
         SELECT dag_id, name, schedule, namespace, workspaceEnabled
         FROM DAGs
-        WHERE nexttime <= datetime('now') AND schedule != '' AND active = 1;
-    `)
+        WHERE nexttime <= ? AND schedule != '' AND active = 1;
+    `, tm.Format("2006-01-02 15:04:05"))
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagI
 	for rows.Next() {
 		var dagId int
 		var name, schedule, namespace string
-		var workEnabled bool
+		var workEnabled sql.NullBool
 
 		if err := rows.Scan(&dagId, &name, &schedule, &namespace, &workEnabled); err != nil {
 			return nil, err
@@ -181,7 +181,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagI
 		namespaces = append(namespaces, &DagInfo{
 			DagName:          name,
 			Namespace:        namespace,
-			WorkspaceEnabled: workEnabled,
+			WorkspaceEnabled: workEnabled.Valid && workEnabled.Bool,
 		})
 		schedules = append(schedules, schedule)
 		dagIds = append(dagIds, dagId)

@@ -87,8 +87,9 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 		var existingDAGID int
 		var version int
 		var hash string
+		var suspended bool
 
-		err := tx.QueryRow(ctx, QueryGetDAG, dag.Name, namespace).Scan(&existingDAGID, &version, &hash)
+		err := tx.QueryRow(ctx, QueryGetDAG, dag.Name, namespace).Scan(&existingDAGID, &version, &hash, &suspended)
 		if err != nil && err != pgx.ErrNoRows {
 			return wrapError("query_existing_dag", err)
 		}
@@ -100,6 +101,11 @@ func (p *postgresDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, n
 
 		hashValue := fmt.Sprintf("%x", hashBytes)
 		if hash == hashValue {
+			// check if suspended
+			if suspended != dag.Spec.Suspended {
+				return p.setSuspended(ctx, tx, dag.Name, namespace, dag.Spec.Suspended)
+			}
+
 			return fmt.Errorf("applying the same dag")
 		}
 
@@ -143,7 +149,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 	if err := tx.QueryRow(ctx, QueryInsertDAG,
 		dag.Name, version, hash, dag.Spec.Schedule, namespace,
 		nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL,
-		dag.Spec.Webhook.VerifySSL, dag.Spec.Workspace.Enabled).Scan(&dagID); err != nil {
+		dag.Spec.Webhook.VerifySSL, dag.Spec.Workspace.Enabled, dag.Spec.Suspended).Scan(&dagID); err != nil {
 		return fmt.Errorf("failed inserting DAG: %w", err)
 	}
 
@@ -177,6 +183,18 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 		if err := p.insertParameter(ctx, tx, dagID, &parameter); err != nil {
 			return fmt.Errorf("failed to insert parameter '%s': %s", parameter.Name, err.Error())
 		}
+	}
+
+	return nil
+}
+
+func (p *postgresDAGManager) setSuspended(ctx context.Context, tx pgx.Tx, dagName, namespace string, suspended bool) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE DAGs
+		SET suspended = $1
+		WHERE name = $2 AND namespace = $3;`, suspended, dagName, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to set suspended: %w", err)
 	}
 
 	return nil
@@ -848,7 +866,7 @@ type DagInfo struct {
 	SSLVerification  bool
 }
 
-func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error) {
+func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.Time) ([]*DagInfo, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -859,8 +877,8 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context) ([]*Da
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, name, schedule, namespace, workspaceEnabled, webhookUrl, sslVerification
         FROM DAGs
-        WHERE nexttime <= NOW() AND schedule != '' AND active = TRUE;
-    `)
+        WHERE nexttime <= $1 AND schedule != '' AND active = TRUE AND suspended = FALSE;
+    `, tm)
 	if err != nil {
 		return nil, err
 	}

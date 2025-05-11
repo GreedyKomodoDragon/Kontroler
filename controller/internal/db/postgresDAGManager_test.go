@@ -1257,3 +1257,115 @@ func TestPostgresDAGManager_SuspendDagRun(t *testing.T) {
 
 	testDAGManager_SuspendDagRun(t, dm)
 }
+
+func TestPostgresDAGManager_SuspendDag(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerUpdateSuspended(t, dm)
+
+	// check if the dag is suspended
+	var suspended bool
+	err = pool.QueryRow(context.Background(), `
+	SELECT suspended
+	FROM DAGS
+	WHERE name = $1;`, "test_dag").Scan(&suspended)
+	require.NoError(t, err)
+	require.Equal(t, true, suspended)
+
+	// count number of dags
+	var count int
+	err = pool.QueryRow(context.Background(), `
+	SELECT COUNT(*)
+	FROM DAGS
+	WHERE name = $1;`, "test_dag").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
+func TestPostgresDAGManager_UnsuspendDag(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerUpdateSuspended_Unsuspended(t, dm)
+
+	// check if the dag is suspended
+	var suspended bool
+	err = pool.QueryRow(context.Background(), `
+	SELECT suspended
+	FROM DAGS
+	WHERE name = $1;`, "test_dag").Scan(&suspended)
+	require.NoError(t, err)
+	require.Equal(t, false, suspended)
+}
+
+func TestPostgresDAGManager_Insert_Suspended_Dag(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_insert_suspended_dag(t, dm)
+}
+
+func TestPostgresDAGManager_Suspended_Dag_Cannot_Be_Executed_Via_Scheduler(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_Suspended_Dag_Cannot_Be_Executed_Via_Scheduler(t, dm)
+}
+
+func TestPostgresDAGManager_Scheduler_works(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_scheduler_works(t, dm)
+}
