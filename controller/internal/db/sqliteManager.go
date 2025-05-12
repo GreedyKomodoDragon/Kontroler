@@ -158,7 +158,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 	rows, err := tx.Query(`
         SELECT dag_id, name, schedule, namespace, workspaceEnabled
         FROM DAGs
-        WHERE nexttime <= ? AND schedule != '' AND active = 1;
+        WHERE nexttime <= ? AND schedule != '' AND active = 1 AND suspended = 0;
     `, tm.Format("2006-01-02 15:04:05"))
 	if err != nil {
 		return nil, err
@@ -221,52 +221,60 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 }
 
 func (s *sqliteDAGManager) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		var existingDAGID int
+		var version int
+		var hash string
+		var suspended bool
 
-	var existingDAGID int
-	var version int
-	var hash string
+		err := tx.QueryRowContext(ctx, `
+		SELECT dag_id, version, hash, suspended
+		FROM DAGs
+		WHERE name = ? AND namespace = ?
+		ORDER BY version DESC;`, dag.Name, namespace).Scan(&existingDAGID, &version, &hash, &suspended)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
 
-	err = tx.QueryRowContext(ctx, `
-	SELECT dag_id, version, hash
-	FROM DAGs
-	WHERE name = ? AND namespace = ?
-	ORDER BY version DESC;`, dag.Name, namespace).Scan(&existingDAGID, &version, &hash)
-	if err != nil && err != sql.ErrNoRows {
-		return err
-	}
+		hashBytes, err := hashDagSpec(&dag.Spec)
+		if err != nil {
+			return err
+		}
 
-	hashBytes, err := hashDagSpec(&dag.Spec)
-	if err != nil {
-		return err
-	}
+		hashValue := fmt.Sprintf("%x", hashBytes)
+		if hash == hashValue {
+			// check if suspended
+			if suspended != dag.Spec.Suspended {
+				return s.setSuspended(ctx, tx, dag.Name, namespace, dag.Spec.Suspended)
+			}
 
-	hashValue := fmt.Sprintf("%x", hashBytes)
-	if hash == hashValue {
-		return fmt.Errorf("applying the same dag")
-	}
+			return fmt.Errorf("applying the same dag")
+		}
 
-	if existingDAGID != 0 {
-		version++
-	}
+		if existingDAGID != 0 {
+			version++
+		}
 
-	// DAG does not exist, insert it
-	if err := s.insertDAG(ctx, tx, dag, version, namespace, hashValue); err != nil {
-		return err
-	}
+		// DAG does not exist, insert it
+		if err := s.insertDAG(ctx, tx, dag, version, namespace, hashValue); err != nil {
+			return err
+		}
 
-	// SET previous version to false - allows version but stops multiple versions running
-	if err := s.setInactive(tx, dag.Name, namespace, version-1); err != nil {
-		return err
-	}
+		// SET previous version to false - allows version but stops multiple versions running
+		if err := s.setInactive(tx, dag.Name, namespace, version-1); err != nil {
+			return err
+		}
 
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return err
+		return nil
+	})
+}
+
+func (s *sqliteDAGManager) setSuspended(ctx context.Context, tx *sql.Tx, dagName, namespace string, suspended bool) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE DAGs
+		SET suspended = ?
+		WHERE name = ? AND namespace = ?;`, suspended, dagName, namespace); err != nil {
+		return fmt.Errorf("failed to set suspended: %w", err)
 	}
 
 	return nil
@@ -292,9 +300,11 @@ func (s *sqliteDAGManager) insertDAG(ctx context.Context, tx *sql.Tx, dag *v1alp
 
 	var dagID int
 	if err := tx.QueryRowContext(ctx, `
-	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification) 
-	VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?)
-	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule, namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL, dag.Spec.Webhook.VerifySSL).Scan(&dagID); err != nil {
+	INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification, suspended) 
+	VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?)
+	RETURNING dag_id`, dag.Name, version, hash, dag.Spec.Schedule,
+		namespace, nextTime, len(dag.Spec.Task), dag.Spec.Webhook.URL,
+		dag.Spec.Webhook.VerifySSL, dag.Spec.Suspended).Scan(&dagID); err != nil {
 		return err
 	}
 
