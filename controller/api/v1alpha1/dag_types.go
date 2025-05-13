@@ -145,6 +145,8 @@ type DAGSpec struct {
 	Webhook Webhook `json:"webhook,omitempty"`
 	// +optional
 	Workspace Workspace `json:"workspace,omitempty"`
+	// +optional
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 // DAGStatus defines the observed state of DAG

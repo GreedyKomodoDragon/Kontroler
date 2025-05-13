@@ -1204,3 +1204,95 @@ func TestSqliteDAGManager_SuspendDagRun(t *testing.T) {
 
 	testDAGManager_SuspendDagRun(t, dm)
 }
+
+func TestSqliteDAGManager_Scheduler_works(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_scheduler_works(t, dm)
+}
+
+func TestSqliteDAGManager_SuspendDag(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerUpdateSuspended(t, dm)
+
+	// check if the dag is suspended
+	var suspended bool
+	err = dbConn.QueryRowContext(context.Background(), `
+	SELECT suspended
+	FROM DAGS
+	WHERE name = ?;`, "test_dag").Scan(&suspended)
+	require.NoError(t, err)
+	require.Equal(t, true, suspended)
+
+	// count number of dags
+	var count int
+	err = dbConn.QueryRowContext(context.Background(), `
+	SELECT COUNT(*)
+	FROM DAGS
+	WHERE name = ?;`, "test_dag").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
+func TestSqliteDAGManager_UnsuspendDag(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, dbConn, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerUpdateSuspended_Unsuspended(t, dm)
+
+	// check if the dag is suspended
+	var suspended bool
+	err = dbConn.QueryRowContext(context.Background(), `
+	SELECT suspended
+	FROM DAGS
+	WHERE name = ?;`, "test_dag").Scan(&suspended)
+	require.NoError(t, err)
+	require.Equal(t, false, suspended)
+}
+
+func TestSqliteDAGManager_Insert_Suspended_Dag(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_insert_suspended_dag(t, dm)
+}
+
+func TestSqliteDAGManager_Suspended_Dag_Cannot_Be_Executed_Via_Scheduler(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManager_Suspended_Dag_Cannot_Be_Executed_Via_Scheduler(t, dm)
+}

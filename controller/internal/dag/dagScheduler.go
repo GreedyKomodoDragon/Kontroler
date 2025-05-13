@@ -70,7 +70,7 @@ func (d *dagscheduler) Run(ctx context.Context) {
 func (d *dagscheduler) processDags(ctx context.Context) {
 	log.Log.Info("timer up, begun looking for dags to run")
 
-	dagInfos, err := d.dbManager.GetDAGsToStartAndUpdate(ctx)
+	dagInfos, err := d.dbManager.GetDAGsToStartAndUpdate(ctx, time.Now())
 	if err != nil {
 		log.Log.Error(err, "failed to find dags to start")
 		return

@@ -49,6 +49,8 @@ spec:
                 type: array
               schedule:
                 type: string
+              suspended:
+                type: boolean
               task:
                 items:
                   description: TaskSpec defines the structure of a task in the DAG
