@@ -2272,3 +2272,148 @@ func testDAGManager_SuspendDagRun(t *testing.T, dm db.DBDAGManager) {
 		require.Equal(t, "default", pod.Namespace)
 	}
 }
+
+func testDAGManagerUpdateSuspended(t *testing.T, dm db.DBDAGManager) {
+	t.Run("update suspended", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dag.Spec.Suspended = true
+		err = dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+	})
+
+}
+
+func testDAGManagerUpdateSuspended_Unsuspended(t *testing.T, dm db.DBDAGManager) {
+	t.Run("update suspended", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dag.Spec.Suspended = true
+		err = dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dag.Spec.Suspended = false
+		err = dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+	})
+
+}
+
+func testDAGManager_insert_suspended_dag(t *testing.T, dm db.DBDAGManager) {
+	t.Run("update suspended", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Suspended: true,
+				Schedule:  "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+	})
+
+}
+
+func testDAGManager_Suspended_Dag_Cannot_Be_Executed_Via_Scheduler(t *testing.T, dm db.DBDAGManager) {
+	t.Run("update suspended", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Suspended: true,
+				Schedule:  "*/1 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dags, err := dm.GetDAGsToStartAndUpdate(context.Background(), time.Now().Add(time.Minute))
+		require.NoError(t, err)
+		require.Len(t, dags, 0, "Should not return any DAGs since the DAG is suspended")
+	})
+}
+
+func testDAGManager_scheduler_works(t *testing.T, dm db.DBDAGManager) {
+	t.Run("update suspended", func(t *testing.T) {
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/1 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "task1",
+						Command: []string{"echo", "Hello"},
+						Args:    []string{"arg1", "arg2"},
+						Image:   "busybox",
+					},
+				},
+			},
+		}
+
+		err := dm.InsertDAG(context.Background(), dag, "default")
+		require.NoError(t, err)
+
+		dags, err := dm.GetDAGsToStartAndUpdate(context.Background(), time.Now().Add(time.Minute))
+		require.NoError(t, err)
+		require.Len(t, dags, 1, "Should return the DAG since it is not suspended")
+	})
+}

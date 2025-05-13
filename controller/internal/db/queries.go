@@ -3,14 +3,14 @@ package db
 const (
 	// DAG queries
 	QueryGetDAG = `
-		SELECT dag_id, version, hash
+		SELECT dag_id, version, hash, suspended
 		FROM DAGs
 		WHERE name = $1 AND namespace = $2
 		ORDER BY version DESC;`
 
 	QueryInsertDAG = `
-		INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification, workspaceEnabled) 
-		VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9, $10)
+		INSERT INTO DAGs (name, version, hash, schedule, namespace, active, nexttime, taskCount, webhookUrl, sslVerification, workspaceEnabled, suspended) 
+		VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8, $9, $10, $11)
 		RETURNING dag_id;`
 
 	QueryInsertWorkspace = `

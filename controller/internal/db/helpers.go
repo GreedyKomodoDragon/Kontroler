@@ -17,8 +17,14 @@ func getTaskVersion(task *v1alpha1.TaskSpec) int {
 }
 
 func hashDagSpec(s *v1alpha1.DAGSpec) ([]byte, error) {
+	// create copy of the DAGSpec to avoid modifying the original
+	cpy := s.DeepCopy()
+
+	// set to false to avoid hashing the status
+	cpy.Suspended = false
+
 	// Convert the DAGSpec to JSON
-	data, err := json.Marshal(s)
+	data, err := json.Marshal(cpy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal DAGSpec: %w", err)
 	}

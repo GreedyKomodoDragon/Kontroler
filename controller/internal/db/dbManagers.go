@@ -44,7 +44,7 @@ type DBDAGManager interface {
 	InitaliseDatabase(ctx context.Context) error
 	GetID(ctx context.Context) (string, error)
 	// Gets all dags to start, then updates to the next time it should be executed
-	GetDAGsToStartAndUpdate(ctx context.Context) ([]*DagInfo, error)
+	GetDAGsToStartAndUpdate(ctx context.Context, tm time.Time) ([]*DagInfo, error)
 	// InsertDAG will add in the new dag into the database, if the dag already exists, it should create a new version
 	InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error
 	// Create the update to show that a new DAG has been started
