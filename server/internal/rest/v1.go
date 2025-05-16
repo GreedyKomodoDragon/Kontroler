@@ -32,6 +32,25 @@ func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, 
 func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Interface) {
 	dagRouter := router.Group("/dag")
 
+	dagRouter.Post("/suspend", roleMiddleware("editor"), func(c *fiber.Ctx) error {
+		var req kclient.DagSuspendForm
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "cannot parse JSON",
+			})
+		}
+		if err := kclient.SuspendDag(c.Context(), &req, kubClient); err != nil {
+			log.Error().Err(err).Msg("failed to suspend DAG")
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": fmt.Sprintf("Failed to suspend DAG: %v", err),
+			})
+		}
+		log.Info().Msg("DAG suspended successfully")
+		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+			"message": "DAG suspended successfully",
+		})
+	})
+
 	dagRouter.Get("/names", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		term := c.Query("term")
 		if term == "" {

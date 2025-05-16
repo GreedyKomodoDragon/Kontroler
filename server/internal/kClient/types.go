@@ -142,3 +142,9 @@ type SecretParameter struct {
 	Name       string `json:"name"`
 	FromSecret string `json:"fromSecret"`
 }
+
+type DagSuspendForm struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Suspend   bool   `json:"suspend"`
+}
