@@ -6,7 +6,7 @@ metadata:
 rules:
 - apiGroups: ["kontroler.greedykomodo"]
   resources: ["dags"]
-  verbs: ["create", "get", "list", "delete"]
+  verbs: ["create", "get", "list", "delete", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

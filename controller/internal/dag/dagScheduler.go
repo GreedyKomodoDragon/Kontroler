@@ -2,6 +2,7 @@ package dag
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"kontroler-controller/api/v1alpha1"
@@ -78,9 +79,19 @@ func (d *dagscheduler) processDags(ctx context.Context) {
 
 	log.Log.Info("number of dags found", "count", len(dagInfos))
 	opts := v1.CreateOptions{}
+
+	// wait group of goroutines to finish
+	wg := sync.WaitGroup{}
+
 	for _, dagInfo := range dagInfos {
-		go d.createDagRun(ctx, dagInfo, opts)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			d.createDagRun(ctx, dagInfo, opts)
+		}()
 	}
+
+	wg.Wait()
 }
 
 func (d *dagscheduler) createDagRun(ctx context.Context, dagInfo *db.DagInfo, opts v1.CreateOptions) {
@@ -98,7 +109,7 @@ func (d *dagscheduler) createDagRun(ctx context.Context, dagInfo *db.DagInfo, op
 	unstructuredObj := &unstructured.Unstructured{Object: unstructuredDagRun}
 
 	if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, unstructuredObj, opts); err != nil {
-		log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo)
+		log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
 		return
 	}
 

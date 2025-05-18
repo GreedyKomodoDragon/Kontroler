@@ -1,11 +1,12 @@
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, on } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
-import { getTaskDetails, deleteDag } from "../api/dags";
+import { getTaskDetails, deleteDag, suspendDag } from "../api/dags";
 import ShellScriptViewer from "./code/shellScriptViewer";
 import JsonToYamlViewer from "./code/JsonToYamlViewer";
 import DagViz from "./dagViz";
 import { DeleteTaskButton } from "./deleteTaskButton";
 import { useError } from "../providers/ErrorProvider";
+import { SuspendButton } from "./buttons/suspendButton";
 
 interface Props {
   dag: Dag;
@@ -15,7 +16,7 @@ interface Props {
 type deleteArgs = {
   namespace: string;
   name: string;
-}
+};
 
 const DagComponent = ({ dag, onDelete }: Props) => {
   const [open, setOpen] = createSignal<boolean>(false);
@@ -28,7 +29,9 @@ const DagComponent = ({ dag, onDelete }: Props) => {
       await deleteDag(arg.namespace, arg.name);
       onDelete();
     } catch (err) {
-      setGlobalErrorMessage(err instanceof Error ? err.message : "An unknown error occurred");
+      setGlobalErrorMessage(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
     }
   };
 
@@ -41,7 +44,7 @@ const DagComponent = ({ dag, onDelete }: Props) => {
   return (
     <div class="bg-gray-800 shadow-2xl rounded-lg p-6 mb-6 text-white border border-gray-700 relative">
       <div class="flex justify-between items-center border-b border-gray-600 pb-4">
-        <h3 class="text-3xl font-bold tracking-tight text-gray-100">
+        <h3 class="text-2xl font-bold tracking-tight text-gray-100">
           {dag.name}
         </h3>
         <div class="flex gap-4 items-center">
@@ -51,10 +54,33 @@ const DagComponent = ({ dag, onDelete }: Props) => {
           >
             {open() ? "Hide Diagram" : "Show Diagram"}
           </button>
-          <DeleteTaskButton delete={handleDelete} taskIndex={{
-            namespace: dag.namespace,
-            name: dag.name,
-          }} size="s" />
+          {dag.schedule && (
+            <SuspendButton
+              action={() => {
+                suspendDag(dag.namespace, dag.name, !dag.isSuspended)
+                  .then(() => {
+                    onDelete();
+                  })
+                  .catch((err) => {
+                    setGlobalErrorMessage(
+                      err instanceof Error
+                        ? err.message
+                        : "An unknown error occurred"
+                    );
+                  });
+              }}
+              size="s"
+              isSuspended={dag.isSuspended}
+            />
+          )}
+          <DeleteTaskButton
+            delete={handleDelete}
+            taskIndex={{
+              namespace: dag.namespace,
+              name: dag.name,
+            }}
+            size="s"
+          />
         </div>
       </div>
       <div class="mt-4 space-y-2">

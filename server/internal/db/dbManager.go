@@ -18,6 +18,7 @@ type DAGMetaData struct {
 	Version     int           `json:"version"`
 	Active      bool          `json:"active"`
 	NextTime    *time.Time    `json:"nexttime"`
+	IsSuspended bool          `json:"isSuspended"`
 	Connections map[int][]int `json:"connections"`
 }
 

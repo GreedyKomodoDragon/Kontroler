@@ -6,6 +6,7 @@ export type Dag = {
   version: number;
   active: boolean;
   nexttime: string;
+  isSuspended: boolean;
   connections: Record<string, string[]>;
 };
 
