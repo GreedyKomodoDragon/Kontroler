@@ -364,3 +364,20 @@ func waitForRunID(ctx context.Context, client dynamic.Interface, namespace, runN
 
 	return 0, fmt.Errorf("timed out waiting for DagRun %s to be reconciled", runName)
 }
+
+func SuspendDag(ctx context.Context, req *DagSuspendForm, client dynamic.Interface) error {
+	existing, err := client.Resource(dagsGVR).Namespace(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	updated := existing.DeepCopy()
+	unstructured.SetNestedField(updated.Object, req.Suspend, "spec", "suspended")
+
+	_, err = client.Resource(dagsGVR).Namespace(req.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

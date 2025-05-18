@@ -542,10 +542,6 @@ func (p *postgresDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, tas
 		}
 
 		if status == "success" {
-			if err := tx.Commit(ctx); err != nil {
-				return err
-			}
-
 			return nil
 		}
 

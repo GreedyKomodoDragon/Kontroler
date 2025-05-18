@@ -159,7 +159,7 @@ export async function getDagParameters({
 class DagRunError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'DagRunError';
+    this.name = "DagRunError";
   }
 }
 
@@ -186,18 +186,24 @@ export async function createDagRun(
     if (axios.isAxiosError(error)) {
       switch (error.response?.status) {
         case 401:
-          throw new DagRunError('Authentication required. Please log in.');
+          throw new DagRunError("Authentication required. Please log in.");
         case 403:
-          throw new DagRunError("You do not have permission to create DAG runs, must be at least an 'Editor'");
+          throw new DagRunError(
+            "You do not have permission to create DAG runs, must be at least an 'Editor'"
+          );
         case 404:
-          throw new DagRunError(`DAG '${name}' not found in namespace '${namespace}'.`);
+          throw new DagRunError(
+            `DAG '${name}' not found in namespace '${namespace}'.`
+          );
         case 500:
-          throw new DagRunError('Server error occurred while creating DAG run.');
+          throw new DagRunError(
+            "Server error occurred while creating DAG run."
+          );
         default:
-          throw new DagRunError(error.message || 'Failed to create DAG run.');
+          throw new DagRunError(error.message || "Failed to create DAG run.");
       }
     }
-    throw new DagRunError('Network error occurred while creating DAG run.');
+    throw new DagRunError("Network error occurred while creating DAG run.");
   }
 }
 
@@ -215,7 +221,7 @@ export async function getDagTasks({
     );
     return result.data;
   } catch (error) {
-    console.error('Failed to fetch DAG tasks:', error);
+    console.error("Failed to fetch DAG tasks:", error);
     throw error;
   }
 }
@@ -238,7 +244,10 @@ export async function getDagTaskPageCount(): Promise<number> {
   }
 }
 
-export async function deleteDag(namespace: string, name: string): Promise<void> {
+export async function deleteDag(
+  namespace: string,
+  name: string
+): Promise<void> {
   try {
     await axios.delete(`${getApiUrl()}/api/v1/dag/dag/${namespace}/${name}`, {
       withCredentials: true,
@@ -247,43 +256,87 @@ export async function deleteDag(namespace: string, name: string): Promise<void> 
     if (axios.isAxiosError(error)) {
       switch (error.response?.status) {
         case 401:
-          throw new Error('Authentication required. Please log in.');
+          throw new Error("Authentication required. Please log in.");
         case 403:
           throw new Error("You don't have permission to delete this DAG");
         case 404:
-          throw new Error(`DAG '${name}' not found in namespace '${namespace}'`);
+          throw new Error(
+            `DAG '${name}' not found in namespace '${namespace}'`
+          );
         case 409:
-          throw new Error('The DAG has been modified, please try again');
+          throw new Error("The DAG has been modified, please try again");
         default:
-          throw new Error('Failed to delete DAG');
+          throw new Error("Failed to delete DAG");
       }
     }
-    throw new Error('Network error occurred while deleting DAG');
+    throw new Error("Network error occurred while deleting DAG");
   }
 }
 
-export async function deleteDagRun(namespace: string, run: string): Promise<void> {
+export async function deleteDagRun(
+  namespace: string,
+  run: string
+): Promise<void> {
   try {
     const params = new URLSearchParams({
       namespace: namespace,
-      run: run
+      run: run,
     });
-    await axios.delete(`${getApiUrl()}/api/v1/dag/run/remove?${params.toString()}`, {
-      withCredentials: true,
-    });
+    await axios.delete(
+      `${getApiUrl()}/api/v1/dag/run/remove?${params.toString()}`,
+      {
+        withCredentials: true,
+      }
+    );
   } catch (error) {
     if (axios.isAxiosError(error)) {
       switch (error.response?.status) {
         case 401:
-          throw new Error('Authentication required. Please log in.');
+          throw new Error("Authentication required. Please log in.");
         case 403:
           throw new Error("You don't have permission to delete this DagRun");
         case 404:
-          throw new Error(`DagRun '${run}' not found in namespace '${namespace}'`);
+          throw new Error(
+            `DagRun '${run}' not found in namespace '${namespace}'`
+          );
         default:
-          throw new Error('Failed to delete DagRun');
+          throw new Error("Failed to delete DagRun");
       }
     }
-    throw new Error('Network error occurred while deleting DagRun');
+    throw new Error("Network error occurred while deleting DagRun");
+  }
+}
+
+export async function suspendDag(
+  namespace: string,
+  name: string,
+  suspend: boolean
+): Promise<void> {
+  try {
+    await axios.post(
+      `${getApiUrl()}/api/v1/dag/suspend`,
+      {
+        namespace: namespace,
+        name: name,
+        suspend: suspend,
+      },
+      {
+        withCredentials: true,
+      }
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error("Authentication required. Please log in.");
+        case 403:
+          throw new Error("You don't have permission to suspend this DAG");
+        case 404:
+          throw new Error(`DAG '${name}' not found`);
+        default:
+          throw new Error("Failed to suspend DAG");
+      }
+    }
+    throw new Error("Network error occurred while suspending DAG");
   }
 }

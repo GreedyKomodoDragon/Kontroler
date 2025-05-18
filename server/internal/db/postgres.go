@@ -20,7 +20,7 @@ func NewPostgresManager(ctx context.Context, pool *pgxpool.Pool) (DbManager, err
 }
 
 const ALL_DAG_METADATA_QUERY = `
-SELECT dag_id, name, namespace, version, schedule, active, nexttime
+SELECT dag_id, name, namespace, version, schedule, active, nexttime, suspended
 FROM DAGs
 WHERE active = TRUE
 ORDER BY dag_id DESC
@@ -38,7 +38,8 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 	metas := []*DAGMetaData{}
 	for rows.Next() {
 		var meta DAGMetaData
-		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Namespace, &meta.Version, &meta.Schedule, &meta.Active, &meta.NextTime); err != nil {
+		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Namespace, &meta.Version,
+			&meta.Schedule, &meta.Active, &meta.NextTime, &meta.IsSuspended); err != nil {
 			return nil, err
 		}
 
