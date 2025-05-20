@@ -240,7 +240,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logStore, err := object.NewLogStore()
+	logStore, err := createLogStore(configController.LogStore)
 	if err != nil {
 		setupLog.Error(err, "failed to connect to object store")
 		os.Exit(1)
@@ -474,4 +474,15 @@ func main() {
 	// Wait for all goroutines to finish
 	wg.Wait()
 	setupLog.Info("graceful shutdown completed")
+}
+
+func createLogStore(logStoreConfig config.LogStore) (object.LogStore, error) {
+	switch logStoreConfig.StoreType {
+	case "filesystem":
+		return object.NewFileSystemLogStore(logStoreConfig.FileSystem.BaseDir)
+	case "s3":
+		return object.NewLogStore()
+	default:
+		return nil, fmt.Errorf("unsupported log store type: %s", logStoreConfig.StoreType)
+	}
 }

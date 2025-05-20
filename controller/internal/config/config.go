@@ -12,6 +12,16 @@ type ControllerConfig struct {
 	Namespaces       []string      `yaml:"namespaces"`
 	LeaderElectionID string        `yaml:"leaderElectionID"`
 	Workers          WorkerConfigs `yaml:"workers"`
+	LogStore         LogStore      `yaml:"logStore"`
+}
+
+type LogStore struct {
+	StoreType  string                   `yaml:"storeType"`
+	FileSystem FileSystemLogStoreConfig `yaml:"fileSystem"`
+}
+
+type FileSystemLogStoreConfig struct {
+	BaseDir string `yaml:"baseDir"`
 }
 
 type WorkerConfigs struct {
@@ -71,6 +81,11 @@ func ParseConfig(configPath string) (*ControllerConfig, error) {
 		cConfig.LeaderElectionID = leaderElectionID
 	} else if cConfig.LeaderElectionID == "" {
 		return nil, fmt.Errorf("missing LEADER_ELECTION_ID, must provide LEADER_ELECTION_ID")
+	}
+
+	// logstore
+	if cConfig.LogStore.StoreType == "" {
+		cConfig.LogStore.StoreType = "filesystem"
 	}
 
 	return cConfig, nil

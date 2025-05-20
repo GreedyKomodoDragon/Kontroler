@@ -29,6 +29,10 @@ workers:
   workers:
     - namespace: "default"
       count: 2
+logStore:
+  storeType: "s3"
+  fileSystem:
+    baseDir: "/tmp/kontroler-logs"
 `,
 			validate: func(t *testing.T, cfg *ControllerConfig) {
 				assert.Equal(t, "/path/to/kube/config", cfg.KubeConfigPath)
@@ -37,6 +41,10 @@ workers:
 				assert.Equal(t, "memory", cfg.Workers.WorkerType)
 				assert.Equal(t, "200ms", cfg.Workers.PollDuration)
 				assert.Len(t, cfg.Workers.Workers, 1)
+				assert.Equal(t, "default", cfg.Workers.Workers[0].Namespace)
+				assert.Equal(t, 2, cfg.Workers.Workers[0].Count)
+				assert.Equal(t, "s3", cfg.LogStore.StoreType)
+				assert.Equal(t, "/tmp/kontroler-logs", cfg.LogStore.FileSystem.BaseDir)
 			},
 		},
 		{
@@ -55,6 +63,10 @@ workers:
 			validate: func(t *testing.T, cfg *ControllerConfig) {
 				assert.Equal(t, "pebble", cfg.Workers.WorkerType)
 				assert.Equal(t, "/tmp/test-queue", cfg.Workers.QueueDir)
+				assert.Len(t, cfg.Workers.Workers, 1)
+				assert.Equal(t, "default", cfg.Workers.Workers[0].Namespace)
+				assert.Equal(t, 1, cfg.Workers.Workers[0].Count)
+				assert.Equal(t, "filesystem", cfg.LogStore.StoreType)
 			},
 		},
 		{
