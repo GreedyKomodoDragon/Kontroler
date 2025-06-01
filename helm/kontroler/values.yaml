@@ -85,8 +85,17 @@ controller:
       logStore:
         storeType: "filesystem"
         fileSystem:
-          baseDir: "/tmp/kontroler-logs" 
+          baseDir: /logs
     configmapOverride: ""
+    # Configuration for filesystem log storage PVC
+  logStorage:
+    pvc:
+      existing: ""
+      accessModes: ["ReadWriteOnce"]
+      size: 1Gi
+      storageClassName: ""
+      selector: {}
+      retain: true
   leaderElectionID: "610a3770.greedykomodo"
   db:
     user: postgres
@@ -147,6 +156,9 @@ server:
     path: /etc/kontroler/config/
     value:
       kubeConfigPath: ""
+      logStorage:
+        type: filesystem
+        fileSystemDir: /logs
     configmapOverride: ""
   db:
     user: postgres

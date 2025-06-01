@@ -79,6 +79,15 @@ spec:
             claimName: {{ .Values.controller.queueStorage.pvc.existing }}
             {{- end }}
         {{- end }}
+        {{- if eq .Values.controller.config.value.logStore.storeType "filesystem" }}
+        - name: filesystem-logs
+          persistentVolumeClaim:
+            {{- if empty .Values.controller.logStorage.pvc.existing }}
+            claimName: {{ .Release.Name }}-controller-logs
+            {{- else }}
+            claimName: {{ .Values.controller.logStorage.pvc.existing }}
+            {{- end }}
+        {{- end }}
       containers:
         - args:
             - --health-probe-bind-address=:8081
@@ -190,6 +199,10 @@ spec:
             {{- if eq .Values.controller.config.value.workers.workerType "pebble" }}
             - name: queue-storage
               mountPath: {{ .Values.controller.config.value.workers.queueDir }}
+            {{- end }}
+            {{- if eq .Values.controller.config.value.logStore.storeType "filesystem" }}
+            - name: filesystem-logs
+              mountPath: {{ .Values.controller.config.value.logStore.fileSystem.baseDir }}
             {{- end }}
       serviceAccountName: operator-controller-manager
 {{ end }}
