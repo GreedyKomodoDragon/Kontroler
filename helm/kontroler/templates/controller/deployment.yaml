@@ -18,7 +18,9 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: manager
+        kubectl.kubernetes.io/default-container: manager 
+        # check sum based on configmap in template/controller/config.yaml
+        checksum/config: {{ include (print $.Template.BasePath "/controller/config.yaml") . | sha256sum }}
       labels:
         control-plane: kontroller-manager
     spec:

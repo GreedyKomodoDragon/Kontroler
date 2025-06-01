@@ -9,7 +9,6 @@ import (
 
 type ControllerConfig struct {
 	KubeConfigPath   string        `yaml:"kubeConfigPath"`
-	Namespaces       []string      `yaml:"namespaces"`
 	LeaderElectionID string        `yaml:"leaderElectionID"`
 	Workers          WorkerConfigs `yaml:"workers"`
 	LogStore         LogStore      `yaml:"logStore"`

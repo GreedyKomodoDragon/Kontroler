@@ -139,7 +139,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to create a kubernetes client")
 	}
 
-	logFetcher, err := logs.NewLogFetcher(os.Getenv("S3_BUCKETNAME"))
+	logFetcher, err := logs.NewLogFetcher(serverConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a log fetcher")
 	}

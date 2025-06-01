@@ -82,6 +82,10 @@ controller:
         workers:
           - namespace: "default"
             count: 2
+      logStore:
+        storeType: "filesystem"
+        fileSystem:
+          baseDir: "/tmp/kontroler-logs" 
     configmapOverride: ""
   leaderElectionID: "610a3770.greedykomodo"
   db:

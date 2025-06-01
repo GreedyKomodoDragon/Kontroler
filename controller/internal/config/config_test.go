@@ -21,7 +21,6 @@ func TestParseConfig(t *testing.T) {
 			name: "valid memory config",
 			configYaml: `
 kubeConfigPath: "/path/to/kube/config"
-namespaces: ["default", "test"]
 leaderElectionID: "test-controller"
 workers:
   workerType: "memory"
@@ -36,7 +35,6 @@ logStore:
 `,
 			validate: func(t *testing.T, cfg *ControllerConfig) {
 				assert.Equal(t, "/path/to/kube/config", cfg.KubeConfigPath)
-				assert.Equal(t, []string{"default", "test"}, cfg.Namespaces)
 				assert.Equal(t, "test-controller", cfg.LeaderElectionID)
 				assert.Equal(t, "memory", cfg.Workers.WorkerType)
 				assert.Equal(t, "200ms", cfg.Workers.PollDuration)
@@ -51,7 +49,6 @@ logStore:
 			name: "valid pebble config",
 			configYaml: `
 kubeConfigPath: "/path/to/kube/config"
-namespaces: ["default"]
 leaderElectionID: "test-controller"
 workers:
   workerType: "pebble"
@@ -73,7 +70,6 @@ workers:
 			name: "missing leader election ID with env var",
 			configYaml: `
 kubeConfigPath: "/path/to/kube/config"
-namespaces: ["default"]
 workers:
   workerType: "memory"
   workers:
