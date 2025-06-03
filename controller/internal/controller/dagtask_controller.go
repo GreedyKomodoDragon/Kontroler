@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -71,7 +70,8 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Check if the Task is marked for deletion
 	if !task.ObjectMeta.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&task, "dagTask.finalizer.kontroler.greedykomodo") {
-			return ctrl.Result{}, fmt.Errorf("dagTask.finalizer.kontroler.greedykomodo finalizer exists, a version of the task is being used in a Dag")
+			log.Log.Info("cannot delete as task is being used in a DAG", "controller", "dagTask", "taskName", task.Name, "namespace", req.NamespacedName.Namespace)
+			return ctrl.Result{}, nil
 		}
 
 		return ctrl.Result{}, r.handleDeletion(ctx, task.Name, req.NamespacedName.Namespace)

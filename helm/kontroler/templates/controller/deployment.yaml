@@ -18,7 +18,9 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: manager
+        kubectl.kubernetes.io/default-container: manager 
+        # check sum based on configmap in template/controller/config.yaml
+        checksum/config: {{ include (print $.Template.BasePath "/controller/config.yaml") . | sha256sum }}
       labels:
         control-plane: kontroller-manager
     spec:
@@ -75,6 +77,15 @@ spec:
             claimName: {{ .Release.Name }}-queue-storage
             {{- else }}
             claimName: {{ .Values.controller.queueStorage.pvc.existing }}
+            {{- end }}
+        {{- end }}
+        {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
+        - name: filesystem-logs
+          persistentVolumeClaim:
+            {{- if empty .Values.controller.logStorage.pvc.existing }}
+            claimName: {{ .Release.Name }}-controller-logs
+            {{- else }}
+            claimName: {{ .Values.controller.logStorage.pvc.existing }}
             {{- end }}
         {{- end }}
       containers:
@@ -188,6 +199,10 @@ spec:
             {{- if eq .Values.controller.config.value.workers.workerType "pebble" }}
             - name: queue-storage
               mountPath: {{ .Values.controller.config.value.workers.queueDir }}
+            {{- end }}
+            {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
+            - name: filesystem-logs
+              mountPath: {{ .Values.controller.config.value.logStorage.fileSystem.baseDir }}
             {{- end }}
       serviceAccountName: operator-controller-manager
 {{ end }}
