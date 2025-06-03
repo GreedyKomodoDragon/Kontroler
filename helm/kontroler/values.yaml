@@ -82,7 +82,23 @@ controller:
         workers:
           - namespace: "default"
             count: 2
+      logStorage:
+        storeType: "filesystem"
+        fileSystem:
+          baseDir: /logs
+        s3:
+          bucketName: kontroler
+          endpoint: http://minio.default.svc.cluster.local:9000
     configmapOverride: ""
+    # Configuration for filesystem log storage PVC
+  logStorage:
+    pvc:
+      existing: ""
+      accessModes: ["ReadWriteOnce"]
+      size: 1Gi
+      storageClassName: ""
+      selector: {}
+      retain: true
   leaderElectionID: "610a3770.greedykomodo"
   db:
     user: postgres
@@ -143,6 +159,13 @@ server:
     path: /etc/kontroler/config/
     value:
       kubeConfigPath: ""
+      logStorage:
+        storeType: filesystem
+        fileSystem:
+          baseDir: /logs
+        s3:
+          bucketName: kontroler
+          endpoint: http://minio.default.svc.cluster.local:9000
     configmapOverride: ""
   db:
     user: postgres

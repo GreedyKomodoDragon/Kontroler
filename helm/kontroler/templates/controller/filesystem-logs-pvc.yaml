@@ -1,0 +1,22 @@
+{{- if and (eq .Values.controller.config.value.logStorage.storeType "filesystem") (empty .Values.controller.logStorage.pvc.existing) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-controller-logs
+  annotations:
+    {{- if .Values.controller.logStorage.pvc.retain }}
+    helm.sh/resource-policy: "keep"
+    {{- end }}
+spec:
+  accessModes: {{ .Values.controller.logStorage.pvc.accessModes | default (list "ReadWriteOnce") }}
+  resources:
+    requests:
+      storage: {{ .Values.controller.logStorage.pvc.size | default "1Gi" }}
+  {{- if not (empty .Values.controller.logStorage.pvc.storageClassName) }}
+  storageClassName: {{ .Values.controller.logStorage.pvc.storageClassName }}
+  {{- end }}
+  {{- if not (empty .Values.controller.logStorage.pvc.selector) }}
+  selector:
+    {{- toYaml .Values.controller.logStorage.pvc.selector | nindent 4 }}
+  {{- end }}
+{{- end }}

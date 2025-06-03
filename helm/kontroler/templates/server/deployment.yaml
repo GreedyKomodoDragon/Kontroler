@@ -17,6 +17,8 @@ spec:
       {{- with .Values.server.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
+        # check sum based on configmap in template/server/config.yaml
+        checksum/config: {{ include (print $.Template.BasePath "/server/config.yaml") . | sha256sum }}
       {{- end }}
       labels:
         {{- include "kontroler.server.selectorLabels" . | nindent 8 }}
@@ -109,12 +111,16 @@ spec:
               mountPath: {{ .Values.server.config.path }}
             {{ if .Values.kubeconfig.secret }}
             - name: kubeconfig
-              mountPath: {{ printf "%s-%s" .Values.kubeconfig.mountPath .Values.kubeconfig.key }}
+              mountPath: {{ .Values.kubeconfig.mountPath }}
             {{ end }}
             {{ if eq .Values.db.type "sqlite" }}
             - name: sqlite-db-volume
               mountPath: {{ .Values.db.sqlite.path }}
             {{ end }}
+            {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
+            - name: filesystem-logs
+              mountPath: {{ .Values.controller.config.value.logStorage.fileSystem.baseDir }}
+            {{- end }}
             {{ if .Values.server.mtls.enabled }}
             - name: mtls-ca-cert-volume
               mountPath: /ca.crt
@@ -163,6 +169,15 @@ spec:
             claimName: {{ .Values.db.sqlite.pvc.existing }}
           {{ end }}
         {{ end }}
+        {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
+        - name: filesystem-logs
+          persistentVolumeClaim:
+            {{- if empty .Values.controller.logStorage.pvc.existing }}
+            claimName: {{ .Release.Name }}-controller-logs
+            {{- else }}
+            claimName: {{ .Values.controller.logStorage.pvc.existing }}
+            {{- end }}
+        {{- end }}
         {{ if .Values.server.mtls.enabled }}
         - name: mtls-ca-cert-volume
           secret:

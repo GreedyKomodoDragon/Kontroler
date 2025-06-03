@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"kontroler-server/internal/config"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,40 +21,49 @@ type LogFetcher interface {
 	LogFileExists(logFileKey *string) (bool, int64, error)
 }
 
-// NewLogFetcher will currently create an S3 API log fetcher
-// We return nil as we assume it has not been enabled so you must check for nil
-func NewLogFetcher(bucketName string) (LogFetcher, error) {
-	if bucketName == "" {
+// NewLogFetcher creates a new LogFetcher based on the configuration
+// If no configuration is provided, returns nil which indicates log fetching is disabled
+func NewLogFetcher(config *config.ServerConfig) (LogFetcher, error) {
+	if config == nil || config.LogStorage.StoreType == "" {
 		return nil, nil
 	}
 
-	s3Endpoint := os.Getenv("S3_ENDPOINT")
+	switch config.LogStorage.StoreType {
+	case "s3":
+		s3Endpoint := os.Getenv("S3_ENDPOINT")
+		bucketName := config.LogStorage.S3Configs.BucketName
 
-	s3Config, err := loadS3Config()
-	if err != nil {
-		return nil, err
-	}
-
-	client := s3.NewFromConfig(s3Config, func(o *s3.Options) {
-		if s3Endpoint != "" {
-			o.BaseEndpoint = aws.String(s3Endpoint)
+		s3Config, err := loadS3Config()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load S3 config: %w", err)
 		}
 
-		// Better handles Minio with Kubernetes DNS
-		o.UsePathStyle = true
-	})
+		client := s3.NewFromConfig(s3Config, func(o *s3.Options) {
+			if s3Endpoint != "" {
+				o.BaseEndpoint = aws.String(s3Endpoint)
+			}
+			// Better handles Minio with Kubernetes DNS
+			o.UsePathStyle = true
+		})
 
-	// HeadBucket to check if the bucket exists and the connection is valid
-	if _, err = client.HeadBucket(context.TODO(), &s3.HeadBucketInput{
-		Bucket: &bucketName,
-	}); err != nil {
-		return nil, err
+		// HeadBucket to check if the bucket exists and the connection is valid
+		if _, err = client.HeadBucket(context.TODO(), &s3.HeadBucketInput{
+			Bucket: &bucketName,
+		}); err != nil {
+			return nil, fmt.Errorf("failed to connect to S3 bucket: %w", err)
+		}
+
+		return &s3LogFetcher{
+			bucketName: &bucketName,
+			client:     client,
+		}, nil
+
+	case "filesystem":
+		return NewFSLogFetcher(config.LogStorage.FileSystem.BaseDir)
+
+	default:
+		return nil, fmt.Errorf("unsupported log storage type: %s", config.LogStorage.StoreType)
 	}
-
-	return &s3LogFetcher{
-		bucketName: &bucketName,
-		client:     client,
-	}, nil
 }
 
 type s3LogFetcher struct {

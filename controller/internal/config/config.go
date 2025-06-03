@@ -3,15 +3,31 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 )
 
 type ControllerConfig struct {
 	KubeConfigPath   string        `yaml:"kubeConfigPath"`
-	Namespaces       []string      `yaml:"namespaces"`
 	LeaderElectionID string        `yaml:"leaderElectionID"`
 	Workers          WorkerConfigs `yaml:"workers"`
+	LogStore         LogStore      `yaml:"logStorage"`
+}
+
+type LogStore struct {
+	StoreType  string                   `yaml:"storeType"`
+	FileSystem FileSystemLogStoreConfig `yaml:"fileSystem"`
+	S3Configs  S3LogStoreConfig         `yaml:"s3"`
+}
+
+type S3LogStoreConfig struct {
+	BucketName string `yaml:"bucketName"`
+	Endpoint   string `yaml:"endpoint,omitempty"`
+}
+
+type FileSystemLogStoreConfig struct {
+	BaseDir string `yaml:"baseDir"`
 }
 
 type WorkerConfigs struct {
@@ -73,5 +89,41 @@ func ParseConfig(configPath string) (*ControllerConfig, error) {
 		return nil, fmt.Errorf("missing LEADER_ELECTION_ID, must provide LEADER_ELECTION_ID")
 	}
 
+	// logstore
+	if cConfig.LogStore.StoreType == "" {
+		cConfig.LogStore.StoreType = "filesystem"
+		// If defaulting to filesystem, check for LOG_DIR environment variable
+		if cConfig.LogStore.FileSystem.BaseDir == "" {
+			cConfig.LogStore.FileSystem.BaseDir = os.Getenv("LOG_DIR")
+		}
+	}
+
+	if err := validateLogStore(&cConfig.LogStore); err != nil {
+		return nil, err
+	}
+
 	return cConfig, nil
+}
+
+func validateLogStore(logStore *LogStore) error {
+	switch logStore.StoreType {
+	case "filesystem":
+		if logStore.FileSystem.BaseDir == "" {
+			return fmt.Errorf("baseDir must be specified for filesystem log store")
+		}
+		// Clean and validate the base directory path
+		cleanPath := filepath.Clean(logStore.FileSystem.BaseDir)
+		if !filepath.IsAbs(cleanPath) {
+			return fmt.Errorf("baseDir must be an absolute path, got: %s", logStore.FileSystem.BaseDir)
+		}
+		logStore.FileSystem.BaseDir = cleanPath
+	case "s3":
+		if logStore.S3Configs.BucketName == "" {
+			return fmt.Errorf("bucketName must be specified for s3 log store")
+		}
+		// Endpoint is optional, no need to validate it
+	default:
+		return fmt.Errorf("invalid log store type %q, must be 'filesystem' or 's3'", logStore.StoreType)
+	}
+	return nil
 }
