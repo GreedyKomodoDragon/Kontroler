@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 )
@@ -110,6 +111,12 @@ func validateLogStore(logStore *LogStore) error {
 		if logStore.FileSystem.BaseDir == "" {
 			return fmt.Errorf("baseDir must be specified for filesystem log store")
 		}
+		// Clean and validate the base directory path
+		cleanPath := filepath.Clean(logStore.FileSystem.BaseDir)
+		if !filepath.IsAbs(cleanPath) {
+			return fmt.Errorf("baseDir must be an absolute path, got: %s", logStore.FileSystem.BaseDir)
+		}
+		logStore.FileSystem.BaseDir = cleanPath
 	case "s3":
 		if logStore.S3Configs.BucketName == "" {
 			return fmt.Errorf("bucketName must be specified for s3 log store")

@@ -190,3 +190,52 @@ logStorage:
 		})
 	}
 }
+
+func TestParseConfigPaths(t *testing.T) {
+	// Test valid absolute path
+	t.Run("valid absolute path", func(t *testing.T) {
+		tmpfile := createTempConfigFile(t, `
+kubeConfigPath: /absolute/path/to/kubeconfig
+`)
+		defer os.Remove(tmpfile)
+
+		config, err := ParseConfig(tmpfile)
+		require.NoError(t, err)
+		require.True(t, filepath.IsAbs(config.KubeConfigPath))
+	})
+
+	// Test invalid relative path
+	t.Run("invalid relative path", func(t *testing.T) {
+		tmpfile := createTempConfigFile(t, `
+kubeConfigPath: relative/path/to/kubeconfig
+`)
+		defer os.Remove(tmpfile)
+
+		_, err := ParseConfig(tmpfile)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "kubeConfigPath must be an absolute path")
+	})
+
+	// Test empty path
+	t.Run("empty path", func(t *testing.T) {
+		tmpfile := createTempConfigFile(t, `
+kubeConfigPath: ""
+`)
+		defer os.Remove(tmpfile)
+
+		config, err := ParseConfig(tmpfile)
+		require.NoError(t, err)
+		require.Empty(t, config.KubeConfigPath)
+	})
+}
+
+func createTempConfigFile(t *testing.T, content string) string {
+	tmpfile, err := os.CreateTemp("", "config*.yaml")
+	require.NoError(t, err)
+
+	_, err = tmpfile.WriteString(content)
+	require.NoError(t, err)
+	require.NoError(t, tmpfile.Close())
+
+	return tmpfile.Name()
+}

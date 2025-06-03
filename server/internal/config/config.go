@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 )
@@ -110,6 +111,17 @@ func validateConfig(config *ServerConfig) error {
 	return nil
 }
 
+func validatePaths(config *ServerConfig) error {
+	if config.KubeConfigPath != "" {
+		cleanPath := filepath.Clean(config.KubeConfigPath)
+		if !filepath.IsAbs(cleanPath) {
+			return fmt.Errorf("kubeConfigPath must be an absolute path, got: %s", config.KubeConfigPath)
+		}
+		config.KubeConfigPath = cleanPath
+	}
+	return nil
+}
+
 func ParseConfig(configPath string) (*ServerConfig, error) {
 	var config *ServerConfig
 	var err error
@@ -130,6 +142,10 @@ func ParseConfig(configPath string) (*ServerConfig, error) {
 
 	// Validate the final configuration
 	if err := validateConfig(config); err != nil {
+		return nil, err
+	}
+
+	if err := validatePaths(config); err != nil {
 		return nil, err
 	}
 
