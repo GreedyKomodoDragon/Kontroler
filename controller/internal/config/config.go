@@ -11,12 +11,18 @@ type ControllerConfig struct {
 	KubeConfigPath   string        `yaml:"kubeConfigPath"`
 	LeaderElectionID string        `yaml:"leaderElectionID"`
 	Workers          WorkerConfigs `yaml:"workers"`
-	LogStore         LogStore      `yaml:"logStore"`
+	LogStore         LogStore      `yaml:"logStorage"`
 }
 
 type LogStore struct {
 	StoreType  string                   `yaml:"storeType"`
 	FileSystem FileSystemLogStoreConfig `yaml:"fileSystem"`
+	S3Configs  S3LogStoreConfig         `yaml:"s3"`
+}
+
+type S3LogStoreConfig struct {
+	BucketName string `yaml:"bucketName"`
+	Endpoint   string `yaml:"endpoint,omitempty"`
 }
 
 type FileSystemLogStoreConfig struct {
@@ -85,7 +91,32 @@ func ParseConfig(configPath string) (*ControllerConfig, error) {
 	// logstore
 	if cConfig.LogStore.StoreType == "" {
 		cConfig.LogStore.StoreType = "filesystem"
+		// If defaulting to filesystem, check for LOG_DIR environment variable
+		if cConfig.LogStore.FileSystem.BaseDir == "" {
+			cConfig.LogStore.FileSystem.BaseDir = os.Getenv("LOG_DIR")
+		}
+	}
+
+	if err := validateLogStore(&cConfig.LogStore); err != nil {
+		return nil, err
 	}
 
 	return cConfig, nil
+}
+
+func validateLogStore(logStore *LogStore) error {
+	switch logStore.StoreType {
+	case "filesystem":
+		if logStore.FileSystem.BaseDir == "" {
+			return fmt.Errorf("baseDir must be specified for filesystem log store")
+		}
+	case "s3":
+		if logStore.S3Configs.BucketName == "" {
+			return fmt.Errorf("bucketName must be specified for s3 log store")
+		}
+		// Endpoint is optional, no need to validate it
+	default:
+		return fmt.Errorf("invalid log store type %q, must be 'filesystem' or 's3'", logStore.StoreType)
+	}
+	return nil
 }

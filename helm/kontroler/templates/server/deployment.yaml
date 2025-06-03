@@ -117,9 +117,9 @@ spec:
             - name: sqlite-db-volume
               mountPath: {{ .Values.db.sqlite.path }}
             {{ end }}
-            {{- if eq .Values.controller.config.value.logStore.storeType "filesystem" }}
+            {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
             - name: filesystem-logs
-              mountPath: {{ .Values.controller.config.value.logStore.fileSystem.baseDir }}
+              mountPath: {{ .Values.controller.config.value.logStorage.fileSystem.baseDir }}
             {{- end }}
             {{ if .Values.server.mtls.enabled }}
             - name: mtls-ca-cert-volume
@@ -169,7 +169,7 @@ spec:
             claimName: {{ .Values.db.sqlite.pvc.existing }}
           {{ end }}
         {{ end }}
-        {{- if eq .Values.controller.config.value.logStore.storeType "filesystem" }}
+        {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
         - name: filesystem-logs
           persistentVolumeClaim:
             {{- if empty .Values.controller.logStorage.pvc.existing }}

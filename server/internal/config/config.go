@@ -7,15 +7,24 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type LogStorageConfig struct {
-	Type          string `yaml:"type"`          // "s3" or "filesystem"
-	S3BucketName  string `yaml:"s3BucketName"`  // required for s3
-	FileSystemDir string `yaml:"fileSystemDir"` // required for filesystem
+type LogStore struct {
+	StoreType  string                   `yaml:"storeType"`
+	FileSystem FileSystemLogStoreConfig `yaml:"fileSystem"`
+	S3Configs  S3LogStoreConfig         `yaml:"s3"`
+}
+
+type S3LogStoreConfig struct {
+	BucketName string `yaml:"bucketName"`
+	Endpoint   string `yaml:"endpoint,omitempty"`
+}
+
+type FileSystemLogStoreConfig struct {
+	BaseDir string `yaml:"baseDir"`
 }
 
 type ServerConfig struct {
-	KubeConfigPath string           `yaml:"kubeConfigPath"`
-	LogStorage     LogStorageConfig `yaml:"logStorage"`
+	KubeConfigPath string   `yaml:"kubeConfigPath"`
+	LogStorage     LogStore `yaml:"logStorage"`
 }
 
 // loadConfigFromYAML attempts to load configuration from a YAML file
@@ -43,47 +52,59 @@ func loadConfigFromYAML(configPath string) (*ServerConfig, error) {
 // applyEnvironmentConfig applies any environment-based configuration
 func applyEnvironmentConfig(config *ServerConfig) {
 	// Check environment variables if YAML didn't specify a type
-	if config.LogStorage.Type == "" {
+	if config.LogStorage.StoreType == "" {
 		if bucket := os.Getenv("S3_BUCKETNAME"); bucket != "" {
-			config.LogStorage.Type = "s3"
-			config.LogStorage.S3BucketName = bucket
+			config.LogStorage.StoreType = "s3"
+			config.LogStorage.S3Configs = S3LogStoreConfig{
+				BucketName: bucket,
+				Endpoint:   os.Getenv("S3_ENDPOINT"),
+			}
 		} else if dir := os.Getenv("LOG_DIR"); dir != "" {
-			config.LogStorage.Type = "filesystem"
-			config.LogStorage.FileSystemDir = dir
+			config.LogStorage.StoreType = "filesystem"
+			config.LogStorage.FileSystem = FileSystemLogStoreConfig{
+				BaseDir: dir,
+			}
 		}
 		return // If we set type from env, we're done
 	}
 
 	// If type is specified but values are missing, try to fill from env
-	switch config.LogStorage.Type {
+	switch config.LogStorage.StoreType {
 	case "s3":
-		if config.LogStorage.S3BucketName == "" {
-			config.LogStorage.S3BucketName = os.Getenv("S3_BUCKETNAME")
+		// If bucket name is empty, try to get from env
+		if config.LogStorage.S3Configs.BucketName == "" {
+			config.LogStorage.S3Configs.BucketName = os.Getenv("S3_BUCKETNAME")
+		}
+		// If endpoint is empty, try to get from env
+		if config.LogStorage.S3Configs.Endpoint == "" {
+			config.LogStorage.S3Configs.Endpoint = os.Getenv("S3_ENDPOINT")
 		}
 	case "filesystem":
-		if config.LogStorage.FileSystemDir == "" {
-			config.LogStorage.FileSystemDir = os.Getenv("LOG_DIR")
+		if config.LogStorage.FileSystem.BaseDir == "" {
+			config.LogStorage.FileSystem = FileSystemLogStoreConfig{
+				BaseDir: os.Getenv("LOG_DIR"),
+			}
 		}
 	}
 }
 
 // validateConfig ensures the configuration is valid
 func validateConfig(config *ServerConfig) error {
-	if config.LogStorage.Type == "" {
+	if config.LogStorage.StoreType == "" {
 		return nil // No log storage configured is valid
 	}
 
-	switch config.LogStorage.Type {
+	switch config.LogStorage.StoreType {
 	case "s3":
-		if config.LogStorage.S3BucketName == "" {
+		if config.LogStorage.S3Configs.BucketName == "" {
 			return fmt.Errorf("s3 bucket name is required for s3 log storage")
 		}
 	case "filesystem":
-		if config.LogStorage.FileSystemDir == "" {
+		if config.LogStorage.FileSystem.BaseDir == "" {
 			return fmt.Errorf("directory path is required for filesystem log storage")
 		}
 	default:
-		return fmt.Errorf("invalid log storage type: %s", config.LogStorage.Type)
+		return fmt.Errorf("invalid log storage type: %s", config.LogStorage.StoreType)
 	}
 
 	return nil

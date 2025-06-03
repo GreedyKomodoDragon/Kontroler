@@ -28,10 +28,11 @@ workers:
   workers:
     - namespace: "default"
       count: 2
-logStore:
+logStorage:
   storeType: "s3"
-  fileSystem:
-    baseDir: "/tmp/kontroler-logs"
+  s3:
+    bucketName: "my-test-bucket"
+    endpoint: "https://minio.example.com:9000"
 `,
 			validate: func(t *testing.T, cfg *ControllerConfig) {
 				assert.Equal(t, "/path/to/kube/config", cfg.KubeConfigPath)
@@ -42,7 +43,8 @@ logStore:
 				assert.Equal(t, "default", cfg.Workers.Workers[0].Namespace)
 				assert.Equal(t, 2, cfg.Workers.Workers[0].Count)
 				assert.Equal(t, "s3", cfg.LogStore.StoreType)
-				assert.Equal(t, "/tmp/kontroler-logs", cfg.LogStore.FileSystem.BaseDir)
+				assert.Equal(t, "my-test-bucket", cfg.LogStore.S3Configs.BucketName)
+				assert.Equal(t, "https://minio.example.com:9000", cfg.LogStore.S3Configs.Endpoint)
 			},
 		},
 		{
@@ -57,6 +59,9 @@ workers:
     - namespace: "default"
       count: 1
 `,
+			envVars: map[string]string{
+				"LOG_DIR": "/var/log/default",
+			},
 			validate: func(t *testing.T, cfg *ControllerConfig) {
 				assert.Equal(t, "pebble", cfg.Workers.WorkerType)
 				assert.Equal(t, "/tmp/test-queue", cfg.Workers.QueueDir)
@@ -64,6 +69,7 @@ workers:
 				assert.Equal(t, "default", cfg.Workers.Workers[0].Namespace)
 				assert.Equal(t, 1, cfg.Workers.Workers[0].Count)
 				assert.Equal(t, "filesystem", cfg.LogStore.StoreType)
+				assert.Equal(t, "/var/log/default", cfg.LogStore.FileSystem.BaseDir)
 			},
 		},
 		{
@@ -78,9 +84,12 @@ workers:
 `,
 			envVars: map[string]string{
 				"LEADER_ELECTION_ID": "env-controller",
+				"LOG_DIR":            "/var/log/test",
 			},
 			validate: func(t *testing.T, cfg *ControllerConfig) {
 				assert.Equal(t, "env-controller", cfg.LeaderElectionID)
+				assert.Equal(t, "filesystem", cfg.LogStore.StoreType)
+				assert.Equal(t, "/var/log/test", cfg.LogStore.FileSystem.BaseDir)
 			},
 		},
 		{
@@ -110,6 +119,124 @@ workers:
 			configYaml: `
 workers:
   workerType: "memory"
+`,
+			expectError: true,
+		},
+		{
+			name: "valid filesystem log config",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
+logStorage:
+  storeType: "filesystem"
+  fileSystem:
+    baseDir: "/var/log/kontroler"
+`,
+			validate: func(t *testing.T, cfg *ControllerConfig) {
+				assert.Equal(t, "filesystem", cfg.LogStore.StoreType)
+				assert.Equal(t, "/var/log/kontroler", cfg.LogStore.FileSystem.BaseDir)
+			},
+		},
+		{
+			name: "valid s3 log config without endpoint",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
+logStorage:
+  storeType: "s3"
+  s3:
+    bucketName: "my-test-bucket"
+`,
+			validate: func(t *testing.T, cfg *ControllerConfig) {
+				assert.Equal(t, "s3", cfg.LogStore.StoreType)
+				assert.Equal(t, "my-test-bucket", cfg.LogStore.S3Configs.BucketName)
+				assert.Empty(t, cfg.LogStore.S3Configs.Endpoint)
+			},
+		},
+		{
+			name: "missing s3 bucket name",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
+logStorage:
+  storeType: "s3"
+`,
+			expectError: true,
+		},
+		{
+			name: "missing filesystem base dir",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
+logStorage:
+  storeType: "filesystem"
+`,
+			expectError: true,
+		},
+		{
+			name: "invalid log storage type",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
+logStorage:
+  storeType: "invalid"
+`,
+			expectError: true,
+		},
+		{
+			name: "default filesystem with LOG_DIR",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
+`,
+			envVars: map[string]string{
+				"LOG_DIR": "/var/log/env",
+			},
+			validate: func(t *testing.T, cfg *ControllerConfig) {
+				assert.Equal(t, "filesystem", cfg.LogStore.StoreType)
+				assert.Equal(t, "/var/log/env", cfg.LogStore.FileSystem.BaseDir)
+			},
+		},
+		{
+			name: "default filesystem without LOG_DIR",
+			configYaml: `
+kubeConfigPath: "/path/to/kube/config"
+leaderElectionID: "test-controller"
+workers:
+  workerType: "memory"
+  workers:
+    - namespace: "default"
+      count: 1
 `,
 			expectError: true,
 		},

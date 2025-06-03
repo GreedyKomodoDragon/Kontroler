@@ -24,14 +24,14 @@ type LogFetcher interface {
 // NewLogFetcher creates a new LogFetcher based on the configuration
 // If no configuration is provided, returns nil which indicates log fetching is disabled
 func NewLogFetcher(config *config.ServerConfig) (LogFetcher, error) {
-	if config == nil || config.LogStorage.Type == "" {
+	if config == nil || config.LogStorage.StoreType == "" {
 		return nil, nil
 	}
 
-	switch config.LogStorage.Type {
+	switch config.LogStorage.StoreType {
 	case "s3":
 		s3Endpoint := os.Getenv("S3_ENDPOINT")
-		bucketName := config.LogStorage.S3BucketName
+		bucketName := config.LogStorage.S3Configs.BucketName
 
 		s3Config, err := loadS3Config()
 		if err != nil {
@@ -59,10 +59,10 @@ func NewLogFetcher(config *config.ServerConfig) (LogFetcher, error) {
 		}, nil
 
 	case "filesystem":
-		return NewFSLogFetcher(config.LogStorage.FileSystemDir)
+		return NewFSLogFetcher(config.LogStorage.FileSystem.BaseDir)
 
 	default:
-		return nil, fmt.Errorf("unsupported log storage type: %s", config.LogStorage.Type)
+		return nil, fmt.Errorf("unsupported log storage type: %s", config.LogStorage.StoreType)
 	}
 }
 

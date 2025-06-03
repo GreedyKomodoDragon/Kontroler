@@ -1,4 +1,4 @@
-{{- if and (eq .Values.controller.config.value.logStore.storeType "filesystem") (empty .Values.controller.logStorage.pvc.existing) }}
+{{- if and (eq .Values.controller.config.value.logStorage.storeType "filesystem") (empty .Values.controller.logStorage.pvc.existing) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

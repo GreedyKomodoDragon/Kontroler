@@ -79,7 +79,7 @@ spec:
             claimName: {{ .Values.controller.queueStorage.pvc.existing }}
             {{- end }}
         {{- end }}
-        {{- if eq .Values.controller.config.value.logStore.storeType "filesystem" }}
+        {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
         - name: filesystem-logs
           persistentVolumeClaim:
             {{- if empty .Values.controller.logStorage.pvc.existing }}
@@ -200,9 +200,9 @@ spec:
             - name: queue-storage
               mountPath: {{ .Values.controller.config.value.workers.queueDir }}
             {{- end }}
-            {{- if eq .Values.controller.config.value.logStore.storeType "filesystem" }}
+            {{- if eq .Values.controller.config.value.logStorage.storeType "filesystem" }}
             - name: filesystem-logs
-              mountPath: {{ .Values.controller.config.value.logStore.fileSystem.baseDir }}
+              mountPath: {{ .Values.controller.config.value.logStorage.fileSystem.baseDir }}
             {{- end }}
       serviceAccountName: operator-controller-manager
 {{ end }}

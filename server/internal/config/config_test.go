@@ -16,20 +16,22 @@ func TestParseConfig(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	tests := []struct {
-		name         string
-		yamlContent  string
-		envVars      map[string]string
-		wantErr      bool
-		wantLogType  string
-		wantS3Bucket string
-		wantFSDir    string
+		name           string
+		yamlContent    string
+		envVars        map[string]string
+		wantErr        bool
+		wantLogType    string
+		wantS3Bucket   string
+		wantS3Endpoint string
+		wantFSDir      string
 	}{
 		{
 			name: "valid filesystem config from yaml",
 			yamlContent: `
 logStorage:
-  type: filesystem
-  fileSystemDir: /var/log/kontroler
+  storeType: "filesystem"
+  fileSystem:
+    baseDir: /var/log/kontroler
 `,
 			wantLogType: "filesystem",
 			wantFSDir:   "/var/log/kontroler",
@@ -38,11 +40,14 @@ logStorage:
 			name: "valid s3 config from yaml",
 			yamlContent: `
 logStorage:
-  type: s3
-  s3BucketName: my-log-bucket
+  storeType: "s3"
+  s3:
+    bucketName: my-log-bucket
+    endpoint: https://my-custom-s3.example.com
 `,
-			wantLogType:  "s3",
-			wantS3Bucket: "my-log-bucket",
+			wantLogType:    "s3",
+			wantS3Bucket:   "my-log-bucket",
+			wantS3Endpoint: "https://my-custom-s3.example.com",
 		},
 		{
 			name: "filesystem config from env",
@@ -56,16 +61,19 @@ logStorage:
 			name: "s3 config from env",
 			envVars: map[string]string{
 				"S3_BUCKETNAME": "env-bucket",
+				"S3_ENDPOINT":   "https://env-s3.example.com",
 			},
-			wantLogType:  "s3",
-			wantS3Bucket: "env-bucket",
+			wantLogType:    "s3",
+			wantS3Bucket:   "env-bucket",
+			wantS3Endpoint: "https://env-s3.example.com",
 		},
 		{
 			name: "invalid storage type",
 			yamlContent: `
 logStorage:
-  type: invalid
-  fileSystemDir: /var/log/kontroler
+  storeType: "invalid"
+  s3:
+	bucketName: my-log-bucket
 `,
 			wantErr: true,
 		},
@@ -73,7 +81,7 @@ logStorage:
 			name: "missing s3 bucket name",
 			yamlContent: `
 logStorage:
-  type: s3
+  storeType: "s3"
 `,
 			wantErr: true,
 		},
@@ -81,7 +89,7 @@ logStorage:
 			name: "missing filesystem directory",
 			yamlContent: `
 logStorage:
-  type: filesystem
+  storeType: filesystem
 `,
 			wantErr: true,
 		},
@@ -95,8 +103,9 @@ kubeConfigPath: /some/path
 			name: "yaml takes precedence over env",
 			yamlContent: `
 logStorage:
-  type: filesystem
-  fileSystemDir: /yaml/path
+  storeType: "filesystem"
+  fileSystem:
+    baseDir: /yaml/path
 `,
 			envVars: map[string]string{
 				"S3_BUCKETNAME": "env-bucket",
@@ -104,6 +113,21 @@ logStorage:
 			},
 			wantLogType: "filesystem",
 			wantFSDir:   "/yaml/path",
+		},
+		{
+			name: "s3 yaml with env endpoint",
+			yamlContent: `
+logStorage:
+  storeType: "s3"
+  s3:
+    bucketName: yaml-bucket
+`,
+			envVars: map[string]string{
+				"S3_ENDPOINT": "https://env-s3.example.com",
+			},
+			wantLogType:    "s3",
+			wantS3Bucket:   "yaml-bucket",
+			wantS3Endpoint: "https://env-s3.example.com",
 		},
 	}
 
@@ -135,10 +159,11 @@ logStorage:
 			t.Logf("Testing with configPath=%q and env vars=%v", configPath, tc.envVars)
 			cfg, err := ParseConfig(configPath)
 			if cfg != nil {
-				t.Logf("Got config: type=%q, s3bucket=%q, fsdir=%q",
-					cfg.LogStorage.Type,
-					cfg.LogStorage.S3BucketName,
-					cfg.LogStorage.FileSystemDir)
+				t.Logf("Got config: type=%q, s3bucket=%q, s3endpoint=%q, fsdir=%q",
+					cfg.LogStorage.StoreType,
+					cfg.LogStorage.S3Configs.BucketName,
+					cfg.LogStorage.S3Configs.Endpoint,
+					cfg.LogStorage.FileSystem.BaseDir)
 			}
 
 			// Check error
@@ -151,13 +176,16 @@ logStorage:
 
 			// Check results
 			if tc.wantLogType != "" {
-				require.Equal(t, tc.wantLogType, cfg.LogStorage.Type, "Wrong storage type")
+				require.Equal(t, tc.wantLogType, cfg.LogStorage.StoreType, "Wrong storage type")
 			}
 			if tc.wantS3Bucket != "" {
-				require.Equal(t, tc.wantS3Bucket, cfg.LogStorage.S3BucketName, "Wrong S3 bucket")
+				require.Equal(t, tc.wantS3Bucket, cfg.LogStorage.S3Configs.BucketName, "Wrong S3 bucket")
+			}
+			if tc.wantS3Endpoint != "" {
+				require.Equal(t, tc.wantS3Endpoint, cfg.LogStorage.S3Configs.Endpoint, "Wrong S3 endpoint")
 			}
 			if tc.wantFSDir != "" {
-				require.Equal(t, tc.wantFSDir, cfg.LogStorage.FileSystemDir, "Wrong filesystem dir")
+				require.Equal(t, tc.wantFSDir, cfg.LogStorage.FileSystem.BaseDir, "Wrong filesystem dir")
 			}
 		})
 	}
