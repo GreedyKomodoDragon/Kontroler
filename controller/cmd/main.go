@@ -218,7 +218,7 @@ func main() {
 		}
 
 		var dbConn *sql.DB
-		dbDAGManager, dbConn, err = db.NewSqliteManager(context.Background(), &specParser, config)
+		dbDAGManager, dbConn, err = db.NewSqliteManagerWithMetrics(context.Background(), &specParser, config)
 		if err != nil {
 			setupLog.Error(err, "failed to create sqlite DAG manager")
 			os.Exit(1)
