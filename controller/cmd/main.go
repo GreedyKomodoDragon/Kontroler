@@ -45,6 +45,7 @@ import (
 	"kontroler-controller/internal/controller"
 	"kontroler-controller/internal/dag"
 	"kontroler-controller/internal/db"
+	_ "kontroler-controller/internal/metrics"
 	"kontroler-controller/internal/object"
 	"kontroler-controller/internal/queue"
 	kontrolerWebhook "kontroler-controller/internal/webhook"
@@ -204,7 +205,7 @@ func main() {
 
 		defer pool.Close()
 
-		dbDAGManager, err = db.NewPostgresDAGManager(context.Background(), pool, &specParser)
+		dbDAGManager, err = db.NewPostgresDAGManagerWithMetrics(context.Background(), pool, &specParser)
 		if err != nil {
 			setupLog.Error(err, "failed to create postgres DAG manager")
 			os.Exit(1)

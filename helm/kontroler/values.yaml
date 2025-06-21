@@ -130,6 +130,17 @@ controller:
     create: true
     annotations: {}
     name: ""
+  # Metrics configuration
+  metrics:
+    enabled: true
+    port: 8080
+    secure: true
+    path: "/metrics"
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
+      prometheus.io/scheme: "https"
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
