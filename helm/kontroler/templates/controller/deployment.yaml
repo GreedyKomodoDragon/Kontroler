@@ -21,8 +21,18 @@ spec:
         kubectl.kubernetes.io/default-container: manager 
         # check sum based on configmap in template/controller/config.yaml
         checksum/config: {{ include (print $.Template.BasePath "/controller/config.yaml") . | sha256sum }}
+        {{- if .Values.controller.metrics.enabled }}
+        # Prometheus scraping annotations
+        {{- range $key, $value := .Values.controller.metrics.annotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.controller.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         control-plane: kontroller-manager
+        app: kontroler-manager
     spec:
       securityContext:
         runAsNonRoot: true
@@ -91,7 +101,10 @@ spec:
       containers:
         - args:
             - --health-probe-bind-address=:8081
-            - --metrics-bind-address=127.0.0.1:8080
+            - --metrics-bind-address=:{{ .Values.controller.metrics.port }}
+            {{- if .Values.controller.metrics.secure }}
+            - --metrics-secure=true
+            {{- end }}
             - --leader-elect
             - --configpath={{ printf "%s%s" .Values.controller.config.path  "config.yaml" }}
           env:
@@ -151,6 +164,9 @@ spec:
             periodSeconds: 20
           name: manager
           ports:
+            - containerPort: {{ .Values.controller.metrics.port }}
+              name: metrics
+              protocol: TCP
             - containerPort: 9443
               name: webhook-server
               protocol: TCP

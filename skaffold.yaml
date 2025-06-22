@@ -40,6 +40,69 @@ profiles:
             setValues:
               crds.enabled: true
 
+          - name: prometheus
+            repo: https://prometheus-community.github.io/helm-charts
+            remoteChart: kube-prometheus-stack
+            namespace: monitoring
+            createNamespace: true
+            version: 65.1.1
+            setValues:
+              prometheus.prometheusSpec.scrapeInterval: "30s"
+              prometheus.prometheusSpec.evaluationInterval: "30s"
+              prometheus.prometheusSpec.retention: "7d"
+              prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage: "10Gi"
+              prometheus.prometheusSpec.additionalScrapeConfigs:
+                - job_name: 'kontroler-manager'
+                  scheme: https
+                  tls_config:
+                    insecure_skip_verify: true
+                  kubernetes_sd_configs:
+                    - role: pod
+                      namespaces:
+                        names:
+                          - default
+                  relabel_configs:
+                    - source_labels: [__meta_kubernetes_pod_label_app]
+                      action: keep
+                      regex: kontroler-manager
+                    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                      action: keep
+                      regex: true
+                    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+                      action: replace
+                      target_label: __scheme__
+                      regex: (.+)
+                    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                      action: replace
+                      target_label: __metrics_path__
+                      regex: (.+)
+                    - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                      action: replace
+                      regex: ([^:]+)(?::\d+)?;(\d+)
+                      replacement: $1:$2
+                      target_label: __address__
+                    - action: labelmap
+                      regex: __meta_kubernetes_pod_label_(.+)
+                    - source_labels: [__meta_kubernetes_namespace]
+                      action: replace
+                      target_label: kubernetes_namespace
+                    - source_labels: [__meta_kubernetes_pod_name]
+                      action: replace
+                      target_label: kubernetes_pod_name
+                  metrics_path: '/metrics'
+                  scrape_interval: 30s
+                  scrape_timeout: 10s
+              grafana.enabled: true
+              grafana.adminPassword: "admin"
+              grafana.persistence.enabled: true
+              grafana.persistence.size: "5Gi"
+              grafana.sidecar.dashboards.enabled: true
+              grafana.sidecar.datasources.enabled: true
+              alertmanager.enabled: true
+              nodeExporter.enabled: true
+              kubeStateMetrics.enabled: true
+              defaultRules.create: true
+
     portForward:
       - resourceType: service
         resourceName: postgres
@@ -49,3 +112,13 @@ profiles:
         resourceName: minio
         port: 9000
         localPort: 9000
+      - resourceType: service
+        resourceName: prometheus-kube-prometheus-prometheus
+        namespace: monitoring
+        port: 9090
+        localPort: 9090
+      - resourceType: service
+        resourceName: prometheus-grafana
+        namespace: monitoring
+        port: 80
+        localPort: 3001
