@@ -141,10 +141,10 @@ func UpdateConnectionMetrics(dbType string, active, idle, max int) {
 }
 
 // UpdateContentMetrics updates database content metrics
-func UpdateContentMetrics(dbType string, dags map[string]int, dagRuns map[string]int, taskRuns map[string]int) {
+func UpdateContentMetrics(dbType string, namespace string, dags map[string]int, dagRuns map[string]int, taskRuns map[string]int) {
 	// Update DAG metrics
 	for status, count := range dags {
-		DatabaseDAGsTotal.WithLabelValues(dbType, "default", status).Set(float64(count))
+		DatabaseDAGsTotal.WithLabelValues(dbType, namespace, status).Set(float64(count))
 	}
 
 	// Update DAG run metrics

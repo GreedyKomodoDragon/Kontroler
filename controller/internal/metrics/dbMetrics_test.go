@@ -132,6 +132,7 @@ func TestUpdateContentMetrics(t *testing.T) {
 	metrics.DatabaseTaskRunsTotal.Reset()
 
 	dbType := "test_db"
+	namespace := "test_namespace"
 
 	dags := map[string]int{
 		"active":    10,
@@ -154,12 +155,12 @@ func TestUpdateContentMetrics(t *testing.T) {
 	}
 
 	// Update content metrics
-	metrics.UpdateContentMetrics(dbType, dags, dagRuns, taskRuns)
+	metrics.UpdateContentMetrics(dbType, namespace, dags, dagRuns, taskRuns)
 
 	// Verify DAG metrics
-	activeDags := testutil.ToFloat64(metrics.DatabaseDAGsTotal.WithLabelValues(dbType, "default", "active"))
-	suspendedDags := testutil.ToFloat64(metrics.DatabaseDAGsTotal.WithLabelValues(dbType, "default", "suspended"))
-	inactiveDags := testutil.ToFloat64(metrics.DatabaseDAGsTotal.WithLabelValues(dbType, "default", "inactive"))
+	activeDags := testutil.ToFloat64(metrics.DatabaseDAGsTotal.WithLabelValues(dbType, namespace, "active"))
+	suspendedDags := testutil.ToFloat64(metrics.DatabaseDAGsTotal.WithLabelValues(dbType, namespace, "suspended"))
+	inactiveDags := testutil.ToFloat64(metrics.DatabaseDAGsTotal.WithLabelValues(dbType, namespace, "inactive"))
 
 	assert.Equal(t, float64(10), activeDags, "Active DAGs should be 10")
 	assert.Equal(t, float64(2), suspendedDags, "Suspended DAGs should be 2")

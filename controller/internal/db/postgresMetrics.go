@@ -53,7 +53,7 @@ func (m *metricsPostgresDAGManager) collectConnectionMetrics() {
 		int(stats.IdleConns()),
 		int(stats.MaxConns()),
 	)
-	logger.V(1).Info("Initial connection metrics collected",
+	log.Log.Info("Initial connection metrics collected",
 		"active", stats.AcquiredConns(),
 		"idle", stats.IdleConns(),
 		"max", stats.MaxConns())
@@ -71,7 +71,7 @@ func (m *metricsPostgresDAGManager) collectConnectionMetrics() {
 				int(stats.IdleConns()),
 				int(stats.MaxConns()),
 			)
-			logger.V(1).Info("Connection metrics updated",
+			log.Log.Info("Connection metrics updated",
 				"active", stats.AcquiredConns(),
 				"idle", stats.IdleConns(),
 				"max", stats.MaxConns())
@@ -104,85 +104,104 @@ func (m *metricsPostgresDAGManager) updateContentMetrics(logger logr.Logger) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Collect DAG metrics
-	var active, suspended, inactive int
-	err := m.pool.QueryRow(ctx, `
+	// Collect DAG metrics grouped by namespace
+	rows, err := m.pool.Query(ctx, `
 		SELECT 
+			namespace,
 			COUNT(CASE WHEN active = true AND suspended = false THEN 1 END) as active,
 			COUNT(CASE WHEN active = true AND suspended = true THEN 1 END) as suspended,
 			COUNT(CASE WHEN active = false THEN 1 END) as inactive
 		FROM DAGs
-	`).Scan(&active, &suspended, &inactive)
+		GROUP BY namespace
+	`)
 
 	if err != nil {
 		logger.Error(err, "Failed to collect DAG metrics")
 		metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "dag_counts_error")
 		return
 	}
+	defer rows.Close()
 
-	logger.V(1).Info("DAG metrics collected", "active", active, "suspended", suspended, "inactive", inactive)
+	// Process each namespace's DAG counts
+	for rows.Next() {
+		var namespace string
+		var active, suspended, inactive int
 
-	dagCounts := map[string]int{
-		"active":    active,
-		"suspended": suspended,
-		"inactive":  inactive,
+		if err := rows.Scan(&namespace, &active, &suspended, &inactive); err != nil {
+			logger.Error(err, "Failed to scan DAG metrics row")
+			metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "dag_scan_error")
+			continue
+		}
+
+		log.Log.Info("DAG metrics collected", "namespace", namespace, "active", active, "suspended", suspended, "inactive", inactive)
+
+		dagCounts := map[string]int{
+			"active":    active,
+			"suspended": suspended,
+			"inactive":  inactive,
+		}
+
+		// Collect DAG run metrics for this namespace
+		var runningRuns, successRuns, failedRuns, pendingRuns int
+		dagRunErr := m.pool.QueryRow(ctx, `
+			SELECT 
+				COUNT(CASE WHEN dr.status = 'running' THEN 1 END) as running,
+				COUNT(CASE WHEN dr.status = 'success' THEN 1 END) as success,
+				COUNT(CASE WHEN dr.status = 'failed' THEN 1 END) as failed,
+				COUNT(CASE WHEN dr.status = 'pending' THEN 1 END) as pending
+			FROM DAG_Runs dr
+			JOIN DAGs d ON dr.dag_id = d.dag_id
+			WHERE d.namespace = $1
+		`, namespace).Scan(&runningRuns, &successRuns, &failedRuns, &pendingRuns)
+
+		if dagRunErr != nil {
+			logger.Error(dagRunErr, "Failed to collect DAG run metrics", "namespace", namespace)
+			metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "dag_run_counts_error")
+			continue
+		}
+
+		log.Log.Info("DAG run metrics collected", "namespace", namespace, "running", runningRuns, "success", successRuns, "failed", failedRuns, "pending", pendingRuns)
+
+		dagRunCounts := map[string]int{
+			"running": runningRuns,
+			"success": successRuns,
+			"failed":  failedRuns,
+			"pending": pendingRuns,
+		}
+
+		// Collect task run metrics for this namespace
+		var runningTasks, successTasks, failedTasks, pendingTasks int
+		taskRunErr := m.pool.QueryRow(ctx, `
+			SELECT 
+				COUNT(CASE WHEN tr.status = 'running' THEN 1 END) as running,
+				COUNT(CASE WHEN tr.status = 'success' THEN 1 END) as success,
+				COUNT(CASE WHEN tr.status = 'failed' THEN 1 END) as failed,
+				COUNT(CASE WHEN tr.status = 'pending' THEN 1 END) as pending
+			FROM Task_Runs tr
+			JOIN DAG_Runs dr ON tr.run_id = dr.run_id
+			JOIN DAGs d ON dr.dag_id = d.dag_id
+			WHERE d.namespace = $1
+		`, namespace).Scan(&runningTasks, &successTasks, &failedTasks, &pendingTasks)
+
+		if taskRunErr != nil {
+			logger.Error(taskRunErr, "Failed to collect task run metrics", "namespace", namespace)
+			metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "task_run_counts_error")
+			continue
+		}
+
+		log.Log.Info("Task run metrics collected", "namespace", namespace, "running", runningTasks, "success", successTasks, "failed", failedTasks, "pending", pendingTasks)
+
+		taskRunCounts := map[string]int{
+			"running": runningTasks,
+			"success": successTasks,
+			"failed":  failedTasks,
+			"pending": pendingTasks,
+		}
+
+		// Update metrics for this namespace
+		metrics.UpdateContentMetrics("postgresql", namespace, dagCounts, dagRunCounts, taskRunCounts)
+		log.Log.Info("Content metrics updated successfully", "namespace", namespace)
 	}
-
-	// Collect DAG run metrics
-	var runningRuns, successRuns, failedRuns, pendingRuns int
-	err = m.pool.QueryRow(ctx, `
-		SELECT 
-			COUNT(CASE WHEN status = 'running' THEN 1 END) as running,
-			COUNT(CASE WHEN status = 'success' THEN 1 END) as success,
-			COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
-			COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending
-		FROM DAG_Runs
-	`).Scan(&runningRuns, &successRuns, &failedRuns, &pendingRuns)
-
-	if err != nil {
-		logger.Error(err, "Failed to collect DAG run metrics")
-		metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "dag_run_counts_error")
-		return
-	}
-
-	logger.V(1).Info("DAG run metrics collected", "running", runningRuns, "success", successRuns, "failed", failedRuns, "pending", pendingRuns)
-
-	dagRunCounts := map[string]int{
-		"running": runningRuns,
-		"success": successRuns,
-		"failed":  failedRuns,
-		"pending": pendingRuns,
-	}
-
-	// Collect task run metrics
-	var runningTasks, successTasks, failedTasks, pendingTasks int
-	err = m.pool.QueryRow(ctx, `
-		SELECT 
-			COUNT(CASE WHEN status = 'running' THEN 1 END) as running,
-			COUNT(CASE WHEN status = 'success' THEN 1 END) as success,
-			COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
-			COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending
-		FROM Task_Runs
-	`).Scan(&runningTasks, &successTasks, &failedTasks, &pendingTasks)
-
-	if err != nil {
-		logger.Error(err, "Failed to collect task run metrics")
-		metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "task_run_counts_error")
-		return
-	}
-
-	logger.V(1).Info("Task run metrics collected", "running", runningTasks, "success", successTasks, "failed", failedTasks, "pending", pendingTasks)
-
-	taskRunCounts := map[string]int{
-		"running": runningTasks,
-		"success": successTasks,
-		"failed":  failedTasks,
-		"pending": pendingTasks,
-	}
-
-	// Update metrics
-	metrics.UpdateContentMetrics("postgresql", dagCounts, dagRunCounts, taskRunCounts)
-	logger.V(1).Info("Content metrics updated successfully")
 }
 
 // recordQueryMetrics is a helper to record query metrics
