@@ -97,6 +97,18 @@ func NewSqliteManager(ctx context.Context, parser *cron.Parser, config *SQLiteCo
 	}, db, nil
 }
 
+// NewSqliteManagerWithMetrics creates a new SQLite DAG manager with metrics collection enabled
+func NewSqliteManagerWithMetrics(ctx context.Context, parser *cron.Parser, config *SQLiteConfig) (DBDAGManager, *sql.DB, error) {
+	// Create the base manager
+	baseManager, dbConn, err := NewSqliteManager(ctx, parser, config)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Wrap with metrics
+	return NewMetricsSqliteDAGManager(baseManager.(*sqliteDAGManager), dbConn), dbConn, nil
+}
+
 // Add this method after the NewSqliteManager function
 func (s *sqliteDAGManager) withTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)

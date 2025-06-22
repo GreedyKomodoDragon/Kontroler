@@ -45,6 +45,18 @@ func NewPostgresDAGManager(ctx context.Context, pool *pgxpool.Pool, parser *cron
 	}, nil
 }
 
+// NewPostgresDAGManagerWithMetrics creates a new PostgreSQL DAG manager with metrics collection enabled
+func NewPostgresDAGManagerWithMetrics(ctx context.Context, pool *pgxpool.Pool, parser *cron.Parser) (DBDAGManager, error) {
+	// Create the base manager
+	baseManager, err := NewPostgresDAGManager(ctx, pool, parser)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap with metrics
+	return NewMetricsPostgresDAGManager(baseManager.(*postgresDAGManager), pool), nil
+}
+
 func (p *postgresDAGManager) InitaliseDatabase(ctx context.Context) error {
 	return p.migrations.MigrateUp(ctx)
 }
