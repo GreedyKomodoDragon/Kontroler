@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.41
-	github.com/gofiber/fiber/v2 v2.52.5
+	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/prometheus/client_golang v1.20.4
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.36.0
