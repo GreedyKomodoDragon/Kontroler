@@ -437,3 +437,10 @@ func (m *MetricsSqliteDAGManager) DagrunExists(ctx context.Context, dagrunId int
 	m.recordQueryMetrics("select", "dag_runs", start, err)
 	return result, err
 }
+
+func (m *MetricsSqliteDAGManager) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error) {
+	start := time.Now()
+	dagName, taskName, namespace, err = m.sqliteDAGManager.GetTaskRunInfo(ctx, taskRunId)
+	m.recordQueryMetrics("select", "task_runs", start, err)
+	return dagName, taskName, namespace, err
+}

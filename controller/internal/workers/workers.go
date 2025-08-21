@@ -10,6 +10,7 @@ import (
 
 	"kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/metrics"
 	"kontroler-controller/internal/object"
 	"kontroler-controller/internal/queue"
 	"kontroler-controller/internal/webhook"
@@ -20,6 +21,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+// Constants for error messages and annotations
+const (
+	kontrolerTaskID      = "kontroler/task-id"
+	kontrolerDagRunID    = "kontroler/dagRun-id"
+	errMsgDagRunID       = "failed to get dag run ID"
+	errMsgWebhookDetails = "failed to get webhook details"
+	errMsgTaskRunID      = "failed to get task run ID"
+	errFormatWithString  = "%w: %s"
 )
 
 type Worker[T any] interface {
@@ -105,11 +116,14 @@ func (w *worker) Run(ctx context.Context) error {
 }
 
 func (w *worker) handleAdd(pod *v1.Pod, eventTime *time.Time) {
+	// Record worker processing metric
+	metrics.RecordWorkerTaskProcessing(w.id, "add")
 	w.handleOutcome(pod, "add", eventTime)
-
 }
 
 func (t *worker) handleUpdate(pod *v1.Pod, eventTime *time.Time) {
+	// Record worker processing metric
+	metrics.RecordWorkerTaskProcessing(t.id, "update")
 	t.handleOutcome(pod, "update", eventTime)
 }
 
@@ -117,9 +131,14 @@ func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) 
 	ctx := context.Background()
 	log.Log.Info("pod event", "worker", w.id, "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
+	// Update queue size metric
+	if queueSize, err := w.queue.Size(); err == nil {
+		metrics.UpdateWorkerQueueSize(w.id, int(queueSize))
+	}
+
 	taskRunId, err := w.getTaskRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to get task run ID", "pod", pod.Name)
+		log.Log.Error(err, errMsgTaskRunID, "pod", pod.Name)
 		return
 	}
 
@@ -153,9 +172,11 @@ func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) 
 func (w *worker) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
 	log.Log.Info("task succeeded", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 
+	w.recordSuccessMetrics(ctx, pod, taskRunId)
+
 	dagRunId, err := w.getDagRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
+		log.Log.Error(err, errMsgDagRunID, "pod", pod.Name)
 		return
 	}
 
@@ -170,32 +191,63 @@ func (w *worker) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskR
 		return
 	}
 
+	w.sendSuccessWebhook(ctx, pod, dagRunId, taskRunId)
+
+	w.processNextTasks(ctx, pod, dagRunId, tasks)
+}
+
+func (w *worker) recordSuccessMetrics(ctx context.Context, pod *v1.Pod, taskRunId int) {
+	// Get DAG and task names for metrics
+	dagName, taskName, namespace := w.getTaskRunMetricsInfo(ctx, taskRunId)
+
+	// Record task outcome metric
+	metrics.RecordTaskOutcome(namespace, dagName, taskName, "success")
+
+	// Record task execution duration if available
+	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
+		terminated := pod.Status.ContainerStatuses[0].State.Terminated
+		duration := terminated.FinishedAt.Sub(terminated.StartedAt.Time).Seconds()
+		metrics.RecordTaskExecutionDuration(namespace, dagName, taskName, "success", duration)
+	}
+}
+
+func (w *worker) sendSuccessWebhook(ctx context.Context, pod *v1.Pod, dagRunId, taskRunId int) {
 	webhook, err := w.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
 		go w.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "success", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
+}
 
+func (w *worker) processNextTasks(ctx context.Context, pod *v1.Pod, dagRunId int, tasks []db.Task) {
 	log.Log.Info("number of tasks", "tasks", len(tasks))
 
 	if len(tasks) == 0 {
-		complete, err := w.checkIfDagRunIsComplete(ctx, dagRunId)
-		if err != nil {
-			log.Log.Error(err, "failed to check if dag run is complete", "runId", dagRunId)
-			return
-		}
-
-		if !complete {
-			return
-		}
-
-		if err := w.deletePVC(ctx, pod); err != nil {
-			log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", dagRunId, "status", pod.Status.Phase)
-		}
+		w.handleDagRunCompletion(ctx, pod, dagRunId)
 		return
 	}
 
+	w.allocateNextTasks(ctx, pod, dagRunId, tasks)
+}
+
+func (w *worker) handleDagRunCompletion(ctx context.Context, pod *v1.Pod, dagRunId int) {
+	complete, err := w.checkIfDagRunIsComplete(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if dag run is complete", "runId", dagRunId)
+		return
+	}
+
+	if !complete {
+		return
+	}
+
+	if err := w.deletePVC(ctx, pod); err != nil {
+		log.Log.Error(err, "failed to delete PVC", "pod", pod.Name, "namespace", pod.Namespace, "dagRunId", dagRunId, "status", pod.Status.Phase)
+	}
+}
+
+func (w *worker) allocateNextTasks(ctx context.Context, pod *v1.Pod, dagRunId int, tasks []db.Task) {
 	for _, task := range tasks {
 		taskRunId, err := w.dbManager.MarkTaskAsStarted(ctx, dagRunId, task.Id)
 		if err != nil {
@@ -214,18 +266,13 @@ func (w *worker) handleSuccessfulTaskRun(ctx context.Context, pod *v1.Pod, taskR
 }
 
 func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
-	// mark exitcode as -1 if pod was deleted before it started - means something odd happened
-	var exitcode int32 = -1
-	if len(pod.Status.ContainerStatuses) == 0 {
-		log.Log.Info("task failed without container status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
-	} else {
-		log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
-		exitcode = pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
-	}
+	exitcode := t.getExitCode(pod, taskRunId)
+
+	t.recordFailureMetrics(ctx, pod, taskRunId)
 
 	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
+		log.Log.Error(err, errMsgDagRunID, "pod", pod.Name)
 		return
 	}
 
@@ -245,31 +292,96 @@ func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId
 		return
 	}
 
-	container := pod.Spec.Containers[0]
-
 	if !ok {
 		t.handleUnretryablePod(ctx, pod, taskRunId, dagRunId, exitcode)
 		return
 	}
 
-	taskIdStr, ok := pod.Annotations["kontroler/task-id"]
-	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", "kontroler/task-id", "pod", pod.Name)
+	t.retryFailedTask(ctx, pod, dagRunId, taskRunId, exitcode)
+}
+
+func (t *worker) getExitCode(pod *v1.Pod, taskRunId int) int32 {
+	// mark exitcode as -1 if pod was deleted before it started - means something odd happened
+	var exitcode int32 = -1
+	if len(pod.Status.ContainerStatuses) == 0 {
+		log.Log.Info("task failed without container status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
+	} else {
+		log.Log.Info("task failed", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "exitcode", pod.Status.ContainerStatuses[0].State.Terminated.ExitCode)
+		exitcode = pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+	}
+	return exitcode
+}
+
+func (t *worker) recordFailureMetrics(ctx context.Context, pod *v1.Pod, taskRunId int) {
+	// Get DAG and task names for metrics
+	dagName, taskName, namespace := t.getTaskRunMetricsInfo(ctx, taskRunId)
+
+	// Record task outcome metric
+	metrics.RecordTaskOutcome(namespace, dagName, taskName, "failed")
+
+	// Record task execution duration if available
+	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
+		terminated := pod.Status.ContainerStatuses[0].State.Terminated
+		duration := terminated.FinishedAt.Sub(terminated.StartedAt.Time).Seconds()
+		metrics.RecordTaskExecutionDuration(namespace, dagName, taskName, "failed", duration)
+	}
+}
+
+func (t *worker) retryFailedTask(ctx context.Context, pod *v1.Pod, dagRunId, taskRunId int, exitcode int32) {
+	// Get DAG and task names for metrics
+	dagName, taskName, namespace := t.getTaskRunMetricsInfo(ctx, taskRunId)
+
+	// Record retry metric
+	metrics.RecordTaskRetry(namespace, dagName, taskName, fmt.Sprintf("exit_code_%d", exitcode))
+
+	taskId, err := t.getTaskIdFromPod(pod)
+	if err != nil {
 		return
+	}
+
+	dbTask, err := t.createTaskFromPod(ctx, pod, taskId)
+	if err != nil {
+		return
+	}
+
+	container := pod.Spec.Containers[0]
+	taskUUID, err := t.taskAllocator.AllocateTaskWithEnv(ctx, dbTask, dagRunId, taskRunId, pod.Namespace, container.Env, &container.Resources)
+	if err != nil {
+		log.Log.Error(err, "failed to allocate new pod")
+		return
+	}
+
+	if err := t.dbManager.IncrementAttempts(ctx, taskRunId); err != nil {
+		log.Log.Error(err, "failed to increment attempts", "taskRunId", taskRunId)
+	}
+
+	log.Log.Info("new task allocated allocated with env", "taskUUID", taskUUID)
+}
+
+func (t *worker) getTaskIdFromPod(pod *v1.Pod) (int, error) {
+	taskIdStr, ok := pod.Annotations[kontrolerTaskID]
+	if !ok {
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", kontrolerTaskID, "pod", pod.Name)
+		return 0, fmt.Errorf("missing annotation")
 	}
 
 	taskId, err := strconv.Atoi(taskIdStr)
 	if err != nil {
-		log.Log.Error(fmt.Errorf("failed to convert task id string: %s", taskIdStr), "annotation", "kontroler/task-id", "value", taskIdStr, "pod", pod.Name)
-		return
+		log.Log.Error(fmt.Errorf("failed to convert task id string: %s", taskIdStr), "annotation", kontrolerTaskID, "value", taskIdStr, "pod", pod.Name)
+		return 0, err
 	}
 
+	return taskId, nil
+}
+
+func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskId int) (*db.Task, error) {
 	script, injector, err := t.dbManager.GetTaskScriptAndInjectorImage(ctx, taskId)
 	if err != nil {
 		log.Log.Error(err, "GetTaskScriptAndInjectorImage failed", "pod", pod.Name)
-		return
+		return nil, err
 	}
 
+	container := pod.Spec.Containers[0]
 	dbTask := &db.Task{
 		Id:      taskId,
 		Name:    container.Name,
@@ -298,17 +410,7 @@ func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId
 		dbTask.ScriptInjectorImage = *injector
 	}
 
-	taskUUID, err := t.taskAllocator.AllocateTaskWithEnv(ctx, dbTask, dagRunId, taskRunId, pod.Namespace, container.Env, &container.Resources)
-	if err != nil {
-		log.Log.Error(err, "failed to allocate new pod")
-		return
-	}
-
-	if err := t.dbManager.IncrementAttempts(ctx, taskRunId); err != nil {
-		log.Log.Error(err, "failed to increment attempts", "taskRunId", taskRunId)
-	}
-
-	log.Log.Info("new task allocated allocated with env", "taskUUID", taskUUID)
+	return dbTask, nil
 }
 
 func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
@@ -350,7 +452,7 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 
 	webhook, err := w.dbManager.GetWebhookDetails(context.Background(), dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
 		go w.webhookNotifier.NotifyPodEvent(
 			pod.Spec.Containers[0].Name,
@@ -370,13 +472,19 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 func (w *worker) handleUnretryablePod(ctx context.Context, pod *v1.Pod, taskRunId, dagRunId int, exitCode int32) {
 	log.Log.Info("pod has reached it max backoffLimit or exit code not recoverable", "podUID", pod.UID, "name", pod.Name, "exitCode", exitCode)
 
+	// Get DAG and task names for metrics
+	dagName, taskName, namespace := w.getTaskRunMetricsInfo(ctx, taskRunId)
+
 	if err := w.dbManager.MarkTaskAsFailed(ctx, taskRunId); err != nil {
 		log.Log.Error(err, "failed to mark task as failed", "podUID", pod.UID, "name", pod.Name, "event", "add/update")
 	}
 
+	// Record metrics for unretryable failure
+	metrics.RecordTaskOutcome(namespace, dagName, taskName, "unretryable")
+
 	webhook, err := w.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
 		go w.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "failed", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
@@ -427,27 +535,33 @@ func (t *worker) handleStartedTaskRun(ctx context.Context, pod *v1.Pod, taskRunI
 
 	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
+		log.Log.Error(err, errMsgDagRunID, "pod", pod.Name)
 		return
 	}
 
 	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
 		t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "started", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
 }
 
 func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) bool {
+	// Get DAG and task names for metrics
+	dagName, taskName, namespace := t.getTaskRunMetricsInfo(ctx, taskRunId)
+
 	dagRunId, err := t.getDagRunID(pod)
 	if err != nil {
-		log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
+		log.Log.Error(err, errMsgDagRunID, "pod", pod.Name)
 		return true
 	}
 
 	if hasConfigError(pod) {
 		log.Log.Info("detected config error, treating as failure", "podUID", pod.UID, "name", pod.Name)
+		// Record metrics for config error state transition
+		metrics.RecordTaskOutcome(namespace, dagName, taskName, "config_error")
+
 		// Treat config error as a special kind of failure
 		t.handleConfigError(ctx, pod, taskRunId, dagRunId)
 		return false
@@ -457,7 +571,7 @@ func (t *worker) handlePendingTaskRun(ctx context.Context, pod *v1.Pod, taskRunI
 
 	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
 		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "pending", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
@@ -485,7 +599,7 @@ func (t *worker) handleConfigError(ctx context.Context, pod *v1.Pod, taskRunId, 
 
 	webhook, err := t.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
-		log.Log.Error(err, "failed to get webhook details", "runId", dagRunId)
+		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
 		go t.webhookNotifier.NotifyTaskRun(pod.Spec.Containers[0].Name, "failed", dagRunId, taskRunId, webhook.URL, webhook.VerifySSL)
 	}
@@ -533,24 +647,36 @@ func (t *worker) checkIfDagRunIsComplete(ctx context.Context, runId int) (bool, 
 func (t *worker) getTaskRunID(pod *v1.Pod) (int, error) {
 	taskRunIdStr, ok := pod.Annotations[kontrolerTaskRunID]
 	if !ok {
-		return 0, fmt.Errorf("%w: %s", ErrMissingAnnotation, kontrolerTaskRunID)
+		return 0, fmt.Errorf(errFormatWithString, ErrMissingAnnotation, kontrolerTaskRunID)
 	}
 
 	taskRunId, err := strconv.Atoi(taskRunIdStr)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s", ErrInvalidTaskRunID, taskRunIdStr)
+		return 0, fmt.Errorf(errFormatWithString, ErrInvalidTaskRunID, taskRunIdStr)
 	}
 
 	return taskRunId, nil
 }
 
 func (t *worker) getDagRunID(pod *v1.Pod) (int, error) {
-	dagRunStr, ok := pod.Annotations["kontroler/dagRun-id"]
+	dagRunStr, ok := pod.Annotations[kontrolerDagRunID]
 	if !ok {
-		return 0, fmt.Errorf("%w: kontroler/dagRun-id", ErrMissingAnnotation)
+		return 0, fmt.Errorf(errFormatWithString, ErrMissingAnnotation, kontrolerDagRunID)
 	}
 
 	return strconv.Atoi(dagRunStr)
+}
+
+// Helper function to get DAG and task names for metrics
+func (w *worker) getTaskRunMetricsInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string) {
+	// Get DAG name, task name, and namespace for metrics
+	dagName, taskName, namespace, err := w.dbManager.GetTaskRunInfo(ctx, taskRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to get task run info for metrics", "taskRunId", taskRunId)
+		// Use fallback values if DB query fails
+		return "unknown", "unknown", "unknown"
+	}
+	return dagName, taskName, namespace
 }
 
 func (w *worker) handleLogCollection(ctx context.Context, pod *v1.Pod) {
@@ -558,56 +684,75 @@ func (w *worker) handleLogCollection(ctx context.Context, pod *v1.Pod) {
 		return
 	}
 
-	// log collection
-	readyForLogCollection := false
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.State.Running != nil || containerStatus.State.Terminated != nil {
-			readyForLogCollection = true
-			break
-		}
-	}
-
-	if !readyForLogCollection {
+	if !w.isPodReadyForLogCollection(pod) {
 		return
 	}
 
 	// Attempt to get logs, but we don't stop if we can't get them
-	go func() {
-		dagRunId, err := w.getDagRunID(pod)
-		if err != nil {
-			log.Log.Error(err, "failed to get dag run ID", "pod", pod.Name)
-			return
-		}
+	go w.performLogCollection(ctx, pod)
+}
 
-		if ok := w.logStore.IsFetching(dagRunId, pod); ok {
-			log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
-			return
+func (w *worker) isPodReadyForLogCollection(pod *v1.Pod) bool {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.State.Running != nil || containerStatus.State.Terminated != nil {
+			return true
 		}
+	}
+	return false
+}
 
-		if err := w.logStore.MarkAsFetching(dagRunId, pod); err != nil {
-			log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
-			return
-		}
+func (w *worker) performLogCollection(ctx context.Context, pod *v1.Pod) {
+	dagRunId, err := w.getDagRunID(pod)
+	if err != nil {
+		log.Log.Error(err, errMsgDagRunID, "pod", pod.Name)
+		return
+	}
 
-		defer w.logStore.UnlistFetching(dagRunId, pod)
+	if w.isAlreadyFetching(dagRunId, pod) {
+		return
+	}
 
-		log.Log.Info("started collecting logs", "pod", pod.Name)
-		if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
-			log.Log.Error(err, "failed to uploadLogs")
-		}
+	if err := w.logStore.MarkAsFetching(dagRunId, pod); err != nil {
+		log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
+		return
+	}
 
-		// Check if dagrun still exists after log collection
-		exists, err := w.dbManager.DagrunExists(ctx, dagRunId)
-		if err != nil {
-			log.Log.Error(err, "failed to check if dagrun exists", "dagrunId", dagRunId)
-		} else if !exists {
-			// Dagrun was deleted during log collection, clean up the logs
-			if err := w.logStore.DeleteLogs(ctx, dagRunId); err != nil {
-				log.Log.Error(err, "failed to delete logs for deleted dagrun", "dagrunId", dagRunId)
-			}
-			log.Log.Info("deleted logs for non-existent dagrun", "dagrunId", dagRunId)
-		}
-	}()
+	defer w.logStore.UnlistFetching(dagRunId, pod)
+
+	w.uploadLogsAndCleanup(ctx, dagRunId, pod)
+}
+
+func (w *worker) isAlreadyFetching(dagRunId int, pod *v1.Pod) bool {
+	if ok := w.logStore.IsFetching(dagRunId, pod); ok {
+		log.Log.Info("already fetching", "podUID", pod.UID, "name", pod.Name)
+		return true
+	}
+	return false
+}
+
+func (w *worker) uploadLogsAndCleanup(ctx context.Context, dagRunId int, pod *v1.Pod) {
+	log.Log.Info("started collecting logs", "pod", pod.Name)
+	if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
+		log.Log.Error(err, "failed to uploadLogs")
+	}
+
+	// Check if dagrun still exists after log collection
+	exists, err := w.dbManager.DagrunExists(ctx, dagRunId)
+	if err != nil {
+		log.Log.Error(err, "failed to check if dagrun exists", "dagrunId", dagRunId)
+		return
+	}
+
+	if !exists {
+		w.cleanupLogsForDeletedDagrun(ctx, dagRunId)
+	}
+}
+
+func (w *worker) cleanupLogsForDeletedDagrun(ctx context.Context, dagRunId int) {
+	if err := w.logStore.DeleteLogs(ctx, dagRunId); err != nil {
+		log.Log.Error(err, "failed to delete logs for deleted dagrun", "dagrunId", dagRunId)
+	}
+	log.Log.Info("deleted logs for non-existent dagrun", "dagrunId", dagRunId)
 }
 
 func hasConfigError(pod *v1.Pod) bool {

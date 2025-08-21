@@ -437,3 +437,10 @@ func (m *metricsPostgresDAGManager) DagrunExists(ctx context.Context, dagrunId i
 	m.recordQueryMetrics("select", "dag_runs", start, err)
 	return result, err
 }
+
+func (m *metricsPostgresDAGManager) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error) {
+	start := time.Now()
+	dagName, taskName, namespace, err = m.postgresDAGManager.GetTaskRunInfo(ctx, taskRunId)
+	m.recordQueryMetrics("select", "task_runs", start, err)
+	return dagName, taskName, namespace, err
+}

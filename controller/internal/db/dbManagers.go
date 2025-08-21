@@ -79,4 +79,6 @@ type DBDAGManager interface {
 	SuspendDagRun(ctx context.Context, dagRunId int) ([]RunningPodInfo, error)
 	DeleteDagRun(ctx context.Context, dagRunId int) error
 	DagrunExists(ctx context.Context, dagrunId int) (bool, error)
+	// GetTaskRunInfo gets the DAG name, task name, and namespace for a task run ID - used for metrics
+	GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error)
 }
