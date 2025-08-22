@@ -1369,3 +1369,71 @@ func TestPostgresDAGManager_Scheduler_works(t *testing.T) {
 
 	testDAGManager_scheduler_works(t, dm)
 }
+
+func TestPostgresDAGManager_GetTaskRunInfo_Success(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetTaskRunInfo_Success(t, dm)
+}
+
+func TestPostgresDAGManager_GetTaskRunInfo_NotFound(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetTaskRunInfo_NotFound(t, dm)
+}
+
+func TestPostgresDAGManager_GetTaskRunInfo_MultipleDAGs(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetTaskRunInfo_MultipleDAGs(t, dm)
+}
+
+func TestPostgresDAGManager_GetTaskRunInfo_ContextCancelled(t *testing.T) {
+	pool, err := utils.SetupPostgresContainer(context.Background())
+	if err != nil {
+		t.Fatalf("Could not set up PostgreSQL container: %v", err)
+	}
+	defer pool.Close()
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	testDAGManagerGetTaskRunInfo_ContextCancelled(t, dm)
+}

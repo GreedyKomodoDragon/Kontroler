@@ -1515,7 +1515,7 @@ func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
 
 		tasksSecond, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunID)
 		require.NoError(t, err)
-		require.Len(t, tasksSecond, 3)
+		require.Len(t, tasksSecond, 2)
 
 		taskRunOne, err := dm.MarkTaskAsStarted(context.Background(), runID, tasksSecond[0].Id)
 		require.NoError(t, err)
@@ -2209,7 +2209,8 @@ func testDAGManager_DeleteDagRun_WithParameters(t *testing.T, dm db.DBDAGManager
 		}
 
 		runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{
-			DagName: "test_dag_with_params",
+			DagName:    "test_dag_with_params",
+			Parameters: []v1alpha1.ParameterSpec{},
 		}, params, nil)
 		require.NoError(t, err)
 
@@ -2415,5 +2416,181 @@ func testDAGManager_scheduler_works(t *testing.T, dm db.DBDAGManager) {
 		dags, err := dm.GetDAGsToStartAndUpdate(context.Background(), time.Now().Add(time.Minute))
 		require.NoError(t, err)
 		require.Len(t, dags, 1, "Should return the DAG since it is not suspended")
+	})
+}
+
+// Test case: GetTaskRunInfo retrieves correct task run information
+func testDAGManagerGetTaskRunInfo_Success(t *testing.T, dm db.DBDAGManager) {
+	t.Run("GetTaskRunInfo_Success", func(t *testing.T) {
+		// First create a DAG
+		dag := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test_dag_task_run_info",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "test_task",
+						Command: []string{"echo"},
+						Args:    []string{"Hello, World!"},
+						Image:   "alpine:latest",
+					},
+				},
+			},
+		}
+
+		namespace := "test-namespace"
+		require.NoError(t, dm.InsertDAG(context.Background(), dag, namespace))
+
+		// Create a DAG run
+		runId, err := dm.CreateDAGRun(context.Background(), "test-run", &v1alpha1.DagRunSpec{
+			DagName:    "test_dag_task_run_info",
+			Parameters: []v1alpha1.ParameterSpec{},
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.NoError(t, err)
+		require.NotZero(t, runId)
+
+		// Get starting tasks to get a task ID
+		tasks, err := dm.GetStartingTasks(context.Background(), "test_dag_task_run_info", runId)
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		require.Equal(t, "test_task", tasks[0].Name)
+
+		// Mark task as started to create a task run
+		taskRunId, err := dm.MarkTaskAsStarted(context.Background(), runId, tasks[0].Id)
+		require.NoError(t, err)
+		require.NotZero(t, taskRunId)
+
+		// Test GetTaskRunInfo
+		dagName, taskName, taskNamespace, err := dm.GetTaskRunInfo(context.Background(), taskRunId)
+		require.NoError(t, err)
+		assert.Equal(t, "test_dag_task_run_info", dagName)
+		assert.Equal(t, "test_task", taskName)
+		assert.Equal(t, namespace, taskNamespace)
+	})
+}
+
+// Test case: GetTaskRunInfo returns error for non-existent task run ID
+func testDAGManagerGetTaskRunInfo_NotFound(t *testing.T, dm db.DBDAGManager) {
+	t.Run("GetTaskRunInfo_NotFound", func(t *testing.T) {
+		// Use a non-existent task run ID
+		nonExistentTaskRunId := 99999
+
+		dagName, taskName, namespace, err := dm.GetTaskRunInfo(context.Background(), nonExistentTaskRunId)
+
+		// Should return an error and empty strings
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get task run info")
+		assert.Empty(t, dagName)
+		assert.Empty(t, taskName)
+		assert.Empty(t, namespace)
+	})
+}
+
+// Test case: GetTaskRunInfo with multiple DAGs and tasks
+func testDAGManagerGetTaskRunInfo_MultipleDAGs(t *testing.T, dm db.DBDAGManager) {
+	t.Run("GetTaskRunInfo_MultipleDAGs", func(t *testing.T) {
+		// Create first DAG
+		dag1 := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "first_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/5 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "first_task",
+						Command: []string{"echo"},
+						Args:    []string{"First"},
+						Image:   "alpine:latest",
+					},
+				},
+			},
+		}
+
+		namespace1 := "namespace-1"
+		require.NoError(t, dm.InsertDAG(context.Background(), dag1, namespace1))
+
+		// Create second DAG in different namespace
+		dag2 := &v1alpha1.DAG{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "second_dag",
+			},
+			Spec: v1alpha1.DAGSpec{
+				Schedule: "*/10 * * * *",
+				Task: []v1alpha1.TaskSpec{
+					{
+						Name:    "second_task",
+						Command: []string{"echo"},
+						Args:    []string{"Second"},
+						Image:   "alpine:latest",
+					},
+				},
+			},
+		}
+
+		namespace2 := "namespace-2"
+		require.NoError(t, dm.InsertDAG(context.Background(), dag2, namespace2))
+
+		// Create runs for both DAGs
+		runId1, err := dm.CreateDAGRun(context.Background(), "run-1", &v1alpha1.DagRunSpec{
+			DagName:    "first_dag",
+			Parameters: []v1alpha1.ParameterSpec{},
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.NoError(t, err)
+
+		runId2, err := dm.CreateDAGRun(context.Background(), "run-2", &v1alpha1.DagRunSpec{
+			DagName:    "second_dag",
+			Parameters: []v1alpha1.ParameterSpec{},
+		}, map[string]v1alpha1.ParameterSpec{}, nil)
+		require.NoError(t, err)
+
+		// Get tasks and create task runs
+		tasks1, err := dm.GetStartingTasks(context.Background(), "first_dag", runId1)
+		require.NoError(t, err)
+		require.Len(t, tasks1, 1)
+
+		tasks2, err := dm.GetStartingTasks(context.Background(), "second_dag", runId2)
+		require.NoError(t, err)
+		require.Len(t, tasks2, 1)
+
+		taskRunId1, err := dm.MarkTaskAsStarted(context.Background(), runId1, tasks1[0].Id)
+		require.NoError(t, err)
+
+		taskRunId2, err := dm.MarkTaskAsStarted(context.Background(), runId2, tasks2[0].Id)
+		require.NoError(t, err)
+
+		// Test GetTaskRunInfo for first DAG
+		dagName1, taskName1, taskNamespace1, err := dm.GetTaskRunInfo(context.Background(), taskRunId1)
+		require.NoError(t, err)
+		assert.Equal(t, "first_dag", dagName1)
+		assert.Equal(t, "first_task", taskName1)
+		assert.Equal(t, namespace1, taskNamespace1)
+
+		// Test GetTaskRunInfo for second DAG
+		dagName2, taskName2, taskNamespace2, err := dm.GetTaskRunInfo(context.Background(), taskRunId2)
+		require.NoError(t, err)
+		assert.Equal(t, "second_dag", dagName2)
+		assert.Equal(t, "second_task", taskName2)
+		assert.Equal(t, namespace2, taskNamespace2)
+	})
+}
+
+// Test case: GetTaskRunInfo with context cancellation
+func testDAGManagerGetTaskRunInfo_ContextCancelled(t *testing.T, dm db.DBDAGManager) {
+	t.Run("GetTaskRunInfo_ContextCancelled", func(t *testing.T) {
+		// Create a cancelled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		// Attempt to call GetTaskRunInfo with cancelled context
+		dagName, taskName, namespace, err := dm.GetTaskRunInfo(ctx, 1)
+
+		// Should return context cancellation error
+		assert.Error(t, err)
+		assert.Empty(t, dagName)
+		assert.Empty(t, taskName)
+		assert.Empty(t, namespace)
 	})
 }

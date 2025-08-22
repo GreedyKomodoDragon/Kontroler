@@ -1292,7 +1292,7 @@
       },
       "targets": [
         {
-          "expr": "rate(kontroler_worker_task_outcome_total[5m])",
+          "expr": "rate(kontroler_task_outcome_total[5m])",
           "interval": "",
           "intervalFactor": 1,
           "legendFormat": "{{outcome}} - {{dag_name}}",
@@ -1358,7 +1358,7 @@
       "pluginVersion": "11.2.1",
       "targets": [
         {
-          "expr": "rate(kontroler_worker_task_outcome_total{outcome=\"failed\"}[5m]) / rate(kontroler_worker_task_outcome_total[5m]) * 100",
+          "expr": "rate(kontroler_task_outcome_total{outcome=\"failed\"}[5m]) / rate(kontroler_task_outcome_total[5m]) * 100",
           "interval": "",
           "intervalFactor": 1,
           "legendFormat": "Failed Task Rate %",
@@ -1448,7 +1448,7 @@
       },
       "targets": [
         {
-          "expr": "rate(kontroler_worker_task_execution_duration_seconds_sum[5m]) / rate(kontroler_worker_task_execution_duration_seconds_count[5m])",
+          "expr": "rate(kontroler_task_execution_duration_seconds_sum[5m]) / rate(kontroler_task_execution_duration_seconds_count[5m])",
           "interval": "",
           "intervalFactor": 1,
           "legendFormat": "{{dag_name}} - {{task_name}}",
@@ -1538,7 +1538,7 @@
       },
       "targets": [
         {
-          "expr": "rate(kontroler_worker_task_retries_total[5m])",
+          "expr": "rate(kontroler_task_retry_total[5m])",
           "interval": "",
           "intervalFactor": 1,
           "legendFormat": "{{dag_name}} - {{task_name}}",
@@ -1628,7 +1628,7 @@
       },
       "targets": [
         {
-          "expr": "rate(kontroler_worker_task_outcome_total[5m])",
+          "expr": "rate(kontroler_task_outcome_total[5m])",
           "interval": "",
           "intervalFactor": 1,
           "legendFormat": "Tasks Processed/sec",
