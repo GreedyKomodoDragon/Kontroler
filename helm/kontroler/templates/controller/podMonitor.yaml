@@ -1,0 +1,37 @@
+{{ if and .Values.controller.enabled .Values.controller.metrics.enabled .Values.controller.metrics.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  labels:
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/instance: controller-podmonitor
+    app.kubernetes.io/name: podmonitor
+    app.kubernetes.io/part-of: kontroler
+    control-plane: kontroller-manager
+    {{- with .Values.controller.metrics.podMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  name: controller-podmonitor
+  namespace: {{ if .Values.controller.metrics.podMonitor.namespace }}{{ .Values.controller.metrics.podMonitor.namespace }}{{ else }}{{ .Release.Namespace }}{{ end }}
+  {{- with .Values.controller.metrics.podMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podMetricsEndpoints:
+  - path: {{ .Values.controller.metrics.podMonitor.path }}
+    port: metrics
+    interval: {{ .Values.controller.metrics.podMonitor.interval }}
+    scrapeTimeout: {{ .Values.controller.metrics.podMonitor.scrapeTimeout }}
+    scheme: {{ .Values.controller.metrics.podMonitor.scheme }}
+    {{- if .Values.controller.metrics.podMonitor.tlsConfig }}
+    tlsConfig:
+      {{- toYaml .Values.controller.metrics.podMonitor.tlsConfig | nindent 6 }}
+    {{- end }}
+  selector:
+    matchLabels:
+      control-plane: kontroller-manager
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+{{ end }}

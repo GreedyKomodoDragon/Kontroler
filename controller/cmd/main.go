@@ -72,10 +72,16 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var configPath string
+	var tlsCertDir string
+	var tlsCertName string
+	var tlsKeyName string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&configPath, "configpath", "", "Path to configuration file")
+	flag.StringVar(&tlsCertDir, "tls-cert-dir", "", "Directory containing TLS certificates for secure metrics endpoint")
+	flag.StringVar(&tlsCertName, "tls-cert-name", "tls.crt", "Name of the TLS certificate file")
+	flag.StringVar(&tlsKeyName, "tls-key-name", "tls.key", "Name of the TLS private key file")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -110,6 +116,36 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	// Configure metrics server options
+	metricsOpts := metricsserver.Options{
+		BindAddress:   metricsAddr,
+		SecureServing: secureMetrics,
+		TLSOpts:       tlsOpts,
+	}
+
+	// If TLS is enabled for metrics and certificate directory is provided, configure it
+	if secureMetrics && tlsCertDir != "" {
+		// Validate that the certificate files exist
+		certPath := filepath.Join(tlsCertDir, tlsCertName)
+		keyPath := filepath.Join(tlsCertDir, tlsKeyName)
+
+		if _, err := os.Stat(certPath); os.IsNotExist(err) {
+			setupLog.Error(err, "TLS certificate file not found", "path", certPath)
+			os.Exit(1)
+		}
+
+		if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+			setupLog.Error(err, "TLS private key file not found", "path", keyPath)
+			os.Exit(1)
+		}
+
+		metricsOpts.CertDir = tlsCertDir
+		metricsOpts.CertName = tlsCertName
+		metricsOpts.KeyName = tlsKeyName
+	} else if secureMetrics {
+		setupLog.Info("TLS enabled for metrics endpoint with auto-generated certificates")
+	}
+
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
 	})
@@ -140,12 +176,8 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
-			TLSOpts:       tlsOpts,
-		},
+		Scheme:                 scheme,
+		Metrics:                metricsOpts,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,

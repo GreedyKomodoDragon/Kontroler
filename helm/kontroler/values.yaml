@@ -141,6 +141,18 @@ controller:
       prometheus.io/port: "8080"
       prometheus.io/path: "/metrics"
       prometheus.io/scheme: "https"
+    # PodMonitor configuration for Prometheus Operator
+    podMonitor:
+      enabled: true
+      namespace: ""  # If empty, will use the same namespace as the release
+      interval: "30s"
+      scrapeTimeout: "10s"
+      path: "/metrics"
+      scheme: "https"
+      tlsConfig:
+        insecureSkipVerify: true
+      labels: {}
+      annotations: {}
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
