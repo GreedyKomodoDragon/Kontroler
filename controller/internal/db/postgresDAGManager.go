@@ -1663,3 +1663,18 @@ func (p *postgresDAGManager) DagrunExists(ctx context.Context, dagrunId int) (bo
 	}
 	return exists, nil
 }
+
+func (p *postgresDAGManager) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error) {
+	err = p.pool.QueryRow(ctx, `
+		SELECT d.name, dt.name, d.namespace
+		FROM Task_Runs tr
+		JOIN DAG_Runs dr ON tr.run_id = dr.run_id
+		JOIN DAGs d ON dr.dag_id = d.dag_id
+		JOIN DAG_Tasks dt ON tr.task_id = dt.dag_task_id
+		WHERE tr.task_run_id = $1
+	`, taskRunId).Scan(&dagName, &taskName, &namespace)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get task run info: %w", err)
+	}
+	return dagName, taskName, namespace, nil
+}
