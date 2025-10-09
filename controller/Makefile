@@ -177,6 +177,30 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm project-v3-builder
 	rm Dockerfile.cross
 
+##@ Kafka Sink
+
+KAFKA_SINK_IMG ?= $(IMAGE_TAG_BASE)-kafka-sink:$(VERSION)
+
+.PHONY: kafka-sink-build
+kafka-sink-build: ## Build kafka-sink binary.
+	go build -o bin/kafka-sink cmd/kafka-sink/main.go
+
+.PHONY: kafka-sink-run
+kafka-sink-run: kafka-sink-build ## Run kafka-sink locally.
+	./bin/kafka-sink
+
+.PHONY: kafka-sink-docker-build
+kafka-sink-docker-build: ## Build docker image for kafka-sink.
+	$(CONTAINER_TOOL) build -t ${KAFKA_SINK_IMG} -f Dockerfile.kafka-sink .
+
+.PHONY: kafka-sink-docker-build-ubi
+kafka-sink-docker-build-ubi: ## Build UBI-based docker image for kafka-sink.
+	$(CONTAINER_TOOL) build -t ${KAFKA_SINK_IMG}-ubi -f Dockerfile.kafka-sink.UBI .
+
+.PHONY: kafka-sink-docker-push
+kafka-sink-docker-push: ## Push kafka-sink docker image.
+	$(CONTAINER_TOOL) push ${KAFKA_SINK_IMG}
+
 ##@ Deployment
 
 ifndef ignore-not-found

@@ -31,6 +31,40 @@ profiles:
             version: 14.10.3
             createNamespace: true
 
+          - name: kafka
+            repo: https://packages.confluent.io/helm
+            remoteChart: cp-kafka
+            namespace: kafka
+            createNamespace: true
+            setValues:
+              # Single node setup for minikube
+              replicaCount: 1
+              configurationOverrides:
+                "process.roles": "broker,controller"
+                "node.id": "1"
+                "controller.quorum.voters": "1@kafka:9093"
+                "listeners": "PLAINTEXT://:9092,CONTROLLER://:9093"
+                "advertised.listeners": "PLAINTEXT://localhost:9092"
+                "controller.listener.names": "CONTROLLER"
+                "listener.security.protocol.map": "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+                "auto.create.topics.enable": "true"
+                "default.replication.factor": "1"
+                "offsets.topic.replication.factor": "1"
+                "transaction.state.log.replication.factor": "1"
+                "transaction.state.log.min.isr": "1"
+              # Resource limits for minikube
+              resources:
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+                requests:
+                  cpu: "250m"
+                  memory: "256Mi"
+              # Storage
+              persistence:
+                enabled: true
+                size: "2Gi"
+
           - name: cert-manager
             repo: https://charts.jetstack.io
             remoteChart: cert-manager
@@ -40,53 +74,58 @@ profiles:
             setValues:
               crds.enabled: true
 
-          - name: prometheus
-            repo: https://prometheus-community.github.io/helm-charts
-            remoteChart: kube-prometheus-stack
-            namespace: monitoring
-            createNamespace: true
-            version: 65.1.1
-            setValues:
-              prometheus.prometheusSpec.scrapeInterval: "30s"
-              prometheus.prometheusSpec.evaluationInterval: "30s"
-              prometheus.prometheusSpec.retention: "7d"
-              prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage: "10Gi"
-              prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues: false
-              prometheus.prometheusSpec.podMonitorSelector: {}
-              prometheus.prometheusSpec.podMonitorNamespaceSelector: {}
-              prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues: false
-              prometheus.prometheusSpec.serviceMonitorSelector: {}
-              prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues: false
-              prometheus.prometheusSpec.ruleSelector: {}
-              prometheus.prometheusSpec.probeSelectorNilUsesHelmValues: false
-              prometheus.prometheusSpec.probeSelector: {}
-              grafana.enabled: true
-              grafana.adminPassword: "admin"
-              grafana.persistence.enabled: true
-              grafana.persistence.size: "5Gi"
-              grafana.sidecar.dashboards.enabled: true
-              grafana.sidecar.datasources.enabled: true
-              alertmanager.enabled: true
-              nodeExporter.enabled: true
-              kubeStateMetrics.enabled: true
-              defaultRules.create: true
+          # - name: prometheus
+          #   repo: https://prometheus-community.github.io/helm-charts
+          #   remoteChart: kube-prometheus-stack
+          #   namespace: monitoring
+          #   createNamespace: true
+          #   version: 65.1.1
+          #   setValues:
+          #     prometheus.prometheusSpec.scrapeInterval: "30s"
+          #     prometheus.prometheusSpec.evaluationInterval: "30s"
+          #     prometheus.prometheusSpec.retention: "7d"
+          #     prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage: "10Gi"
+          #     prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues: false
+          #     prometheus.prometheusSpec.podMonitorSelector: {}
+          #     prometheus.prometheusSpec.podMonitorNamespaceSelector: {}
+          #     prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues: false
+          #     prometheus.prometheusSpec.serviceMonitorSelector: {}
+          #     prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues: false
+          #     prometheus.prometheusSpec.ruleSelector: {}
+          #     prometheus.prometheusSpec.probeSelectorNilUsesHelmValues: false
+          #     prometheus.prometheusSpec.probeSelector: {}
+          #     grafana.enabled: true
+          #     grafana.adminPassword: "admin"
+          #     grafana.persistence.enabled: true
+          #     grafana.persistence.size: "5Gi"
+          #     grafana.sidecar.dashboards.enabled: true
+          #     grafana.sidecar.datasources.enabled: true
+          #     alertmanager.enabled: true
+          #     nodeExporter.enabled: true
+          #     kubeStateMetrics.enabled: true
+          #     defaultRules.create: true
 
     portForward:
-      - resourceType: service
-        resourceName: postgres
-        port: 5432
-        localPort: 5432
+      # - resourceType: service
+      #   resourceName: postgres
+      #   port: 5432
+      #   localPort: 5432
       - resourceType: service
         resourceName: minio
         port: 9000
         localPort: 9000
       - resourceType: service
-        resourceName: prometheus-kube-prometheus-prometheus
-        namespace: monitoring
-        port: 9090
-        localPort: 9090
-      - resourceType: service
-        resourceName: prometheus-grafana
-        namespace: monitoring
-        port: 80
-        localPort: 3001
+        resourceName: kafka
+        namespace: kafka
+        port: 9092
+        localPort: 9092
+      # - resourceType: service
+      #   resourceName: prometheus-kube-prometheus-prometheus
+      #   namespace: monitoring
+      #   port: 9090
+      #   localPort: 9090
+      # - resourceType: service
+      #   resourceName: prometheus-grafana
+      #   namespace: monitoring
+      #   port: 80
+      #   localPort: 3001

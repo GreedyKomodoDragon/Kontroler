@@ -1,0 +1,50 @@
+# Build the kafka-sink binary
+FROM greedykomodo/go-ubi:1.23.3 AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+# Copy the go source
+COPY cmd/kafka-sink/main.go cmd/kafka-sink/main.go
+COPY api/ api/
+COPY internal/ internal/
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o kafka-sink cmd/kafka-sink/main.go
+
+# Verify the binary is built
+RUN ls -la /workspace/kafka-sink
+
+# Use Red Hat UBI Minimal as the runtime image for better security and compliance
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+
+# Install ca-certificates for TLS connections (needed for Kafka SSL) and create user
+RUN microdnf update -y && \
+    microdnf install -y ca-certificates && \
+    microdnf clean all && \
+    adduser --system --no-create-home --shell /bin/false kafkasink
+
+WORKDIR /
+
+# Copy the binary from the builder stage
+COPY --from=builder /workspace/kafka-sink .
+
+# Change ownership and make executable
+RUN chown kafkasink:kafkasink /kafka-sink && \
+    chmod +x /kafka-sink
+
+# Switch to non-root user
+USER kafkasink
+
+# Expose any needed ports (none needed for kafka consumer, but keeping for future)
+# EXPOSE 8080
+
+# Health check (optional)
+# HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+#   CMD /kafka-sink --health-check || exit 1
+
+ENTRYPOINT ["/kafka-sink"]
