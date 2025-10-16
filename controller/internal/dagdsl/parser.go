@@ -14,16 +14,29 @@ type DSLRoot struct {
 	Items []*DAGItem `parser:"@@*" json:"items"`
 }
 
-// DAGItem represents an item within a DAG (graph, schedule, or task)
+// DAGItem represents an item within a DAG (graph, schedule, parameters, or task)
 type DAGItem struct {
-	Schedule *ScheduleField `parser:"@@" json:"schedule,omitempty"`
-	Graph    *GraphBlock    `parser:"| @@" json:"graph,omitempty"`
-	Task     *TaskDef       `parser:"| @@" json:"task,omitempty"`
+	Schedule   *ScheduleField   `parser:"@@" json:"schedule,omitempty"`
+	Parameters *ParametersBlock `parser:"| @@" json:"parameters,omitempty"`
+	Graph      *GraphBlock      `parser:"| @@" json:"graph,omitempty"`
+	Task       *TaskDef         `parser:"| @@" json:"task,omitempty"`
 }
 
 // ScheduleField represents a schedule definition
 type ScheduleField struct {
 	Schedule string `parser:"'schedule' @String" json:"schedule"`
+}
+
+// ParametersBlock represents the parameters definition section
+type ParametersBlock struct {
+	Parameters []*ParameterDef `parser:"'parameters' '{' @@* '}'" json:"parameters"`
+}
+
+// ParameterDef represents a single parameter definition
+type ParameterDef struct {
+	Name              string  `parser:"@Ident '{'" json:"name"`
+	DefaultValue      *string `parser:"( 'default' @String )?" json:"defaultValue,omitempty"`
+	DefaultFromSecret *string `parser:"( 'defaultFromSecret' @String )? '}'" json:"defaultFromSecret,omitempty"`
 }
 
 // GraphBlock represents the graph definition section
@@ -51,10 +64,11 @@ type TaskDef struct {
 
 // TaskField represents a field within a task definition
 type TaskField struct {
-	Image   *string      `parser:"'image' @String" json:"image,omitempty"`
-	Command *StringArray `parser:"| 'command' @@" json:"command,omitempty"`
-	Args    *StringArray `parser:"| 'args' @@" json:"args,omitempty"`
-	Script  *string      `parser:"| 'script' ( @String | @MultilineString )" json:"script,omitempty"`
+	Image      *string      `parser:"'image' @String" json:"image,omitempty"`
+	Command    *StringArray `parser:"| 'command' @@" json:"command,omitempty"`
+	Args       *StringArray `parser:"| 'args' @@" json:"args,omitempty"`
+	Script     *string      `parser:"| 'script' ( @String | @MultilineString )" json:"script,omitempty"`
+	Parameters *StringArray `parser:"| 'parameters' @@" json:"parameters,omitempty"`
 }
 
 // StringArray represents an array of strings in the DSL
@@ -109,14 +123,17 @@ func convertToDAGSpec(root *DSLRoot) (*v1alpha1.DAGSpec, error) {
 		Task: []v1alpha1.TaskSpec{},
 	}
 
-	// Extract schedule, graph and task definitions
+	// Extract schedule, parameters, graph and task definitions
 	var schedule string
+	var parametersBlock *ParametersBlock
 	var graphBlock *GraphBlock
 	taskDefs := []*TaskDef{}
 
 	for _, item := range root.Items {
 		if item.Schedule != nil {
 			schedule = cleanString(item.Schedule.Schedule)
+		} else if item.Parameters != nil {
+			parametersBlock = item.Parameters
 		} else if item.Graph != nil {
 			graphBlock = item.Graph
 		} else if item.Task != nil {
@@ -129,6 +146,11 @@ func convertToDAGSpec(root *DSLRoot) (*v1alpha1.DAGSpec, error) {
 		spec.Schedule = schedule
 	}
 
+	// Set parameters if provided
+	if parametersBlock != nil {
+		spec.Parameters = convertParameters(parametersBlock)
+	}
+
 	// Build dependency map from graph
 	dependencies := buildDependencyMap(graphBlock)
 
@@ -139,6 +161,24 @@ func convertToDAGSpec(root *DSLRoot) (*v1alpha1.DAGSpec, error) {
 	}
 
 	return spec, nil
+}
+
+// convertParameters converts ParametersBlock to DAGParameterSpec
+func convertParameters(parametersBlock *ParametersBlock) []v1alpha1.DagParameterSpec {
+	var params []v1alpha1.DagParameterSpec
+	for _, param := range parametersBlock.Parameters {
+		dagParam := v1alpha1.DagParameterSpec{
+			Name: param.Name,
+		}
+		if param.DefaultValue != nil {
+			dagParam.DefaultValue = cleanString(*param.DefaultValue)
+		}
+		if param.DefaultFromSecret != nil {
+			dagParam.DefaultFromSecret = cleanString(*param.DefaultFromSecret)
+		}
+		params = append(params, dagParam)
+	}
+	return params
 }
 
 // buildDependencyMap creates a map of task dependencies from the graph
@@ -185,6 +225,8 @@ func createTaskSpec(task *TaskDef, dependencies map[string][]string) v1alpha1.Ta
 			taskSpec.Args = cleanStringArray(field.Args.Values)
 		} else if field.Script != nil {
 			taskSpec.Script = cleanScriptString(*field.Script)
+		} else if field.Parameters != nil {
+			taskSpec.Parameters = cleanStringArray(field.Parameters.Values)
 		}
 	}
 

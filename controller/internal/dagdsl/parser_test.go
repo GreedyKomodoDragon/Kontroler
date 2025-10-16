@@ -482,3 +482,140 @@ for i in range(3):
 	assert.Equal(t, "alpine:latest", singlelineTask.Image)
 	assert.Equal(t, "echo 'Hello from single line'", singlelineTask.Script)
 }
+
+func TestParseDSL_WithParameters(t *testing.T) {
+	dslInput := `schedule "0 */6 * * *"
+
+parameters {
+  environment {
+    default "dev"
+  }
+  replicas {
+    default "3"
+  }
+  secretKey {
+    defaultFromSecret "my-secret"
+  }
+}
+
+graph {
+  setup -> run
+}
+
+task setup {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Setting up environment'"]
+  parameters ["environment", "replicas"]
+}
+
+task run {
+  image "alpine:latest"
+  script "echo 'Running with env: $ENVIRONMENT'"
+  parameters ["environment", "secretKey"]
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check schedule
+	assert.Equal(t, "0 */6 * * *", dagSpec.Schedule)
+
+	// Check parameters
+	require.Len(t, dagSpec.Parameters, 3)
+
+	// Check environment parameter
+	envParam := findParameterByName(dagSpec.Parameters, "environment")
+	require.NotNil(t, envParam)
+	assert.Equal(t, "environment", envParam.Name)
+	assert.Equal(t, "dev", envParam.DefaultValue)
+	assert.Equal(t, "", envParam.DefaultFromSecret)
+
+	// Check replicas parameter
+	replicasParam := findParameterByName(dagSpec.Parameters, "replicas")
+	require.NotNil(t, replicasParam)
+	assert.Equal(t, "replicas", replicasParam.Name)
+	assert.Equal(t, "3", replicasParam.DefaultValue)
+	assert.Equal(t, "", replicasParam.DefaultFromSecret)
+
+	// Check secretKey parameter
+	secretParam := findParameterByName(dagSpec.Parameters, "secretKey")
+	require.NotNil(t, secretParam)
+	assert.Equal(t, "secretKey", secretParam.Name)
+	assert.Equal(t, "", secretParam.DefaultValue)
+	assert.Equal(t, "my-secret", secretParam.DefaultFromSecret)
+
+	// Check tasks
+	require.Len(t, dagSpec.Task, 2)
+
+	// Check setup task parameters
+	setupTask := findTaskByName(dagSpec.Task, "setup")
+	require.NotNil(t, setupTask)
+	assert.Equal(t, []string{"environment", "replicas"}, setupTask.Parameters)
+	assert.Equal(t, []string{"sh", "-c"}, setupTask.Command)
+	assert.Equal(t, []string{"echo 'Setting up environment'"}, setupTask.Args)
+
+	// Check run task parameters
+	runTask := findTaskByName(dagSpec.Task, "run")
+	require.NotNil(t, runTask)
+	assert.Equal(t, []string{"environment", "secretKey"}, runTask.Parameters)
+	assert.Equal(t, "echo 'Running with env: $ENVIRONMENT'", runTask.Script)
+	assert.Equal(t, []string{"setup"}, runTask.RunAfter)
+}
+
+func TestParseDSL_ParametersOnly(t *testing.T) {
+	dslInput := `parameters {
+  database_url {
+    defaultFromSecret "db-config"
+  }
+  timeout {
+    default "30s"
+  }
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check parameters
+	require.Len(t, dagSpec.Parameters, 2)
+
+	// Check database_url parameter
+	dbParam := findParameterByName(dagSpec.Parameters, "database_url")
+	require.NotNil(t, dbParam)
+	assert.Equal(t, "database_url", dbParam.Name)
+	assert.Equal(t, "", dbParam.DefaultValue)
+	assert.Equal(t, "db-config", dbParam.DefaultFromSecret)
+
+	// Check timeout parameter
+	timeoutParam := findParameterByName(dagSpec.Parameters, "timeout")
+	require.NotNil(t, timeoutParam)
+	assert.Equal(t, "timeout", timeoutParam.Name)
+	assert.Equal(t, "30s", timeoutParam.DefaultValue)
+	assert.Equal(t, "", timeoutParam.DefaultFromSecret)
+
+	// Check no tasks or schedule
+	assert.Len(t, dagSpec.Task, 0)
+	assert.Equal(t, "", dagSpec.Schedule)
+}
+
+// Helper function to find a parameter by name
+func findParameterByName(params []v1alpha1.DagParameterSpec, name string) *v1alpha1.DagParameterSpec {
+	for _, param := range params {
+		if param.Name == name {
+			return &param
+		}
+	}
+	return nil
+}
+
+// Helper function to find a task by name
+func findTaskByName(tasks []v1alpha1.TaskSpec, name string) *v1alpha1.TaskSpec {
+	for _, task := range tasks {
+		if task.Name == name {
+			return &task
+		}
+	}
+	return nil
+}

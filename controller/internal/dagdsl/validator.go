@@ -43,6 +43,16 @@ func ValidateDAGSpec(spec *v1alpha1.DAGSpec) ValidationResult {
 		}
 	}
 
+	// Validate parameters if they exist
+	if err := validateParameters(spec); err != nil {
+		result.addError("parameters", err.Error())
+	}
+
+	// Validate parameter references in tasks
+	if err := validateTaskParameterReferences(spec); err != nil {
+		result.addError("parameters", err.Error())
+	}
+
 	return result
 }
 
@@ -161,4 +171,52 @@ func getLeafTasks(spec *v1alpha1.DAGSpec) []string {
 		}
 	}
 	return leaves
+}
+
+// validateParameters validates parameter definitions
+func validateParameters(spec *v1alpha1.DAGSpec) error {
+	for _, param := range spec.Parameters {
+		// Check that parameter has a name
+		if param.Name == "" {
+			return fmt.Errorf("parameter missing name")
+		}
+
+		// Check that parameter has either default value or defaultFromSecret, but not both
+		hasDefault := param.DefaultValue != ""
+		hasSecret := param.DefaultFromSecret != ""
+
+		if hasDefault && hasSecret {
+			return fmt.Errorf("parameter '%s' cannot have both default value and defaultFromSecret", param.Name)
+		}
+
+		if !hasDefault && !hasSecret {
+			return fmt.Errorf("parameter '%s' must have either default value or defaultFromSecret", param.Name)
+		}
+	}
+	return nil
+}
+
+// validateTaskParameterReferences validates that task parameter references are defined
+func validateTaskParameterReferences(spec *v1alpha1.DAGSpec) error {
+	// Create a set of defined parameter names
+	definedParams := make(map[string]bool)
+	for _, param := range spec.Parameters {
+		definedParams[param.Name] = true
+	}
+
+	// Check all task parameter references
+	var missingParams []string
+	for _, task := range spec.Task {
+		for _, paramRef := range task.Parameters {
+			if !definedParams[paramRef] {
+				missingParams = append(missingParams, fmt.Sprintf("'%s' in task '%s'", paramRef, task.Name))
+			}
+		}
+	}
+
+	if len(missingParams) > 0 {
+		return fmt.Errorf("parameters referenced in tasks but not defined: %s", strings.Join(missingParams, ", "))
+	}
+
+	return nil
 }

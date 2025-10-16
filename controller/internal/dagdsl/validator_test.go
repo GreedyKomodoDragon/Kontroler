@@ -234,3 +234,120 @@ task d {
 	assert.Len(t, result.Errors, 1)
 	assert.Contains(t, result.Errors[0].Message, "missing_task")
 }
+
+func TestValidateDAGSpec_ValidWithParameters(t *testing.T) {
+	dslInput := `parameters {
+  environment {
+    default "dev"
+  }
+  secretKey {
+    defaultFromSecret "my-secret"
+  }
+}
+
+graph {
+  a -> b
+}
+
+task a {
+  image "alpine"
+  parameters ["environment", "secretKey"]
+}
+
+task b {
+  image "alpine"
+}`
+
+	spec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+
+	result := dagdsl.ValidateDAGSpec(spec)
+	assert.True(t, result.Valid)
+	assert.Empty(t, result.Errors)
+}
+
+func TestValidateDAGSpec_InvalidParameterBothDefaultAndSecret(t *testing.T) {
+	dslInput := `parameters {
+  badParam {
+    default "value"
+    defaultFromSecret "secret"
+  }
+}
+
+graph {
+  a -> b
+}
+
+task a {
+  image "alpine"
+}
+
+task b {
+  image "alpine"
+}`
+
+	spec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+
+	result := dagdsl.ValidateDAGSpec(spec)
+	assert.False(t, result.Valid)
+	assert.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0].Message, "cannot have both default value and defaultFromSecret")
+}
+
+func TestValidateDAGSpec_InvalidParameterNeitherDefaultNorSecret(t *testing.T) {
+	dslInput := `parameters {
+  badParam {
+  }
+}
+
+graph {
+  a -> b
+}
+
+task a {
+  image "alpine"
+}
+
+task b {
+  image "alpine"
+}`
+
+	spec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+
+	result := dagdsl.ValidateDAGSpec(spec)
+	assert.False(t, result.Valid)
+	assert.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0].Message, "must have either default value or defaultFromSecret")
+}
+
+func TestValidateDAGSpec_UndefinedParameterReference(t *testing.T) {
+	dslInput := `parameters {
+  environment {
+    default "dev"
+  }
+}
+
+graph {
+  a -> b
+}
+
+task a {
+  image "alpine"
+  parameters ["environment", "undefinedParam"]
+}
+
+task b {
+  image "alpine"
+}`
+
+	spec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+
+	result := dagdsl.ValidateDAGSpec(spec)
+	assert.False(t, result.Valid)
+	assert.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0].Message, "parameters referenced in tasks but not defined")
+	assert.Contains(t, result.Errors[0].Message, "undefinedParam")
+}
