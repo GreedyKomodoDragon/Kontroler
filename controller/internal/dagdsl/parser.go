@@ -69,11 +69,17 @@ type TaskField struct {
 	Args       *StringArray `parser:"| 'args' @@" json:"args,omitempty"`
 	Script     *string      `parser:"| 'script' ( @String | @MultilineString )" json:"script,omitempty"`
 	Parameters *StringArray `parser:"| 'parameters' @@" json:"parameters,omitempty"`
+	Retry      *IntArray    `parser:"| 'retry' @@" json:"retry,omitempty"`
 }
 
 // StringArray represents an array of strings in the DSL
 type StringArray struct {
 	Values []string `parser:"'[' @String ( ',' @String )* ']'" json:"values"`
+}
+
+// IntArray represents an array of integers in the DSL
+type IntArray struct {
+	Values []string `parser:"'[' @Int ( ',' @Int )* ']'" json:"values"`
 }
 
 var (
@@ -83,6 +89,7 @@ var (
 		{Name: "Whitespace", Pattern: `\s+`},
 		{Name: "MultilineString", Pattern: `"""[\s\S]*?"""`},
 		{Name: "String", Pattern: `"[^"]*"`},
+		{Name: "Int", Pattern: `\d+`},
 		{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_-]*`},
 		{Name: "Arrow", Pattern: `->`},
 		{Name: "LBrace", Pattern: `\{`},
@@ -227,6 +234,16 @@ func createTaskSpec(task *TaskDef, dependencies map[string][]string) v1alpha1.Ta
 			taskSpec.Script = cleanScriptString(*field.Script)
 		} else if field.Parameters != nil {
 			taskSpec.Parameters = cleanStringArray(field.Parameters.Values)
+		} else if field.Retry != nil {
+			retryCodes, err := convertIntArray(field.Retry.Values)
+			if err != nil {
+				// For now, we'll skip invalid retry codes, but this could be handled differently
+				continue
+			}
+			taskSpec.Conditional = v1alpha1.Conditional{
+				Enabled:    len(retryCodes) > 0,
+				RetryCodes: retryCodes,
+			}
 		}
 	}
 
@@ -263,4 +280,22 @@ func cleanStringArray(arr []string) []string {
 		result[i] = cleanString(s)
 	}
 	return result
+}
+
+// convertIntArray converts string array to integer array
+func convertIntArray(arr []string) ([]int, error) {
+	result := make([]int, len(arr))
+	for i, s := range arr {
+		// Parse string to integer
+		val := 0
+		for _, char := range s {
+			if char >= '0' && char <= '9' {
+				val = val*10 + int(char-'0')
+			} else {
+				return nil, fmt.Errorf("invalid integer: %s", s)
+			}
+		}
+		result[i] = val
+	}
+	return result, nil
 }

@@ -600,6 +600,64 @@ func TestParseDSL_ParametersOnly(t *testing.T) {
 	assert.Equal(t, "", dagSpec.Schedule)
 }
 
+func TestParseDSL_WithRetry(t *testing.T) {
+	dslInput := `graph {
+  a -> b
+}
+
+task a {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Task A'"]
+  retry [1, 2, 130]
+}
+
+task b {
+  image "alpine:latest"
+  script "echo 'Task B'"
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check tasks
+	require.Len(t, dagSpec.Task, 2)
+
+	// Check task a has retry codes
+	taskA := findTaskByName(dagSpec.Task, "a")
+	require.NotNil(t, taskA)
+	assert.True(t, taskA.Conditional.Enabled)
+	assert.Equal(t, []int{1, 2, 130}, taskA.Conditional.RetryCodes)
+
+	// Check task b has no retry codes
+	taskB := findTaskByName(dagSpec.Task, "b")
+	require.NotNil(t, taskB)
+	assert.False(t, taskB.Conditional.Enabled)
+	assert.Empty(t, taskB.Conditional.RetryCodes)
+}
+
+func TestParseDSL_RetryOnly(t *testing.T) {
+	dslInput := `task failureTask {
+  image "alpine:latest"
+  script "exit 1"
+  retry [1, 125]
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check task
+	require.Len(t, dagSpec.Task, 1)
+
+	task := dagSpec.Task[0]
+	assert.Equal(t, "failureTask", task.Name)
+	assert.True(t, task.Conditional.Enabled)
+	assert.Equal(t, []int{1, 125}, task.Conditional.RetryCodes)
+	assert.Equal(t, "exit 1", task.Script)
+}
+
 // Helper function to find a parameter by name
 func findParameterByName(params []v1alpha1.DagParameterSpec, name string) *v1alpha1.DagParameterSpec {
 	for _, param := range params {
