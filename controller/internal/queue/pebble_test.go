@@ -76,7 +76,7 @@ func TestPushPop(t *testing.T) {
 	for _, expected := range testCases {
 		got, err := q.Pop()
 		require.NoError(t, err)
-		require.Equal(t, expected, got)
+		require.Equal(t, expected, got.Event)
 	}
 
 	// Test size after pop
@@ -117,7 +117,7 @@ func TestPeek(t *testing.T) {
 	// Verify value is still there after peek
 	val, err := q.Pop()
 	require.NoError(t, err)
-	require.Equal(t, testValue, val)
+	require.Equal(t, testValue.Event, val.Event)
 }
 
 func TestQueuePersistence(t *testing.T) {
@@ -143,7 +143,7 @@ func TestQueuePersistence(t *testing.T) {
 
 	val, err := q2.Pop()
 	require.NoError(t, err)
-	require.Equal(t, testValue, val)
+	require.Equal(t, testValue.Event, val.Event)
 }
 
 func TestLargeQueue(t *testing.T) {

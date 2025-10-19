@@ -111,7 +111,7 @@ func TestMemoryLargeQueue(t *testing.T) {
 
 	// Push many items
 	itemCount := 1000
-	for i := 0; i < itemCount; i++ {
+	for i := range itemCount {
 		require.NoError(t, q.Push(&PodEvent{
 			Pod:   nil,
 			Event: strconv.Itoa(i),
@@ -132,7 +132,7 @@ func TestMemoryLargeQueue(t *testing.T) {
 		// Verify values
 		for j, val := range results {
 			expected := strconv.Itoa(i*batchSize + j)
-			require.Equal(t, expected, val)
+			require.Equal(t, expected, val.Event)
 		}
 	}
 
@@ -152,7 +152,7 @@ func TestMemoryQueueConcurrency(t *testing.T) {
 
 	// Start producer
 	go func() {
-		for i := 0; i < itemCount; i++ {
+		for i := range itemCount {
 			require.NoError(t, q.Push(&PodEvent{
 				Pod:   nil,
 				Event: strconv.Itoa(i),

@@ -220,6 +220,14 @@ func getTargets(targetSet *TargetSet) []string {
 func createTaskSpec(task *TaskDef, dependencies map[string][]string) v1alpha1.TaskSpec {
 	taskSpec := v1alpha1.TaskSpec{
 		Name: task.Name,
+		// Set default values for required fields
+		Backoff: v1alpha1.Backoff{
+			Limit: 3, // Default retry limit
+		},
+		Conditional: v1alpha1.Conditional{
+			Enabled:    false,
+			RetryCodes: []int{}, // Default empty retry codes
+		},
 	}
 
 	// Process task fields
@@ -240,10 +248,8 @@ func createTaskSpec(task *TaskDef, dependencies map[string][]string) v1alpha1.Ta
 				// For now, we'll skip invalid retry codes, but this could be handled differently
 				continue
 			}
-			taskSpec.Conditional = v1alpha1.Conditional{
-				Enabled:    len(retryCodes) > 0,
-				RetryCodes: retryCodes,
-			}
+			taskSpec.Conditional.Enabled = len(retryCodes) > 0
+			taskSpec.Conditional.RetryCodes = retryCodes
 		}
 	}
 

@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/dagdsl"
 	"kontroler-controller/internal/db"
 )
 
@@ -65,6 +66,18 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	// Check if the DAG is marked for deletion
 	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, req, dag)
+	}
+
+	// Process DSL if provided
+	if dag.Spec.DSL != "" {
+		if err := r.processDSL(ctx, &dag); err != nil {
+			return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to process DSL: %s", err.Error()))
+		}
+
+		// Update the DAG with the processed DSL content
+		if err := r.Update(ctx, &dag); err != nil {
+			return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to update DAG after DSL processing: %s", err.Error()))
+		}
 	}
 
 	taskRefs := []kontrolerv1alpha1.TaskRef{}
@@ -211,4 +224,40 @@ func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, da
 	r.removingDagTaskFinalisers(ctx, taskNames, req.Namespace)
 
 	return ctrl.Result{}, nil
+}
+
+// processDSL parses the DSL string and populates the DAG spec fields
+func (r *DAGReconciler) processDSL(ctx context.Context, dag *kontrolerv1alpha1.DAG) error {
+	// Parse the DSL string
+	parsedSpec, err := dagdsl.ParseDSL(dag.Spec.DSL)
+	if err != nil {
+		return fmt.Errorf("failed to parse DSL: %w", err)
+	}
+
+	// Validate the parsed DSL
+	validationResult := dagdsl.ValidateDAGSpec(parsedSpec)
+	if !validationResult.Valid {
+		errorMsg := "DSL validation failed:"
+		for _, validationError := range validationResult.Errors {
+			errorMsg += fmt.Sprintf(" %s", validationError.Error())
+		}
+		return fmt.Errorf(errorMsg)
+	}
+
+	// Merge the parsed DSL content with the existing spec
+	// DSL takes precedence, but we preserve fields that aren't defined in DSL
+	if parsedSpec.Schedule != "" {
+		dag.Spec.Schedule = parsedSpec.Schedule
+	}
+
+	if len(parsedSpec.Parameters) > 0 {
+		dag.Spec.Parameters = parsedSpec.Parameters
+	}
+
+	if len(parsedSpec.Task) > 0 {
+		dag.Spec.Task = parsedSpec.Task
+	}
+
+	log.Log.Info("DSL processed successfully", "dag", dag.Name, "taskCount", len(parsedSpec.Task))
+	return nil
 }

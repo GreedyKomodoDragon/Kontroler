@@ -464,10 +464,6 @@ func main() {
 
 			for j := 0; j < workerConfig.Count; j++ {
 				worker := wrkers[currentIndex]
-				if err := worker.Queue().Start(); err != nil {
-					setupLog.Error(err, "failed to start queue", "worker_id", worker.ID())
-					os.Exit(1)
-				}
 
 				wg.Add(1)
 				go func() {
