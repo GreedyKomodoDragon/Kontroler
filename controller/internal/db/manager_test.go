@@ -1515,7 +1515,7 @@ func testDAGManager_Complex_Dag(t *testing.T, dm db.DBDAGManager) {
 
 		tasksSecond, err := dm.MarkSuccessAndGetNextTasks(context.Background(), taskRunID)
 		require.NoError(t, err)
-		require.Len(t, tasksSecond, 2)
+		require.Len(t, tasksSecond, 3)
 
 		taskRunOne, err := dm.MarkTaskAsStarted(context.Background(), runID, tasksSecond[0].Id)
 		require.NoError(t, err)

@@ -137,8 +137,9 @@ type Workspace struct {
 // DAGSpec defines the desired state of DAG
 type DAGSpec struct {
 	// +optional
-	Schedule string     `json:"schedule"`
-	Task     []TaskSpec `json:"task"`
+	Schedule string `json:"schedule"`
+	// +optional
+	Task []TaskSpec `json:"task,omitempty"`
 	// +optional
 	Parameters []DagParameterSpec `json:"parameters,omitempty"`
 	// +optional
@@ -147,6 +148,10 @@ type DAGSpec struct {
 	Workspace Workspace `json:"workspace,omitempty"`
 	// +optional
 	Suspended bool `json:"suspended,omitempty"`
+	// DSL string to define the DAG using the DSL syntax
+	// When provided, this takes precedence over the individual fields above
+	// +optional
+	DSL string `json:"dsl,omitempty"`
 }
 
 // DAGStatus defines the observed state of DAG

@@ -62,7 +62,7 @@ spec:
           secret:
             defaultMode: 420
             secretName: webhook-server-cert
-        {{ if .Values.controller.db.ssl.secret }}
+        {{ if and (eq .Values.db.type "postgresql") (.Values.controller.db.ssl.secret) }}
         - name: db-ssl-secret-volume
           secret:
             secretName: {{ .Values.controller.db.ssl.secret }}
@@ -197,17 +197,17 @@ spec:
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
               readOnly: true
-            {{ if .Values.controller.db.ssl.paths.ca.filename }}
+            {{ if and (eq .Values.db.type "postgresql") (.Values.controller.db.ssl.paths.ca.filename) }}
             - name: db-ssl-secret-volume
               mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.ca.path .Values.controller.db.ssl.paths.ca.filename }}
               subPath: {{ .Values.controller.db.ssl.paths.ca.filename }}
             {{ end }}
-            {{ if .Values.controller.db.ssl.paths.cert.filename }}
+            {{ if and (eq .Values.db.type "postgresql") (.Values.controller.db.ssl.paths.cert.filename) }}
             - name: db-ssl-secret-volume
               mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.cert.path .Values.controller.db.ssl.paths.cert.filename }}
               subPath: {{ .Values.controller.db.ssl.paths.cert.filename }}
             {{ end }}
-            {{ if .Values.controller.db.ssl.paths.key.filename }}
+            {{ if and (eq .Values.db.type "postgresql") (.Values.controller.db.ssl.paths.key.filename) }}
             - name: db-ssl-secret-volume
               mountPath: {{ printf "%s%s" .Values.controller.db.ssl.paths.key.path .Values.controller.db.ssl.paths.key.filename }}
               subPath: {{ .Values.controller.db.ssl.paths.key.filename }}

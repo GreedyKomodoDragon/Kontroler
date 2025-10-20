@@ -101,6 +101,14 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(MAKE) update-helm-crds
+
+.PHONY: update-helm-crds
+update-helm-crds: ## Copy generated CRDs to Helm chart templates
+	@echo "Updating Helm chart CRDs..."
+	@mkdir -p scripts
+	@python3 scripts/update-helm-crds.py
+	@echo "Helm chart CRDs updated successfully!"
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -166,16 +174,34 @@ docker-push: ## Push docker image with the manager.
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
+PLATFORMS ?= linux/arm64,linux/amd64
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name project-v3-builder
-	$(CONTAINER_TOOL) buildx use project-v3-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm project-v3-builder
-	rm Dockerfile.cross
+	- $(CONTAINER_TOOL) buildx create --name multiarch-builder --use
+	$(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f ${DOCKERFILE} .
+	- $(CONTAINER_TOOL) buildx rm multiarch-builder
+
+.PHONY: docker-buildx-local  
+docker-buildx-local: ## Build multi-arch docker image locally (creates manifest, doesn't push)
+	- $(CONTAINER_TOOL) buildx create --name multiarch-builder --use
+	$(CONTAINER_TOOL) buildx build --platform=$(PLATFORMS) --tag ${IMG} -f ${DOCKERFILE} .
+	- $(CONTAINER_TOOL) buildx rm multiarch-builder
+
+.PHONY: docker-build-amd64
+docker-build-amd64: ## Build docker image for AMD64 architecture only
+	$(CONTAINER_TOOL) buildx build --platform=linux/amd64 --load --tag ${IMG} -f ${DOCKERFILE} .
+
+.PHONY: docker-build-arm64
+docker-build-arm64: ## Build docker image for ARM64 architecture only  
+	$(CONTAINER_TOOL) buildx build --platform=linux/arm64 --load --tag ${IMG} -f ${DOCKERFILE} .
+
+.PHONY: docker-build-push-amd64
+docker-build-push-amd64: ## Build and push docker image for AMD64 architecture only
+	$(CONTAINER_TOOL) buildx build --platform=linux/amd64 --push --tag ${IMG} -f ${DOCKERFILE} .
+
+.PHONY: docker-build-push-arm64
+docker-build-push-arm64: ## Build and push docker image for ARM64 architecture only
+	$(CONTAINER_TOOL) buildx build --platform=linux/arm64 --push --tag ${IMG} -f ${DOCKERFILE} .
 
 ##@ Deployment
 
