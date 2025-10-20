@@ -677,3 +677,81 @@ func findTaskByName(tasks []v1alpha1.TaskSpec, name string) *v1alpha1.TaskSpec {
 	}
 	return nil
 }
+
+func TestParseDSL_WithBackoff(t *testing.T) {
+	dslInput := `graph {
+  a -> b
+}
+
+task a {
+  image "alpine:latest"
+  script "echo 'Task A'"
+  backoff 5
+}
+
+task b {
+  image "alpine:latest"
+  script "echo 'Task B'"
+  backoff 1
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check tasks
+	require.Len(t, dagSpec.Task, 2)
+
+	// Check task a has custom backoff
+	taskA := findTaskByName(dagSpec.Task, "a")
+	require.NotNil(t, taskA)
+	assert.Equal(t, 5, taskA.Backoff.Limit)
+
+	// Check task b has custom backoff
+	taskB := findTaskByName(dagSpec.Task, "b")
+	require.NotNil(t, taskB)
+	assert.Equal(t, 1, taskB.Backoff.Limit)
+}
+
+func TestParseDSL_BackoffOnly(t *testing.T) {
+	dslInput := `task retryTask {
+  image "alpine:latest"
+  script "echo 'test'"
+  backoff 10
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check task
+	require.Len(t, dagSpec.Task, 1)
+
+	task := dagSpec.Task[0]
+	assert.Equal(t, "retryTask", task.Name)
+	assert.Equal(t, 10, task.Backoff.Limit)
+	assert.Equal(t, "echo 'test'", task.Script)
+}
+
+func TestParseDSL_BackoffWithRetry(t *testing.T) {
+	dslInput := `task failureTask {
+  image "alpine:latest"
+  script "exit 1"
+  backoff 7
+  retry [1, 125]
+}`
+
+	dagSpec, err := dagdsl.ParseDSL(dslInput)
+	require.NoError(t, err)
+	require.NotNil(t, dagSpec)
+
+	// Check task
+	require.Len(t, dagSpec.Task, 1)
+
+	task := dagSpec.Task[0]
+	assert.Equal(t, "failureTask", task.Name)
+	assert.Equal(t, 7, task.Backoff.Limit)
+	assert.True(t, task.Conditional.Enabled)
+	assert.Equal(t, []int{1, 125}, task.Conditional.RetryCodes)
+	assert.Equal(t, "exit 1", task.Script)
+}

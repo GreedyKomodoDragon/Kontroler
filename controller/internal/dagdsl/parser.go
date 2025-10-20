@@ -70,6 +70,7 @@ type TaskField struct {
 	Script     *string      `parser:"| 'script' ( @String | @MultilineString )" json:"script,omitempty"`
 	Parameters *StringArray `parser:"| 'parameters' @@" json:"parameters,omitempty"`
 	Retry      *IntArray    `parser:"| 'retry' @@" json:"retry,omitempty"`
+	Backoff    *string      `parser:"| 'backoff' @Int" json:"backoff,omitempty"`
 }
 
 // StringArray represents an array of strings in the DSL
@@ -250,6 +251,10 @@ func createTaskSpec(task *TaskDef, dependencies map[string][]string) v1alpha1.Ta
 			}
 			taskSpec.Conditional.Enabled = len(retryCodes) > 0
 			taskSpec.Conditional.RetryCodes = retryCodes
+		} else if field.Backoff != nil {
+			if backoffLimit, err := convertIntString(*field.Backoff); err == nil {
+				taskSpec.Backoff.Limit = backoffLimit
+			}
 		}
 	}
 
@@ -304,4 +309,17 @@ func convertIntArray(arr []string) ([]int, error) {
 		result[i] = val
 	}
 	return result, nil
+}
+
+// convertIntString converts a string to integer
+func convertIntString(s string) (int, error) {
+	val := 0
+	for _, char := range s {
+		if char >= '0' && char <= '9' {
+			val = val*10 + int(char-'0')
+		} else {
+			return 0, fmt.Errorf("invalid integer: %s", s)
+		}
+	}
+	return val, nil
 }
