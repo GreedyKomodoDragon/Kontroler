@@ -18,7 +18,6 @@ type PodEvent struct {
 }
 
 type Queue interface {
-	Start() error
 	Push(value *PodEvent) error
 	PushBatch(values []*PodEvent) error
 	Pop() (*PodEvent, error)

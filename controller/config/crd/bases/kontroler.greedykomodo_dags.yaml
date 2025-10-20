@@ -34,6 +34,10 @@ spec:
           spec:
             description: DAGSpec defines the desired state of DAG
             properties:
+              dsl:
+                description: DSL string to define the DAG using the DSL syntax When
+                  provided, this takes precedence over the individual fields above
+                type: string
               parameters:
                 items:
                   properties:
@@ -3267,8 +3271,6 @@ spec:
                 - enable
                 - pvc
                 type: object
-            required:
-            - task
             type: object
           status:
             description: DAGStatus defines the observed state of DAG

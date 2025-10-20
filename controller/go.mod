@@ -6,6 +6,7 @@ toolchain go1.23.3
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1
+	github.com/alecthomas/participle/v2 v2.1.1
 	github.com/onsi/ginkgo/v2 v2.22.1
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.10.0

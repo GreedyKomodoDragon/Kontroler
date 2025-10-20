@@ -27,7 +27,16 @@ type PebbleQueue struct {
 
 func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	return &PebbleQueue{
+
+	// Open the database immediately during construction
+	db, err := pebble.Open(dbPath, &pebble.Options{})
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	q := &PebbleQueue{
+		db:      db,
 		dbPath:  dbPath,
 		topic:   topic,
 		headKey: topic + ":head",
@@ -36,16 +45,9 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 		ctx:     ctx,
 		cancel:  cancel,
 		wg:      sync.WaitGroup{},
-	}, nil
-}
-
-func (q *PebbleQueue) Start() error {
-	db, err := pebble.Open(q.dbPath, &pebble.Options{})
-	if err != nil {
-		return err
 	}
-	q.db = db
 
+	// Initialize counters
 	head, _ := q.getCounter(q.headKey)
 	tail, _ := q.getCounter(q.tailKey)
 
@@ -55,7 +57,7 @@ func (q *PebbleQueue) Start() error {
 	}
 
 	q.lastCommittedHead = head
-	return nil
+	return q, nil
 }
 
 func (q *PebbleQueue) Push(value *PodEvent) error {

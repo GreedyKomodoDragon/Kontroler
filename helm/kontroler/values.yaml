@@ -26,7 +26,7 @@ db:
     pvc:
       existing: ""
       # Currently only supports the array format
-      accessModes: ["ReadWriteMany"]
+      accessModes: ["ReadWriteOnce"]
       size: 2Gi
       # If empty it will omit and use the default storageclass in the cluster
       storageClassName: ""
@@ -38,7 +38,8 @@ db:
 
 logStorage:
   enabled: true
-  type: s3
+  # filesystem or s3
+  type: filesystem
   s3:
     bucketName: kontroler
     region: eu-west-2

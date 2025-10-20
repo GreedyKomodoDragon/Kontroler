@@ -28,6 +28,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"kontroler-controller/internal/db"
+
+	cron "github.com/robfig/cron/v3"
 )
 
 var _ = Describe("DagTask Controller", func() {
@@ -51,7 +54,18 @@ var _ = Describe("DagTask Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: kontrolerv1alpha1.DagTaskSpec{
+						Image:   "alpine:latest",
+						Command: []string{"echo"},
+						Args:    []string{"Hello World"},
+						Backoff: kontrolerv1alpha1.Backoff{
+							Limit: 3,
+						},
+						Conditional: kontrolerv1alpha1.Conditional{
+							Enabled:    false,
+							RetryCodes: []int{1, 2},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -68,12 +82,30 @@ var _ = Describe("DagTask Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+
+			// Create in-memory SQLite for testing
+			parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+			config := &db.SQLiteConfig{
+				DBPath:      ":memory:",
+				JournalMode: "WAL",
+				Synchronous: "NORMAL",
+				CacheSize:   -2000,
+				TempStore:   "MEMORY",
+			}
+			dbManager, _, err := db.NewSqliteManager(context.TODO(), &parser, config)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Initialize the database
+			err = dbManager.InitaliseDatabase(context.TODO())
+			Expect(err).NotTo(HaveOccurred())
+
 			controllerReconciler := &DagTaskReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				DbManager: dbManager,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())

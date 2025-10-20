@@ -12,7 +12,7 @@
 
 Kontroler is a Kubernetes scheduling engine for managing Directed Acyclic Graphs (DAGs) through cron-based jobs or event-driven execution. 
 
-This system allows for running containers as tasks within a DAG, while providing an optional web-based UI for creating, managing, and visualizing DAG runs.
+This system allows for running containers as tasks within a DAG, while providing an optional web-based UI for creating, managing, and visualizing DAG runs. DAGs can be defined using either traditional YAML task arrays or a concise Domain Specific Language (DSL).
 
 <p align="center">
 <img src="./images/ui-screenshot.png" width="600" />
@@ -53,6 +53,7 @@ Features we are aiming to cover are:
 * DAG Execution via CronJobs: Define and schedule your DAGs to run at specified intervals using cron.
 * Event-Driven DAGs: Execute DAGs based on external events such as a message from a queue or a webhook trigger.
 * Container Support: Easily run any containerized task within your DAG.
+* DSL Support: Define DAGs using a clean, expressive Domain Specific Language as an alternative to traditional YAML task arrays.
 * Optional UI: A web-based interface is available for creating and viewing DAG runs, simplifying DAG management.
 * Optional Server: An included server can be deployed to power the UI, providing a full-featured platform for scheduling tasks.
 * Pod Templates: Allows pods to use secrets, pvcs, serviceAccounts, setting affinity along with much more (see the example below for all the options!)
@@ -216,6 +217,189 @@ spec:
         enabled: true
         retryCodes: [8]
 ```
+
+## DSL (Domain Specific Language) for DAG Definitions
+
+Kontroler supports a Domain Specific Language (DSL) for defining DAGs with a more concise and expressive syntax. The DSL provides an alternative to the traditional YAML task arrays and is designed to make DAG definitions more readable and maintainable.
+
+### DSL Features
+
+- **Graph Definition**: Explicit dependency declaration using arrow syntax (`->`)
+- **Task Definitions**: Simplified task block syntax
+- **Parameter Support**: Parameter definitions with defaults and secrets
+- **Script Support**: Direct script execution without command/args arrays
+- **Schedule Support**: Cron schedule definitions
+
+### DSL Syntax Overview
+
+The DSL uses blocks to define different aspects of your DAG:
+
+```dsl
+schedule "*/1 * * * *"
+
+parameters {
+  param "my-param" {
+    default "default-value"
+  }
+  param "secret-param" {
+    secret "secret-name"
+  }
+}
+
+graph {
+  task_a -> task_b
+  task_a -> task_c
+  task_b -> task_d
+  task_c -> task_d
+}
+
+task task_a {
+  image "alpine:latest"
+  script "echo 'Starting workflow'"
+}
+
+task task_b {
+  image "python:3.9"
+  command ["python", "-c"]
+  args ["print('Processing data')"]
+}
+
+task task_c {
+  image "alpine:latest"
+  script "echo 'Parallel processing'"
+}
+
+task task_d {
+  image "alpine:latest"
+  script "echo 'Workflow complete'"
+}
+```
+
+### DSL vs Traditional YAML
+
+**DSL Example:**
+```yaml
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: dag-dsl-example
+spec:
+  dsl: |
+    schedule "*/5 * * * *"
+    
+    graph {
+      start -> process -> finish
+    }
+    
+    task start {
+      image "alpine:latest"
+      script "echo 'Starting job'"
+      backoff 3
+    }
+    
+    task process {
+      image "alpine:latest"
+      script "echo 'Processing data'"
+      backoff 3
+      retry [1, 2]
+    }
+    
+    task finish {
+      image "alpine:latest"
+      script "echo 'Job completed'"
+      backoff 3
+    }
+```
+
+**Traditional YAML Equivalent:**
+```yaml
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: dag-traditional-example
+spec:
+  schedule: "*/5 * * * *"
+  task:
+    - name: "start"
+      image: "alpine:latest"
+      script: "echo 'Starting job'"
+      backoff:
+        limit: 3
+      conditional:
+        enabled: false
+        retryCodes: []
+    - name: "process"
+      image: "alpine:latest"
+      script: "echo 'Processing data'"
+      runAfter: ["start"]  # This dependency is defined by "start -> process" in DSL
+      backoff:
+        limit: 3
+      conditional:
+        enabled: true  # This is set by "retry [1, 2]" in DSL
+        retryCodes: [1, 2]  # This corresponds to "retry [1, 2]" in DSL
+    - name: "finish"
+      image: "alpine:latest" 
+      script: "echo 'Job completed'"
+      runAfter: ["process"]  # This dependency is defined by "process -> finish" in DSL
+      backoff:
+        limit: 3
+      conditional:
+        enabled: false
+        retryCodes: []
+```
+
+### DSL Field Compatibility and Restrictions
+
+When using the DSL field, the following **cannot be used together**:
+
+- ❌ `spec.task` - Tasks must be defined in the DSL, not as a separate field
+- ❌ `spec.schedule` - Schedule must be defined in the DSL using `schedule "cron-expression"`
+- ❌ `spec.parameters` - Parameters must be defined in the DSL using `parameters { }` blocks
+
+The following fields **can still be used** with DSL:
+- ✅ `spec.webhook` - Webhook configurations
+- ✅ `spec.workspace` - Workspace configurations  
+- ✅ `spec.suspended` - DAG suspension state
+
+### DSL Task Configuration Options
+
+Tasks in DSL support all the same configuration options as traditional YAML:
+
+```dsl
+task advanced_task {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Advanced task'"]
+  script "echo 'Can use script OR command/args'"
+  parameters ["param1", "param2"]
+  backoff 5
+  retry [1, 2, 130]
+}
+```
+
+**Note**: When using DSL, default values are automatically applied if not specified:
+- `backoff`: 3 (can be customized with `backoff <number>`)
+- `conditional.enabled`: false (automatically set to true when `retry` is used)
+- `conditional.retryCodes`: [] (set by `retry [code1, code2, ...]`)
+
+### DSL Validation
+
+The DSL parser includes validation to ensure:
+- All tasks referenced in the graph are defined
+- No circular dependencies exist in the graph
+- Parameter references in tasks match defined parameters
+- Graph definitions are required (tasks without dependencies should be explicitly defined)
+
+### Migration from Traditional YAML to DSL
+
+To migrate existing DAGs to DSL:
+
+1. **Extract the schedule**: Move from `spec.schedule` to `schedule "cron-expression"`
+2. **Extract parameters**: Move from `spec.parameters` to `parameters { }` blocks
+3. **Build the graph**: Analyze `runAfter` dependencies and create `graph { }` block
+4. **Define tasks**: Convert task array to individual `task` blocks
+5. **Remove traditional fields**: Remove `spec.task`, `spec.schedule`, and `spec.parameters`
+6. **Add DSL field**: Place everything in the `spec.dsl` field
 
 ## Creating a DagRun via YAML
 
