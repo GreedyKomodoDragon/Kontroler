@@ -38,18 +38,18 @@ func main() {
 	flag.StringVar(&configPath, "configpath", "", "Path to configuration file")
 	flag.Parse()
 
-	serverConfig, err := config.ParseConfig(configPath)
+	cfg, err := config.ParseConfig(configPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to parse config")
 	}
 
 	// Get kubernetes config
-	var config *rest.Config
+	var k8sConfig *rest.Config
 	var kubeErr error
-	if serverConfig.KubeConfigPath != "" {
-		config, kubeErr = clientcmd.BuildConfigFromFlags("", serverConfig.KubeConfigPath)
+	if cfg.KubeConfigPath != "" {
+		k8sConfig, kubeErr = clientcmd.BuildConfigFromFlags("", cfg.KubeConfigPath)
 	} else {
-		config, kubeErr = rest.InClusterConfig()
+		k8sConfig, kubeErr = rest.InClusterConfig()
 	}
 
 	if kubeErr != nil {
@@ -134,19 +134,30 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
 	}
 
-	kubClient, clientset, err := kclient.NewClients(config)
+	// Create rate limiter if enabled
+	var rateLimiter *auth.RateLimiter
+	if cfg.RateLimit.Enabled {
+		blockDuration, err := config.ParseDuration(cfg.RateLimit.BlockDuration)
+		if err != nil {
+			log.Fatal().Err(err).Msg("failed to parse rate limit block duration")
+		}
+		rateLimiter = auth.NewRateLimiter(cfg.RateLimit.MaxAttempts, blockDuration)
+		log.Info().Int("maxAttempts", cfg.RateLimit.MaxAttempts).Dur("blockDuration", blockDuration).Msg("Rate limiting enabled")
+	}
+
+	kubClient, clientset, err := kclient.NewClients(k8sConfig)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a kubernetes client")
 	}
 
-	logFetcher, err := logs.NewLogFetcher(serverConfig)
+	logFetcher, err := logs.NewLogFetcher(cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create a log fetcher")
 	}
 
 	logStreamer := ws.NewWebSocketLogStream(dbDAGManager, clientset)
 
-	app := internalRest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher)
+	app := internalRest.NewFiberHttpServer(dbDAGManager, kubClient, authManager, corsUiAddress, strings.ToLower(auditLogs) == "true", logFetcher, rateLimiter)
 
 	// Apply authentication middleware BEFORE WebSocket upgrade
 	app.Use("/ws/logs", ws.Auth(authManager))

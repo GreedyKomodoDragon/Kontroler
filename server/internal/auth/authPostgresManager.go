@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt"
@@ -73,8 +74,12 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 			VALUES ($1, crypt($2, gen_salt('bf')), 'admin');
 		`
 
-		// TODO: move out adminpassword to a ENV
-		if _, err := a.pool.Exec(ctx, createDefaultAccountSQL, "admin", "adminpassword"); err != nil {
+		adminPassword := os.Getenv("DEFAULT_ADMIN_PASSWORD")
+		if adminPassword == "" {
+			adminPassword = "adminpassword" // fallback for development
+		}
+
+		if _, err := a.pool.Exec(ctx, createDefaultAccountSQL, "admin", adminPassword); err != nil {
 			return fmt.Errorf("failed to create default account: %v", err)
 		}
 	}
@@ -132,6 +137,28 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 	}
 
 	return signedToken, role, nil
+}
+
+func (a *authPostgresManager) LoginWithRateLimit(ctx context.Context, credentials *Credentials, rateLimiter *RateLimiter) (string, string, error) {
+	// Check if the IP or username is blocked (using username as identifier)
+	if rateLimiter.IsBlocked(credentials.Username) {
+		return "", "", fmt.Errorf("too many failed login attempts. please try again later")
+	}
+
+	// Attempt login
+	token, role, err := a.Login(ctx, credentials)
+	if err != nil {
+		// Record failed attempt
+		if rateLimiter.RecordFailure(credentials.Username) {
+			return "", "", fmt.Errorf("too many failed login attempts. account temporarily blocked")
+		}
+		return "", "", err
+	}
+
+	// Record successful login (clears the rate limit counter)
+	rateLimiter.RecordSuccess(credentials.Username)
+
+	return token, role, nil
 }
 
 func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString string) (string, string, error) {

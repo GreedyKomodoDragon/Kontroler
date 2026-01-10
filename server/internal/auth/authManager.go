@@ -29,6 +29,7 @@ type AuthManager interface {
 	InitialiseDatabase(ctx context.Context) error
 	CreateAccount(ctx context.Context, createAccountReq *CreateAccountReq) error
 	Login(ctx context.Context, credentials *Credentials) (string, string, error)
+	LoginWithRateLimit(ctx context.Context, credentials *Credentials, rateLimiter *RateLimiter) (string, string, error)
 	IsValidLogin(ctx context.Context, token string) (string, string, error)
 	RevokeToken(ctx context.Context, tokenString string) error
 	GetUsers(ctx context.Context, limit, offset int) ([]*User, error)

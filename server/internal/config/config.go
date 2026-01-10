@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -23,9 +24,16 @@ type FileSystemLogStoreConfig struct {
 	BaseDir string `yaml:"baseDir"`
 }
 
+type RateLimit struct {
+	Enabled       bool   `yaml:"enabled"`
+	MaxAttempts   int    `yaml:"maxAttempts"`
+	BlockDuration string `yaml:"blockDuration"`
+}
+
 type ServerConfig struct {
-	KubeConfigPath string   `yaml:"kubeConfigPath"`
-	LogStorage     LogStore `yaml:"logStorage"`
+	KubeConfigPath string    `yaml:"kubeConfigPath"`
+	LogStorage     LogStore  `yaml:"logStorage"`
+	RateLimit      RateLimit `yaml:"rateLimit"`
 }
 
 // loadConfigFromYAML attempts to load configuration from a YAML file
@@ -137,6 +145,14 @@ func ParseConfig(configPath string) (*ServerConfig, error) {
 		config = &ServerConfig{}
 	}
 
+	// Set sensible defaults for rate limiting
+	if config.RateLimit.MaxAttempts == 0 {
+		config.RateLimit.MaxAttempts = 5
+	}
+	if config.RateLimit.BlockDuration == "" {
+		config.RateLimit.BlockDuration = "15m"
+	}
+
 	// Apply environment-based configuration
 	applyEnvironmentConfig(config)
 
@@ -150,4 +166,11 @@ func ParseConfig(configPath string) (*ServerConfig, error) {
 	}
 
 	return config, nil
+}
+
+func ParseDuration(durationStr string) (time.Duration, error) {
+	if durationStr == "" {
+		return 0, nil
+	}
+	return time.ParseDuration(durationStr)
 }

@@ -15,13 +15,13 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
-func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, authManager auth.AuthManager, logFetcher logs.LogFetcher) {
+func addV1(app *fiber.App, dbManager db.DbManager, kubClient dynamic.Interface, authManager auth.AuthManager, logFetcher logs.LogFetcher, rateLimiter *auth.RateLimiter) {
 
 	router := app.Group("/api/v1")
 
 	addDags(router, dbManager, kubClient)
 	addStats(router, dbManager)
-	addAccountAuth(router, authManager)
+	addAccountAuth(router, authManager, rateLimiter)
 
 	// check if a bucket has been selected/log fetching enabled
 	if logFetcher != nil {
@@ -388,7 +388,7 @@ func addStats(router fiber.Router, dbManager db.DbManager) {
 	})
 }
 
-func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
+func addAccountAuth(router fiber.Router, authManager auth.AuthManager, rateLimiter *auth.RateLimiter) {
 	authRouter := router.Group("/auth")
 
 	authRouter.Post("/login", func(c *fiber.Ctx) error {
@@ -399,7 +399,15 @@ func addAccountAuth(router fiber.Router, authManager auth.AuthManager) {
 			})
 		}
 
-		token, role, err := authManager.Login(c.Context(), &req)
+		var token, role string
+		var err error
+
+		if rateLimiter != nil {
+			token, role, err = authManager.LoginWithRateLimit(c.Context(), &req, rateLimiter)
+		} else {
+			token, role, err = authManager.Login(c.Context(), &req)
+		}
+
 		if err != nil {
 			log.Error().Err(err).Msg("Error checking credentials")
 			return c.SendStatus(fiber.StatusInternalServerError)

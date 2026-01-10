@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt"
@@ -104,7 +105,12 @@ func (a *authSqliteManager) InitialiseDatabase(ctx context.Context) error {
 			VALUES (?, ?, ?);
 		`
 
-		hashedPassword, err := hashPassword("adminpassword")
+		adminPassword := os.Getenv("DEFAULT_ADMIN_PASSWORD")
+		if adminPassword == "" {
+			adminPassword = "adminpassword" // fallback for development
+		}
+
+		hashedPassword, err := hashPassword(adminPassword)
 		if err != nil {
 			return err
 		}
@@ -349,6 +355,28 @@ func (a *authSqliteManager) Login(ctx context.Context, credentials *Credentials)
 	}
 
 	return signedToken, role, nil
+}
+
+func (a *authSqliteManager) LoginWithRateLimit(ctx context.Context, credentials *Credentials, rateLimiter *RateLimiter) (string, string, error) {
+	// Check if the IP or username is blocked (using username as identifier)
+	if rateLimiter.IsBlocked(credentials.Username) {
+		return "", "", fmt.Errorf("too many failed login attempts. please try again later")
+	}
+
+	// Attempt login
+	token, role, err := a.Login(ctx, credentials)
+	if err != nil {
+		// Record failed attempt
+		if rateLimiter.RecordFailure(credentials.Username) {
+			return "", "", fmt.Errorf("too many failed login attempts. account temporarily blocked")
+		}
+		return "", "", err
+	}
+
+	// Record successful login (clears the rate limit counter)
+	rateLimiter.RecordSuccess(credentials.Username)
+
+	return token, role, nil
 }
 
 func (a *authSqliteManager) RevokeToken(ctx context.Context, tokenString string) error {
