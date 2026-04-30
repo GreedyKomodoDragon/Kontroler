@@ -2,7 +2,7 @@ package rest
 
 import (
 	"fmt"
-	"kontroler-server/internal/auth"
+	"kontroler-controller/internal/server/auth"
 	"strings"
 	"time"
 

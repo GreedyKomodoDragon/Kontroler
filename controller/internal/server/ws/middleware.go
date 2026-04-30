@@ -1,7 +1,7 @@
 package ws
 
 import (
-	"kontroler-server/internal/auth"
+	"kontroler-controller/internal/server/auth"
 
 	"github.com/gofiber/fiber/v2"
 )

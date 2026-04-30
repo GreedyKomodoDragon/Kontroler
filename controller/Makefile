@@ -55,6 +55,7 @@ OPERATOR_SDK_VERSION ?= v1.34.1
 
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
+SERVER_IMG ?= greedykomodo/kontroler-server:$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 
@@ -150,12 +151,23 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+build: build-controller build-server
 
-.PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+.PHONY: build-controller
+build-controller: manifests generate fmt vet ## Build controller binary.
+	go build -o bin/controller cmd/controller/main.go
+
+.PHONY: build-server
+build-server: fmt vet ## Build server binary.
+	go build -o bin/server cmd/server/main.go
+
+.PHONY: run-controller
+run-controller: manifests generate fmt vet ## Run controller from your host.
+	go run ./cmd/controller/main.go
+
+.PHONY: run-server
+run-server: fmt vet ## Run server from your host.
+	go run ./cmd/server/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -167,6 +179,14 @@ docker-build: ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+
+.PHONY: docker-build-server
+docker-build-server: ## Build docker image for the server.
+	$(CONTAINER_TOOL) build -t ${SERVER_IMG} -f Dockerfile.server .
+
+.PHONY: docker-push-server
+docker-push-server: ## Push docker image for the server.
+	$(CONTAINER_TOOL) push ${SERVER_IMG}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

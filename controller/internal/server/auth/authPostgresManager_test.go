@@ -3,7 +3,7 @@ package auth_test
 import (
 	"context"
 	"fmt"
-	"kontroler-server/internal/auth"
+	"kontroler-controller/internal/server/auth"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"

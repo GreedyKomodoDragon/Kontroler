@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"kontroler-server/internal/auth"
+	"kontroler-controller/internal/server/auth"
 	"math/rand"
 	"testing"
 

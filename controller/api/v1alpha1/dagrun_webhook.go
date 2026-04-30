@@ -1,13 +1,13 @@
 package v1alpha1
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -23,35 +23,43 @@ func (r *DagRun) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-kontroler-greedykomodo-v1alpha1-dagrun,mutating=true,failurePolicy=fail,sideEffects=None,groups=kontroler.greedykomodo,resources=dagruns,verbs=create;update,versions=v1alpha1,name=mdagrun.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &DagRun{}
+var _ admission.CustomDefaulter = &DagRun{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DagRun) Default() {
-	dagrunlog.Info("default", "name", r.Name)
-
-	// TODO: fill in your defaulting logic.
+func (r *DagRun) Default(ctx context.Context, obj runtime.Object) error {
+	dagRun, ok := obj.(*DagRun)
+	if !ok {
+		return fmt.Errorf("expected *DagRun, got %T", obj)
+	}
+	dagrunlog.Info("default", "name", dagRun.Name)
+	return nil
 }
 
 //+kubebuilder:webhook:path=/validate-kontroler-greedykomodo-v1alpha1-dagrun,mutating=false,failurePolicy=fail,sideEffects=None,groups=kontroler.greedykomodo,resources=dagruns,verbs=create;update,versions=v1alpha1,name=vdagrun.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &DagRun{}
+var _ admission.CustomValidator = &DagRun{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DagRun) ValidateCreate() (admission.Warnings, error) {
-	dagrunlog.Info("validate create", "name", r.Name)
-	return r.validateDagRun()
+func (r *DagRun) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	dagRun, ok := obj.(*DagRun)
+	if !ok {
+		return nil, fmt.Errorf("expected *DagRun, got %T", obj)
+	}
+	return dagRun.validateDagRun()
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DagRun) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	dagrunlog.Info("validate update", "name", r.Name)
-	return r.validateDagRun()
+func (r *DagRun) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	dagRun, ok := newObj.(*DagRun)
+	if !ok {
+		return nil, fmt.Errorf("expected *DagRun, got %T", newObj)
+	}
+	return dagRun.validateDagRun()
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DagRun) ValidateDelete() (admission.Warnings, error) {
+func (r *DagRun) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	dagrunlog.Info("validate delete", "name", r.Name)
-	// No validation logic needed for deletion.
 	return nil, nil
 }
 

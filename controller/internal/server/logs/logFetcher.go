@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"kontroler-server/internal/config"
+	"kontroler-controller/internal/server/config"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"

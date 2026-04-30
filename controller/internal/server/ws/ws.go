@@ -2,7 +2,7 @@ package ws
 
 import (
 	"context"
-	"kontroler-server/internal/db"
+	"kontroler-controller/internal/server/db"
 	"time"
 
 	"github.com/rs/zerolog/log"

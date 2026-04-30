@@ -1,0 +1,53 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: sample-dsl-dag
+  namespace: default
+spec:
+  # "0 */6 * * *" -> every 6 hours
+  dsl: |
+    schedule "0 */6 * * *"
+    
+    parameters {
+      environment {
+        default "production"
+      }
+      replicas {
+        default "3"
+      }
+    }
+    
+    graph {
+      setup -> deploy
+      setup -> test
+      deploy -> cleanup
+      test -> cleanup
+    }
+    
+    task setup {
+      image "alpine:latest"
+      command ["sh", "-c"]
+      args ["echo 'Setting up environment'"]
+      parameters ["environment"]
+    }
+    
+    task deploy {
+      image "alpine:latest"
+      script """
+      echo "Deploying application to $ENVIRONMENT"
+      echo "Using $REPLICAS replicas"
+      """
+      parameters ["environment", "replicas"]
+    }
+    
+    task test {
+      image "alpine:latest"
+      script "echo 'Running tests'"
+      retry [1, 2, 125]
+    }
+    
+    task cleanup {
+      image "alpine:latest"
+      command ["sh", "-c"]
+      args ["echo 'Cleaning up resources'"]
+    }
