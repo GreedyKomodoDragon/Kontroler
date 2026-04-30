@@ -188,6 +188,81 @@ docker-build-server: ## Build docker image for the server.
 docker-push-server: ## Push docker image for the server.
 	$(CONTAINER_TOOL) push ${SERVER_IMG}
 
+##@ Kind Cluster Management
+
+KIND_CLUSTER_NAME ?= kind
+
+.PHONY: kind-create
+kind-create: ## Create kind cluster
+	kind create cluster --name $(KIND_CLUSTER_NAME) --config <(echo 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnodes:\n  - role: control-plane\n    kubeadmConfigPatches:\n      - |\n        kind: InitConfiguration\n        nodeRegistration:\n          kubeletExtraArgs:\n            node-labels: "ingress-ready=true"\n    extraPortMappings:\n      - containerPort: 80\n        hostPort: 80\n        protocol: TCP\n      - containerPort: 443\n        hostPort: 443\n        protocol: TCP\n  - role: worker\n  - role: worker')
+
+.PHONY: kind-delete
+kind-delete: ## Delete kind cluster
+	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-load-controller
+kind-load-controller: docker-build ## Build & load controller image to kind
+	kind load docker-image $(IMG) --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-load-server
+kind-load-server: docker-build-server ## Build & load server image to kind
+	kind load docker-image $(SERVER_IMG) --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-load-all
+kind-load-all: kind-load-controller kind-load-server ## Load all images to kind
+
+##@ Kind Backing Services (Helm)
+
+.PHONY: kind-deploy-postgres
+kind-deploy-postgres: ## Deploy PostgreSQL via bitnami helm chart
+	helm upgrade --install postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
+		--set auth.postgresPassword=postgres \
+		--set primary.persistence.enabled=false \
+		--set tls.enabled=false
+
+.PHONY: kind-deploy-cert-manager
+kind-deploy-cert-manager: ## Deploy cert-manager
+	helm upgrade --install cert-manager jetstack/cert-manager \
+		--repo https://charts.jetstack.io \
+		--namespace cert-manager --create-namespace \
+		--set crds.enabled=true
+
+.PHONY: kind-deploy-minio
+kind-deploy-minio: ## Deploy MinIO for S3 log storage (optional)
+	helm upgrade --install minio oci://registry-1.docker.io/bitnamicharts/minio \
+		--set auth.rootUser=minioadmin \
+		--set auth.rootPassword=minioadmin \
+		--set persistence.enabled=false
+
+##@ Kind Kontroler Deployment
+
+.PHONY: kind-deploy-kontroler
+kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
+	helm upgrade --install kontroler ../helm/kontroler \
+		--set controller.image=$(IMG) \
+		--set server.image=$(SERVER_IMG) \
+		--set db.type=postgresql \
+		--set db.postgresql.endpoint=postgres-postgresql.default.svc.cluster.local:5432 \
+		--set "db.postgresql.password.secret=postgres-postgresql" \
+		--set "db.postgresql.password.key=postgres-password" \
+		--set certManager.enabled=false \
+		--set controller.leaderElectionID="610a3770.greedykomodo"
+
+.PHONY: kind-bootstrap
+kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-deploy-kontroler ## Full kind cluster setup with all services
+	@echo "Kind cluster ready with Kontroler deployed!"
+	@echo "Controller logs: kubectl logs -l app=kontroler-controller -n default -f"
+	@echo "Server logs: kubectl logs -l app=kontroler-server -n default -f"
+
+##@ Port Forwarding
+
+.PHONY: kind-portforward
+kind-portforward: ## Port forward to access server UI locally
+	@echo "Port forwarding to server (8080) and UI (3000)..."
+	(kubectl port-forward svc/kontroler-server 8080:8080 & \
+	 kubectl port-forward svc/kontroler-ui 3000:3000 & \
+	 wait)
+
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/

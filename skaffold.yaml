@@ -4,9 +4,9 @@ metadata:
   name: backing-services
 
 profiles:
-  - name: minikube
+  - name: kind
     activation:
-      - kubeContext: minikube
+      - kubeContext: kind-kind
     deploy:
       helm:
         releases:
