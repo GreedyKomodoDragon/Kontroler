@@ -99,10 +99,10 @@ type TaskRef struct {
 type PVC struct {
 	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes"`
 	// +optional
-	Selector         *metav1.LabelSelector        `json:"selector,omitempty"`
-	Resources        corev1.ResourceRequirements  `json:"resources,omitempty"`
-	StorageClassName *string                      `json:"storageClassName,omitempty"`
-	VolumeMode       *corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
+	Selector         *metav1.LabelSelector            `json:"selector,omitempty"`
+	Resources        corev1.VolumeResourceRequirements `json:"resources,omitempty"`
+	StorageClassName *string                          `json:"storageClassName,omitempty"`
+	VolumeMode       *corev1.PersistentVolumeMode     `json:"volumeMode,omitempty"`
 }
 
 type Workspace struct {
