@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: jwt-kontroller-key
-type: Opaque
-stringData:
-  password: xau_bDdI6hYJeqhWRkiYc617KDVCiapfvBrc0
-
