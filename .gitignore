@@ -9,3 +9,4 @@ xata.yaml
 kubeconfig-secret.yaml
 scripts/
 .env
+controller/main

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	sterrors "errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -241,7 +242,7 @@ func (r *DAGReconciler) processDSL(ctx context.Context, dag *kontrolerv1alpha1.D
 		for _, validationError := range validationResult.Errors {
 			errorMsg += fmt.Sprintf(" %s", validationError.Error())
 		}
-		return fmt.Errorf(errorMsg)
+		return sterrors.New(errorMsg)
 	}
 
 	// Merge the parsed DSL content with the existing spec
