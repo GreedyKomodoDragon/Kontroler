@@ -155,7 +155,7 @@ spec:
             {{ end }}
             {{ include "kontroler.s3.envs" . | indent 12 }}
           image: {{ .Values.controller.image }}
-          imagePullPolicy: Always
+          imagePullPolicy: {{ .Values.controller.imagePullPolicy | default "IfNotPresent" }}
           livenessProbe:
             httpGet:
               path: /healthz
