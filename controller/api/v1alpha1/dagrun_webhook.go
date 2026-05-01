@@ -59,7 +59,11 @@ func (r *DagRun) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Obje
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *DagRun) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	dagrunlog.Info("validate delete", "name", r.Name)
+	dagRun, ok := obj.(*DagRun)
+	if !ok {
+		return nil, fmt.Errorf("expected *DagRun, got %T", obj)
+	}
+	dagrunlog.Info("validate delete", "name", dagRun.Name)
 	return nil, nil
 }
 
