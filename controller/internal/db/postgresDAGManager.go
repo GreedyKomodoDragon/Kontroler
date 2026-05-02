@@ -438,7 +438,11 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 
 	defer rows.Close()
 
+	// Collect tasks and their parameter names first to avoid N+1 queries
 	tasks := []Task{}
+	paramsForTasks := [][]string{}
+	var dagIDForParams int = -1
+
 	for rows.Next() {
 		var task Task
 		var parameters []string
@@ -451,22 +455,11 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 			return nil, err
 		}
 
-		task.Parameters = []Parameter{}
-		for _, parameter := range parameters {
-			param := Parameter{
-				Name: parameter,
-			}
+		// remember the DAG id (same for all rows)
+		dagIDForParams = dagId
 
-			if err := p.pool.QueryRow(ctx, `
-			SELECT isSecret, defaultValue
-			FROM DAG_Parameters
-			WHERE dag_id = $1 and name = $2;
-			`, dagId, parameter).Scan(&param.IsSecret, &param.Value); err != nil {
-				return nil, err
-			}
-
-			task.Parameters = append(task.Parameters, param)
-		}
+		// store parameter names; actual Parameter objects will be populated in batch below
+		paramsForTasks = append(paramsForTasks, parameters)
 
 		var podTemplate *v1alpha1.PodTemplateSpec
 		if podTemplateJSON.Valid {
@@ -500,8 +493,65 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 
 		task.PodTemplate = podTemplate
 
+		// append task with empty Parameters for now
+		task.Parameters = []Parameter{}
 		tasks = append(tasks, task)
+	}
 
+	// If there are parameters to fetch, batch query them
+	if len(paramsForTasks) > 0 {
+		// Build unique list of parameter names
+		uniqueParams := make(map[string]struct{})
+		for _, pnames := range paramsForTasks {
+			for _, pn := range pnames {
+				uniqueParams[pn] = struct{}{}
+			}
+		}
+
+		flattened := make([]string, 0, len(uniqueParams))
+		for name := range uniqueParams {
+			flattened = append(flattened, name)
+		}
+
+		// Query all parameter values in a single call
+		rowsParams, err := p.pool.Query(ctx, `
+		SELECT name, isSecret, defaultValue
+		FROM DAG_Parameters
+		WHERE dag_id = $1 AND name = ANY($2)
+		`, dagIDForParams, flattened)
+		if err != nil {
+			return nil, err
+		}
+		defer rowsParams.Close()
+
+		paramMap := make(map[string]Parameter)
+		for rowsParams.Next() {
+			var name string
+			var isSecret bool
+			var value string
+			if err := rowsParams.Scan(&name, &isSecret, &value); err != nil {
+				return nil, err
+			}
+			paramMap[name] = Parameter{Name: name, IsSecret: isSecret, Value: value}
+		}
+
+		// Ensure all requested params found
+		for _, name := range flattened {
+			if _, ok := paramMap[name]; !ok {
+				return nil, fmt.Errorf("failed to get parameter '%s'", name)
+			}
+		}
+
+		// Populate task.Parameters from the map
+		for i := range tasks {
+			for _, pname := range paramsForTasks[i] {
+				if pval, ok := paramMap[pname]; ok {
+					tasks[i].Parameters = append(tasks[i].Parameters, pval)
+				} else {
+					return nil, fmt.Errorf("failed to get parameter '%s'", pname)
+				}
+			}
+		}
 	}
 
 	return tasks, nil
