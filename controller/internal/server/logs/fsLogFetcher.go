@@ -21,7 +21,7 @@ func NewFSLogFetcher(basePath string) (LogFetcher, error) {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("log directory does not exist: %s", basePath)
 		}
-		return nil, fmt.Errorf("error checking log directory: %v", err)
+		return nil, fmt.Errorf("error checking log directory: %w", err)
 	}
 
 	if !info.IsDir() {

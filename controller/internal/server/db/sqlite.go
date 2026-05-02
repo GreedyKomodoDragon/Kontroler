@@ -51,7 +51,7 @@ func NewSQLiteReadOnlyManager(ctx context.Context, config *SQLiteReadOnlyConfig)
 	}, nil
 }
 
-func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error) {
+func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DBDAGMetaData, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT dag_id, name, namespace, version, schedule, active, nexttime, suspended
 		FROM DAGs
@@ -64,9 +64,9 @@ func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset
 	}
 	defer rows.Close()
 
-	metas := []*DAGMetaData{}
+	metas := []*DBDAGMetaData{}
 	for rows.Next() {
-		var meta DAGMetaData
+		var meta DBDAGMetaData
 		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Namespace, &meta.Version,
 			&meta.Schedule, &meta.Active, &meta.NextTime, &meta.IsSuspended); err != nil {
 			return nil, err
@@ -82,7 +82,7 @@ func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset
 	return metas, nil
 }
 
-func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, error) {
+func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -119,10 +119,10 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, e
 	}
 	defer rows.Close()
 
-	taskInfo := map[int]TaskInfo{}
+	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
 		var taskId int
-		task := TaskInfo{}
+		task := DBTaskInfo{}
 		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
@@ -131,17 +131,17 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, e
 
 	for key := range connections {
 		if _, ok := taskInfo[key]; !ok {
-			taskInfo[key] = TaskInfo{Status: "pending"}
+			taskInfo[key] = DBTaskInfo{Status: "pending"}
 		}
 	}
 
-	return &DagRun{
+	return &DBDagRun{
 		Connections: connections,
 		TaskInfo:    taskInfo,
 	}, nil
 }
 
-func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error) {
+func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) ([]*DBDagRunMeta, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT run_id, d.dag_id, status, successfulcount, failedcount, d.namespace, r.name
 		FROM DAG_Runs r
@@ -154,9 +154,9 @@ func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) (
 	}
 	defer rows.Close()
 
-	metas := []*DagRunMeta{}
+	metas := []*DBDagRunMeta{}
 	for rows.Next() {
-		var meta DagRunMeta
+		var meta DBDagRunMeta
 		if err := rows.Scan(&meta.Id, &meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount, &meta.Namespace, &meta.Name); err != nil {
 			return nil, err
 		}
@@ -226,8 +226,8 @@ func (s *sqliteManager) getDagConnections(ctx context.Context, dagId int) (map[i
 	return connections, nil
 }
 
-func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRunAll, error) {
-	meta := &DagRunAll{Id: dagRunId}
+func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDagRunAll, error) {
+	meta := &DBDagRunAll{Id: dagRunId}
 
 	if err := s.db.QueryRowContext(ctx, `
         SELECT dag_id, status, successfulCount, failedCount
@@ -258,10 +258,10 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRun
 
 	defer rows.Close()
 
-	taskInfo := map[int]TaskInfo{}
+	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
 		var taskId int
-		task := TaskInfo{}
+		task := DBTaskInfo{}
 		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
@@ -306,7 +306,7 @@ func (s *sqliteManager) GetDagPageCount(ctx context.Context, limit int) (int, er
 	return (count + limit - 1) / limit, nil
 }
 
-func (s *sqliteManager) GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error) {
+func (s *sqliteManager) GetDagParameters(ctx context.Context, dagName string) ([]*DBParameter, error) {
 	rows, err := s.db.QueryContext(ctx, `
 	SELECT parameter_id, name, isSecret, defaultValue
 	FROM DAG_Parameters
@@ -324,10 +324,10 @@ func (s *sqliteManager) GetDagParameters(ctx context.Context, dagName string) ([
 
 	defer rows.Close()
 
-	params := []*Parameter{}
+	params := []*DBParameter{}
 
 	for rows.Next() {
-		var param Parameter
+		var param DBParameter
 		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
 			return nil, err
 		}
@@ -353,8 +353,8 @@ func (s *sqliteManager) GetDagRunPageCount(ctx context.Context, limit int) (int,
 	return pages, nil
 }
 
-func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
-	stats := DashboardStats{}
+func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DBDashboardStats, error) {
+	stats := DBDashboardStats{}
 	errChan := make(chan error, 5)
 	var wg sync.WaitGroup
 
@@ -523,7 +523,7 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DashboardStats,
 				return
 			}
 
-			stats.DailyDagRunCounts = append(stats.DailyDagRunCounts, DailyDagRunCount{
+			stats.DailyDagRunCounts = append(stats.DailyDagRunCounts, DBDailyDagRunCount{
 				Day:             day,
 				SuccessfulCount: successfulCount,
 				FailedCount:     failedCount,
@@ -608,8 +608,8 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 	return results, nil
 }
 
-func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
-	var taskDetails TaskDetails
+func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTaskDetails, error) {
+	var taskDetails DBTaskDetails
 	var podTemplateJSON *string
 	var commandJSON string
 	var argsJSON string
@@ -688,7 +688,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDe
 	defer rows.Close()
 
 	for rows.Next() {
-		var param Parameter
+		var param DBParameter
 		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
 			return nil, fmt.Errorf("failed to scan parameter row: %w", err)
 		}
@@ -703,8 +703,8 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDe
 }
 
 // GetTaskRunDetails implements DbManager.
-func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, taskId int) (*TaskRunDetails, error) {
-	task := &TaskRunDetails{}
+func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, taskId int) (*DBTaskRunDetails, error) {
+	task := &DBTaskRunDetails{}
 
 	if err := s.db.QueryRowContext(ctx, `
 	SELECT task_run_id, status, attempts
@@ -726,10 +726,10 @@ func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, tas
 
 	defer rows.Close()
 
-	task.Pods = []*TaskPod{}
+	task.Pods = []*DBTaskPod{}
 
 	for rows.Next() {
-		pod := &TaskPod{}
+		pod := &DBTaskPod{}
 		var duration sql.NullInt64
 		if err := rows.Scan(&pod.PodUID, &pod.ExitCode, &pod.Name, &pod.Status, &duration); err != nil {
 			return nil, err
@@ -745,7 +745,7 @@ func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, tas
 	return task, nil
 }
 
-func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*DagTaskDetails, error) {
+func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*DBDagTaskDetails, error) {
 	// Query for the task details from the Tasks table
 	queryTask := `
 		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
@@ -761,9 +761,9 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 
 	defer rows.Close()
 
-	taskDetails := []*DagTaskDetails{}
+	taskDetails := []*DBDagTaskDetails{}
 	for rows.Next() {
-		var taskDetail DagTaskDetails
+		var taskDetail DBDagTaskDetails
 		var podTemplateJSON *string
 		var commandJSON string
 		var argsJSON string

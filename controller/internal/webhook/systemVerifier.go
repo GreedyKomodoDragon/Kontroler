@@ -27,7 +27,7 @@ func NewSystemURLValidator() SSLVerifier {
 func (r *systemURLVerifier) VerifySSL(inputURL string) error {
 	parsedURL, err := url.Parse(inputURL)
 	if err != nil {
-		return fmt.Errorf("invalid URL: %v", err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 
 	if parsedURL.Scheme != "https" {
@@ -44,12 +44,12 @@ func (r *systemURLVerifier) VerifySSL(inputURL string) error {
 		RootCAs: r.roots,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to establish TLS connection: %v", err)
+		return fmt.Errorf("failed to establish TLS connection: %w", err)
 	}
 	defer conn.Close()
 
 	if err := conn.VerifyHostname(parsedURL.Hostname()); err != nil {
-		return fmt.Errorf("hostname verification failed: %v", err)
+		return fmt.Errorf("hostname verification failed: %w", err)
 	}
 
 	// If everything is fine, check that there are certificates

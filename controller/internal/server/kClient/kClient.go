@@ -2,7 +2,6 @@ package kclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -42,127 +41,32 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		"app.kubernetes.io/created-by": "server",
 	}
 
-	// Create a map to quickly lookup parameter names by ID
-	paramNameByID := make(map[string]string)
-	for _, p := range dagForm.Parameters {
-		paramNameByID[p.ID] = p.Name
+	// Build the unstructured DAG object from the form
+	dagObj, err := BuildDAGUnstructured(dagForm)
+	if err != nil {
+		return fmt.Errorf("failed to build DAG object: %w", err)
 	}
 
-	// Convert DagParameterSpec to Parameters
-	var parameters []map[string]interface{}
-	for _, p := range dagForm.Parameters {
-		param := map[string]interface{}{
-			"name": p.Name,
-		}
-		if p.IsSecret {
-			param["defaultFromSecret"] = p.Value
-		} else {
-			param["defaultValue"] = p.Value
-		}
-		parameters = append(parameters, param)
+	// Merge labels into dagObj metadata and use dagObj directly.
+	// Ensure metadata exists
+	meta, ok := dagObj.Object["metadata"].(map[string]interface{})
+	if !ok {
+		meta = map[string]interface{}{}
 	}
-
-	// Convert TaskSpec to Tasks
-	var tasks []map[string]interface{}
-	for _, t := range dagForm.Tasks {
-		paramNames := []string{}
-
-		for _, paramID := range t.Parameters {
-			if paramName, exists := paramNameByID[paramID]; exists {
-				paramNames = append(paramNames, paramName)
-			}
-		}
-
-		var task map[string]interface{}
-		if t.TaskRef != nil {
-			task = map[string]interface{}{
-				"name": t.Name,
-				"taskRef": map[string]interface{}{
-					"name":    t.TaskRef.Name,
-					"version": t.TaskRef.Version,
-				},
-			}
-		} else {
-			task = map[string]interface{}{
-				"name":  t.Name,
-				"image": t.Image,
-				"backoff": map[string]interface{}{
-					"limit": t.BackoffLimit,
-				},
-				"parameters": paramNames,
-				"conditional": map[string]interface{}{
-					"enabled":    len(t.RetryCodes) != 0,
-					"retryCodes": t.RetryCodes,
-				},
-			}
-
-			// Only send over the command and args if no script has been provided
-			if t.Script == "" {
-				task["command"] = t.Command
-				task["args"] = t.Args
-			} else {
-				task["script"] = t.Script
-			}
-
-			if t.PodTemplate != "" {
-				var result map[string]interface{}
-				if err := json.Unmarshal([]byte(t.PodTemplate), &result); err != nil {
-					return err
-				}
-
-				task["podTemplate"] = result
-			}
-		}
-
-		if len(t.RunAfter) > 0 {
-			task["runAfter"] = t.RunAfter
-		}
-
-		tasks = append(tasks, task)
+	// Ensure labels map exists (map[string]interface{})
+	labelsMap, _ := meta["labels"].(map[string]interface{})
+	if labelsMap == nil {
+		labelsMap = map[string]interface{}{}
 	}
-
-	spec := map[string]interface{}{
-		"parameters": parameters,
-		"task":       tasks,
+	for k, v := range labels {
+		labelsMap[k] = v
 	}
+	meta["labels"] = labelsMap
+	// ensure name is set
+	meta["name"] = dagForm.Name
+	dagObj.Object["metadata"] = meta
 
-	if dagForm.Webhook.URL != "" {
-		spec["webhook"] = map[string]interface{}{
-			"url":       dagForm.Webhook.URL,
-			"verifySSL": dagForm.Webhook.VerifySSL,
-		}
-	}
-
-	if dagForm.Workspace != nil {
-		spec["workspace"] = map[string]interface{}{
-			"enable": dagForm.Workspace.Enabled,
-			"pvc": map[string]interface{}{
-				"accessModes":      dagForm.Workspace.PvcSpec.AccessModes,
-				"selector":         dagForm.Workspace.PvcSpec.Selector,
-				"resources":        dagForm.Workspace.PvcSpec.Resources,
-				"storageClassName": dagForm.Workspace.PvcSpec.StorageClassName,
-				"volumeMode":       dagForm.Workspace.PvcSpec.VolumeMode,
-			},
-		}
-	}
-
-	// Create the DAG object
-	dag := map[string]interface{}{
-		"apiVersion": "kontroler.greedykomodo/v1alpha1",
-		"kind":       "DAG",
-		"metadata": map[string]interface{}{
-			"labels": labels,
-			"name":   dagForm.Name,
-		},
-		"spec": spec,
-	}
-
-	// Define the custom resource object using an unstructured object
-	customResource := &unstructured.Unstructured{
-		Object: dag,
-	}
-
-	dagResource, err := client.Resource(dagsGVR).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
+	dagResource, err := client.Resource(dagsGVR).Namespace(dagForm.Namespace).Create(ctx, dagObj, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create DAG: %w", err)
 	}
@@ -255,7 +159,7 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 		defer cancel()
 
 		if cleanupErr := client.Resource(dagRunsGVR).Namespace(namespace).Delete(deleteCtx, created.GetName(), metav1.DeleteOptions{}); cleanupErr != nil {
-			return 0, fmt.Errorf("run ID error: %v, cleanup error: %v", err, cleanupErr)
+			return 0, fmt.Errorf("run ID error: %w, cleanup error: %v", err, cleanupErr)
 		}
 		return 0, fmt.Errorf("failed to get run ID: %w", err)
 	}
