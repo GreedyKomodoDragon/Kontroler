@@ -306,19 +306,19 @@ func TestPostgresDAGManager_SharedParameters(t *testing.T) {
 			Name: "test_shared_params",
 		},
 		Spec: v1alpha1.DAGSpec{
-			Parameters: []v1alpha1.DagParameterSpec{{Name: "param1", DefaultValue: "value1"}},
+			Parameters: []v1alpha1.DagParameterSpec{{Name: "param1", DefaultValue: "value1"}, {Name: "param2", DefaultValue: "value2"}},
 			Task: []v1alpha1.TaskSpec{
 				{
 					Name:       "task1",
 					Command:    []string{"echo"},
 					Image:      "alpine",
-					Parameters: []string{"param1"},
+					Parameters: []string{"param1", "param2"},
 				},
 				{
 					Name:       "task2",
 					Command:    []string{"echo"},
 					Image:      "alpine",
-					Parameters: []string{"param1"},
+					Parameters: []string{"param1", "param2"},
 				},
 			},
 		},
@@ -330,14 +330,23 @@ func TestPostgresDAGManager_SharedParameters(t *testing.T) {
 	runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{DagName: "test_shared_params"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
+	// Query count test
+	db.ResetQueryCounter()
 	tasks, err := dm.GetStartingTasks(context.Background(), "test_shared_params", runID)
 	require.NoError(t, err)
+	// Expect 2 queries: one for tasks, one for params
+	require.Equal(t, int64(2), db.GetQueryCount())
+
 	require.Len(t, tasks, 2)
 
 	for _, task := range tasks {
-		require.Len(t, task.Parameters, 1)
-		require.Equal(t, "param1", task.Parameters[0].Name)
-		require.Equal(t, "value1", task.Parameters[0].Value)
+		require.Len(t, task.Parameters, 2)
+		vals := map[string]string{}
+		for _, p := range task.Parameters {
+			vals[p.Name] = p.Value
+		}
+		require.Equal(t, "value1", vals["param1"])
+		require.Equal(t, "value2", vals["param2"])
 	}
 }
 
