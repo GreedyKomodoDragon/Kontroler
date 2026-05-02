@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"os"
-
 	"kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
 	"kontroler-controller/internal/utils"
