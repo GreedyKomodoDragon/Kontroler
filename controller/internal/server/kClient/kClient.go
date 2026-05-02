@@ -47,54 +47,26 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		return fmt.Errorf("failed to build DAG object: %w", err)
 	}
 
-	// Extract the spec to attach to the DAG map
-	specI, _, _ := unstructured.NestedFieldCopy(dagObj.Object, "spec")
-	var spec map[string]interface{}
-	if specMap, ok := specI.(map[string]interface{}); ok {
-		spec = specMap
-	} else if objSpec, ok := dagObj.Object["spec"].(map[string]interface{}); ok {
-		spec = objSpec
-	} else {
-		spec = map[string]interface{}{}
+	// Merge labels into dagObj metadata and use dagObj directly.
+	// Ensure metadata exists
+	meta, ok := dagObj.Object["metadata"].(map[string]interface{})
+	if !ok {
+		meta = map[string]interface{}{}
 	}
-
-	if dagForm.Webhook.URL != "" {
-		spec["webhook"] = map[string]interface{}{
-			"url":       dagForm.Webhook.URL,
-			"verifySSL": dagForm.Webhook.VerifySSL,
-		}
+	// Ensure labels map exists (map[string]interface{})
+	labelsMap, _ := meta["labels"].(map[string]interface{})
+	if labelsMap == nil {
+		labelsMap = map[string]interface{}{}
 	}
-
-	if dagForm.Workspace != nil {
-		spec["workspace"] = map[string]interface{}{
-			"enable": dagForm.Workspace.Enabled,
-			"pvc": map[string]interface{}{
-				"accessModes":      dagForm.Workspace.PvcSpec.AccessModes,
-				"selector":         dagForm.Workspace.PvcSpec.Selector,
-				"resources":        dagForm.Workspace.PvcSpec.Resources,
-				"storageClassName": dagForm.Workspace.PvcSpec.StorageClassName,
-				"volumeMode":       dagForm.Workspace.PvcSpec.VolumeMode,
-			},
-		}
+	for k, v := range labels {
+		labelsMap[k] = v
 	}
+	meta["labels"] = labelsMap
+	// ensure name is set
+	meta["name"] = dagForm.Name
+	dagObj.Object["metadata"] = meta
 
-	// Create the DAG object
-	dag := map[string]interface{}{
-		"apiVersion": "kontroler.greedykomodo/v1alpha1",
-		"kind":       "DAG",
-		"metadata": map[string]interface{}{
-			"labels": labels,
-			"name":   dagForm.Name,
-		},
-		"spec": spec,
-	}
-
-	// Define the custom resource object using an unstructured object
-	customResource := &unstructured.Unstructured{
-		Object: dag,
-	}
-
-	dagResource, err := client.Resource(dagsGVR).Namespace(dagForm.Namespace).Create(ctx, customResource, metav1.CreateOptions{})
+	dagResource, err := client.Resource(dagsGVR).Namespace(dagForm.Namespace).Create(ctx, dagObj, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create DAG: %w", err)
 	}

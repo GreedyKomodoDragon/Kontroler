@@ -124,7 +124,7 @@ func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clien
 				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
 				return nil
 			}
-			return fmt.Errorf("error reading logs: %v", readErr)
+			return fmt.Errorf("error reading logs: %w", readErr)
 		}
 
 		time.Sleep(time.Second)

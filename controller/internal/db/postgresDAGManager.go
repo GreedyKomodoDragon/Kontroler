@@ -544,14 +544,10 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 			}
 		}
 
-		// Populate task.Parameters from the map
+		// Populate task.Parameters from the map (presence already validated)
 		for i := range tasks {
 			for _, pname := range paramsForTasks[i] {
-				if pval, ok := paramMap[pname]; ok {
-					tasks[i].Parameters = append(tasks[i].Parameters, pval)
-				} else {
-					return nil, fmt.Errorf("failed to get parameter '%s'", pname)
-				}
+				tasks[i].Parameters = append(tasks[i].Parameters, paramMap[pname])
 			}
 		}
 	}

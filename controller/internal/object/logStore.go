@@ -139,7 +139,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 				s.cleanupPartialUpload(ctx, objectKey, uploadID)
 				return nil
 			}
-			return fmt.Errorf("error reading logs: %v", readErr)
+			return fmt.Errorf("error reading logs: %w", readErr)
 		}
 
 		if n > 0 {
@@ -216,7 +216,7 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 			Key:      aws.String(objectKey),
 			UploadId: uploadID,
 		})
-		return fmt.Errorf("error uploading part %d: %v", partNumber, err)
+		return fmt.Errorf("error uploading part %d: %w", partNumber, err)
 	}
 
 	// Record the completed part and reset buffer

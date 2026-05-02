@@ -746,14 +746,10 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 			}
 		}
 
-		// Populate task parameters
+		// Populate task parameters (presence already validated)
 		for i := range tasks {
 			for _, pname := range paramsForTasks[i] {
-				if pval, ok := paramMap[pname]; ok {
-					tasks[i].Parameters = append(tasks[i].Parameters, pval)
-				} else {
-					return nil, fmt.Errorf("failed to get parameter '%s'", pname)
-				}
+				tasks[i].Parameters = append(tasks[i].Parameters, paramMap[pname])
 			}
 		}
 	}

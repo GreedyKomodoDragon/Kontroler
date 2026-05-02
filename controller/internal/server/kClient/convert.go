@@ -31,6 +31,9 @@ func convertFormTasks(tasks []FormTaskSpec, paramNameByID map[string]string) ([]
 		for _, pid := range t.Parameters {
 			if n, ok := paramNameByID[pid]; ok {
 				paramNames = append(paramNames, n)
+			} else {
+				// Missing parameter id: fail fast with informative error
+				return nil, fmt.Errorf("task %s references unknown parameter id %s", t.Name, pid)
 			}
 		}
 
