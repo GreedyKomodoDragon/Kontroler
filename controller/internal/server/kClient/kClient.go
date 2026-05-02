@@ -2,7 +2,6 @@ package kclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -42,88 +41,21 @@ func CreateDAG(ctx context.Context, dagForm DagFormObj, client dynamic.Interface
 		"app.kubernetes.io/created-by": "server",
 	}
 
-	// Create a map to quickly lookup parameter names by ID
-	paramNameByID := make(map[string]string)
-	for _, p := range dagForm.Parameters {
-		paramNameByID[p.ID] = p.Name
+	// Build the unstructured DAG object from the form
+	dagObj, err := BuildDAGUnstructured(dagForm)
+	if err != nil {
+		return fmt.Errorf("failed to build DAG object: %w", err)
 	}
 
-	// Convert DagParameterSpec to Parameters
-	var parameters []map[string]interface{}
-	for _, p := range dagForm.Parameters {
-		param := map[string]interface{}{
-			"name": p.Name,
-		}
-		if p.IsSecret {
-			param["defaultFromSecret"] = p.Value
-		} else {
-			param["defaultValue"] = p.Value
-		}
-		parameters = append(parameters, param)
-	}
-
-	// Convert TaskSpec to Tasks
-	var tasks []map[string]interface{}
-	for _, t := range dagForm.Tasks {
-		paramNames := []string{}
-
-		for _, paramID := range t.Parameters {
-			if paramName, exists := paramNameByID[paramID]; exists {
-				paramNames = append(paramNames, paramName)
-			}
-		}
-
-		var task map[string]interface{}
-		if t.TaskRef != nil {
-			task = map[string]interface{}{
-				"name": t.Name,
-				"taskRef": map[string]interface{}{
-					"name":    t.TaskRef.Name,
-					"version": t.TaskRef.Version,
-				},
-			}
-		} else {
-			task = map[string]interface{}{
-				"name":  t.Name,
-				"image": t.Image,
-				"backoff": map[string]interface{}{
-					"limit": t.BackoffLimit,
-				},
-				"parameters": paramNames,
-				"conditional": map[string]interface{}{
-					"enabled":    len(t.RetryCodes) != 0,
-					"retryCodes": t.RetryCodes,
-				},
-			}
-
-			// Only send over the command and args if no script has been provided
-			if t.Script == "" {
-				task["command"] = t.Command
-				task["args"] = t.Args
-			} else {
-				task["script"] = t.Script
-			}
-
-			if t.PodTemplate != "" {
-				var result map[string]interface{}
-				if err := json.Unmarshal([]byte(t.PodTemplate), &result); err != nil {
-					return err
-				}
-
-				task["podTemplate"] = result
-			}
-		}
-
-		if len(t.RunAfter) > 0 {
-			task["runAfter"] = t.RunAfter
-		}
-
-		tasks = append(tasks, task)
-	}
-
-	spec := map[string]interface{}{
-		"parameters": parameters,
-		"task":       tasks,
+	// Extract the spec to attach to the DAG map
+	specI, _, _ := unstructured.NestedFieldCopy(dagObj.Object, "spec")
+	var spec map[string]interface{}
+	if specMap, ok := specI.(map[string]interface{}); ok {
+		spec = specMap
+	} else if objSpec, ok := dagObj.Object["spec"].(map[string]interface{}); ok {
+		spec = objSpec
+	} else {
+		spec = map[string]interface{}{}
 	}
 
 	if dagForm.Webhook.URL != "" {

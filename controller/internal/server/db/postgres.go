@@ -27,7 +27,7 @@ ORDER BY dag_id DESC
 LIMIT $1 OFFSET $2;
 `
 
-func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DAGMetaData, error) {
+func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offset int) ([]*DBDAGMetaData, error) {
 	rows, err := p.pool.Query(ctx, ALL_DAG_METADATA_QUERY, limit, offset)
 
 	if err != nil {
@@ -35,9 +35,9 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 	}
 	defer rows.Close()
 
-	metas := []*DAGMetaData{}
+	metas := []*DBDAGMetaData{}
 	for rows.Next() {
-		var meta DAGMetaData
+		var meta DBDAGMetaData
 		if err := rows.Scan(&meta.DagId, &meta.Name, &meta.Namespace, &meta.Version,
 			&meta.Schedule, &meta.Active, &meta.NextTime, &meta.IsSuspended); err != nil {
 			return nil, err
@@ -54,7 +54,7 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 	return metas, nil
 }
 
-func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun, error) {
+func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -94,10 +94,10 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 
 	defer rows.Close()
 
-	taskInfo := map[int]TaskInfo{}
+	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
 		var taskId int
-		task := TaskInfo{}
+		task := DBTaskInfo{}
 		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
@@ -105,13 +105,13 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DagRun,
 		taskInfo[taskId] = task
 	}
 
-	return &DagRun{
+	return &DBDagRun{
 		Connections: connections,
 		TaskInfo:    taskInfo,
 	}, nil
 }
 
-func (p *postgresManager) GetDagRuns(ctx context.Context, limit int, offset int) ([]*DagRunMeta, error) {
+func (p *postgresManager) GetDagRuns(ctx context.Context, limit int, offset int) ([]*DBDagRunMeta, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT run_id, d.dag_id, status, successfulcount, failedcount, d.namespace, r.name
 		FROM DAG_Runs r
@@ -125,9 +125,9 @@ func (p *postgresManager) GetDagRuns(ctx context.Context, limit int, offset int)
 	}
 	defer rows.Close()
 
-	metas := []*DagRunMeta{}
+	metas := []*DBDagRunMeta{}
 	for rows.Next() {
-		var meta DagRunMeta
+		var meta DBDagRunMeta
 		if err := rows.Scan(&meta.Id, &meta.DagId, &meta.Status, &meta.SuccessfulCount, &meta.FailedCount, &meta.Namespace, &meta.Name); err != nil {
 			return nil, err
 		}
@@ -180,8 +180,8 @@ func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map
 	return connections, nil
 }
 
-func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagRunAll, error) {
-	meta := &DagRunAll{
+func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDagRunAll, error) {
+	meta := &DBDagRunAll{
 		Id: dagRunId,
 	}
 
@@ -216,10 +216,10 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 
 	defer rows.Close()
 
-	taskInfo := map[int]TaskInfo{}
+	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
 		var taskId int
-		task := TaskInfo{}
+		task := DBTaskInfo{}
 		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
@@ -233,8 +233,8 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DagR
 	return meta, nil
 }
 
-func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*TaskRunDetails, error) {
-	task := &TaskRunDetails{}
+func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*DBTaskRunDetails, error) {
+	task := &DBTaskRunDetails{}
 
 	if err := p.pool.QueryRow(ctx, `
 	SELECT task_run_id, status, attempts
@@ -256,10 +256,10 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 	defer rows.Close()
 
-	task.Pods = []*TaskPod{}
+	task.Pods = []*DBTaskPod{}
 
 	for rows.Next() {
-		pod := &TaskPod{}
+		pod := &DBTaskPod{}
 		var duration sql.NullInt64
 		if err := rows.Scan(&pod.PodUID, &pod.ExitCode, &pod.Name, &pod.Status, &duration); err != nil {
 			return nil, err
@@ -276,8 +276,8 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 }
 
-func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*TaskDetails, error) {
-	var taskDetails TaskDetails
+func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTaskDetails, error) {
+	var taskDetails DBTaskDetails
 	var podTemplateJSON sql.NullString
 	var parameters []string
 
@@ -328,7 +328,7 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 	defer rows.Close()
 
 	for rows.Next() {
-		var param Parameter
+		var param DBParameter
 		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
 			return nil, fmt.Errorf("failed to scan parameter row: %w", err)
 		}
@@ -342,8 +342,8 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*Task
 	return &taskDetails, nil
 }
 
-func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
-	stats := DashboardStats{}
+func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DBDashboardStats, error) {
+	stats := DBDashboardStats{}
 
 	// use go error groups
 	eGroup := errgroup.Group{}
@@ -449,7 +449,7 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DashboardStat
 		defer rows.Close()
 
 		for rows.Next() {
-			var dailyCount DailyDagRunCount
+			var dailyCount DBDailyDagRunCount
 			if err := rows.Scan(&dailyCount.Day, &dailyCount.SuccessfulCount, &dailyCount.FailedCount); err != nil {
 				return fmt.Errorf("failed to scan row for dailyDagRunCountsQuery: %w", err)
 			}
@@ -532,7 +532,7 @@ func (p *postgresManager) GetDagNames(ctx context.Context, term string, limit in
 	return names, nil
 }
 
-func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) ([]*Parameter, error) {
+func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) ([]*DBParameter, error) {
 	rows, err := p.pool.Query(ctx, `
 	SELECT parameter_id, name, isSecret, defaultValue
 	FROM DAG_Parameters
@@ -550,10 +550,10 @@ func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) 
 
 	defer rows.Close()
 
-	params := []*Parameter{}
+	params := []*DBParameter{}
 
 	for rows.Next() {
-		var param Parameter
+		var param DBParameter
 		if err := rows.Scan(&param.ID, &param.Name, &param.IsSecret, &param.DefaultValue); err != nil {
 			return nil, err
 		}
@@ -605,7 +605,7 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 	return results, nil
 }
 
-func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*DagTaskDetails, error) {
+func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int) ([]*DBDagTaskDetails, error) {
 	// Query for the task details from the Tasks table
 	queryTask := `
 		SELECT t.task_id, t.name, t.command, t.args, t.image, t.backoffLimit, t.isConditional, t.podTemplate, t.retryCodes, t.script, t.parameters
@@ -618,9 +618,9 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
 	}
 	defer rows.Close()
-	taskDetails := []*DagTaskDetails{}
+	taskDetails := []*DBDagTaskDetails{}
 	for rows.Next() {
-		var taskDetail DagTaskDetails
+		var taskDetail DBDagTaskDetails
 		var podTemplateJSON sql.NullString
 		if err := rows.Scan(
 			&taskDetail.ID,
