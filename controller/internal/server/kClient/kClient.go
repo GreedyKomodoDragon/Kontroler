@@ -187,7 +187,7 @@ func CreateDagRun(ctx context.Context, drForm DagRunForm, isSecretMap map[string
 		defer cancel()
 
 		if cleanupErr := client.Resource(dagRunsGVR).Namespace(namespace).Delete(deleteCtx, created.GetName(), metav1.DeleteOptions{}); cleanupErr != nil {
-			return 0, fmt.Errorf("run ID error: %v, cleanup error: %v", err, cleanupErr)
+			return 0, fmt.Errorf("run ID error: %w, cleanup error: %v", err, cleanupErr)
 		}
 		return 0, fmt.Errorf("failed to get run ID: %w", err)
 	}

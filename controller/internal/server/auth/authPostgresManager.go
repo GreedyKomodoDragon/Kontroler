@@ -55,7 +55,7 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 
 	// Execute the SQL to initialize the database
 	if _, err := a.pool.Exec(ctx, initSQL); err != nil {
-		return fmt.Errorf("failed to initialize database: %v", err)
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
 	// Check if the default account already exists
@@ -64,7 +64,7 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 		SELECT COUNT(*) FROM accounts WHERE username = $1;
 	`
 	if err := a.pool.QueryRow(ctx, checkAccountSQL, "admin").Scan(&count); err != nil {
-		return fmt.Errorf("failed to check for default account: %v", err)
+		return fmt.Errorf("failed to check for default account: %w", err)
 	}
 
 	if count == 0 {
@@ -75,7 +75,7 @@ func (a *authPostgresManager) InitialiseDatabase(ctx context.Context) error {
 
 		// TODO: move out adminpassword to a ENV
 		if _, err := a.pool.Exec(ctx, createDefaultAccountSQL, "admin", "adminpassword"); err != nil {
-			return fmt.Errorf("failed to create default account: %v", err)
+			return fmt.Errorf("failed to create default account: %w", err)
 		}
 	}
 
@@ -87,7 +87,7 @@ func (a *authPostgresManager) CreateAccount(ctx context.Context, credentials *Cr
 		INSERT INTO accounts (username, password_hash, role) 
 		VALUES ($1, crypt($2, gen_salt('bf')), $3)
 	`, credentials.Username, credentials.Password, credentials.Role); err != nil {
-		return fmt.Errorf("failed to create account: %v", err)
+		return fmt.Errorf("failed to create account: %w", err)
 	}
 
 	return nil
@@ -105,7 +105,7 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", "", fmt.Errorf("invalid credentials")
 		}
-		return "", "", fmt.Errorf("failed to query user: %v", err)
+		return "", "", fmt.Errorf("failed to query user: %w", err)
 	}
 
 	now := time.Now()
@@ -121,14 +121,14 @@ func (a *authPostgresManager) Login(ctx context.Context, credentials *Credential
 
 	signedToken, err := token.SignedString(a.secretKey)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to sign token: %v", err)
+		return "", "", fmt.Errorf("failed to sign token: %w", err)
 	}
 
 	if _, err = a.pool.Exec(ctx, `
 		INSERT INTO tokens (account_id, token, expires_at)
 		VALUES ($1, $2, $3)
 	`, accountId, signedToken, expires); err != nil {
-		return "", "", fmt.Errorf("failed to store token: %v", err)
+		return "", "", fmt.Errorf("failed to store token: %w", err)
 	}
 
 	return signedToken, role, nil
@@ -171,7 +171,7 @@ func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString stri
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", "", fmt.Errorf("invalid or expired token")
 		}
-		return "", "", fmt.Errorf("failed to query token: %v", err)
+		return "", "", fmt.Errorf("failed to query token: %w", err)
 	}
 
 	if revoked {
@@ -188,7 +188,7 @@ func (a *authPostgresManager) IsValidLogin(ctx context.Context, tokenString stri
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", "", fmt.Errorf("could not find username")
 		}
-		return "", "", fmt.Errorf("failed to query for username: %v", err)
+		return "", "", fmt.Errorf("failed to query for username: %w", err)
 	}
 
 	// Return both username and role
@@ -201,7 +201,7 @@ func (a *authPostgresManager) RevokeToken(ctx context.Context, tokenString strin
 		SET revoked = TRUE 
 		WHERE token = $1;
 	`, tokenString); err != nil {
-		return fmt.Errorf("failed to revoke token: %v", err)
+		return fmt.Errorf("failed to revoke token: %w", err)
 	}
 
 	return nil

@@ -44,12 +44,12 @@ func NewFiberHttpServer(dbManager db.DbManager, kClient dynamic.Interface, authM
 func CreateTLSConfig() (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair("/tls.crt", "/tls.key")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load server certificate: %v", err)
+		return nil, fmt.Errorf("failed to load server certificate: %w", err)
 	}
 
 	caCert, err := os.ReadFile("/ca.crt")
 	if err != nil {
-		return nil, fmt.Errorf("failed to load CA certificate: %v", err)
+		return nil, fmt.Errorf("failed to load CA certificate: %w", err)
 	}
 
 	caCertPool := x509.NewCertPool()

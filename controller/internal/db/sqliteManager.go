@@ -611,7 +611,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 	`, dagName, dagrun)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tasks: %v", err)
+		return nil, fmt.Errorf("failed to get tasks: %w", err)
 	}
 
 	defer func() {

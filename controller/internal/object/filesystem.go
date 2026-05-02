@@ -28,7 +28,7 @@ func NewFileSystemLogStore(baseDir string) (LogStore, error) {
 	}
 
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create log directory: %v", err)
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	return &fileSystemLogStore{
@@ -75,13 +75,13 @@ func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clien
 
 	logDir := filepath.Join(f.baseDir, fmt.Sprintf("%d", dagrunId))
 	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("failed to create log directory: %v", err)
+		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	logPath := filepath.Join(logDir, fmt.Sprintf("%s-log.txt", pod.UID))
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return fmt.Errorf("failed to create log file: %v", err)
+		return fmt.Errorf("failed to create log file: %w", err)
 	}
 	defer logFile.Close()
 
@@ -95,7 +95,7 @@ func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clien
 			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
 			return nil
 		}
-		return fmt.Errorf("error in opening stream: %v", err)
+		return fmt.Errorf("error in opening stream: %w", err)
 	}
 	defer logStream.Close()
 
@@ -107,10 +107,10 @@ func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clien
 		n, readErr := reader.Read(buffer)
 		if n > 0 {
 			if _, err := writer.Write(buffer[:n]); err != nil {
-				return fmt.Errorf("error writing to log file: %v", err)
+				return fmt.Errorf("error writing to log file: %w", err)
 			}
 			if err := writer.Flush(); err != nil {
-				return fmt.Errorf("error flushing log file: %v", err)
+				return fmt.Errorf("error flushing log file: %w", err)
 			}
 		}
 
@@ -140,7 +140,7 @@ func (f *fileSystemLogStore) DeleteLogs(ctx context.Context, dagrunId int) error
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("failed to delete log directory: %v", err)
+		return fmt.Errorf("failed to delete log directory: %w", err)
 	}
 
 	log.Log.Info("Successfully deleted all logs", "directory", logDir)

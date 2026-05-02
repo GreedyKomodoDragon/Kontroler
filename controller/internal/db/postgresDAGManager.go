@@ -186,7 +186,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 		version := getTaskVersion(&task)
 
 		if err := p.createDependencyConnection(ctx, tx, dagID, &task, version); err != nil {
-			return fmt.Errorf("failed to create dependency connection: %s", err)
+			return fmt.Errorf("failed to create dependency connection: %w", err)
 		}
 	}
 
@@ -241,7 +241,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
 		if err != nil {
-			return fmt.Errorf("failed to serialise podTemplate: %s", err.Error())
+			return fmt.Errorf("failed to serialise podTemplate: %w", err)
 		}
 
 		jsonValue = &json
@@ -257,7 +257,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		SELECT task_id FROM Tasks
 		WHERE name = $1 AND inline = FALSE and version = $2;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
 		if err != nil {
-			return fmt.Errorf("failed to get task ref when inserting dag: %w, name: %s, version: %v", err, task.TaskRef.Name, task.TaskRef.Version)
+			return fmt.Errorf("failed to get task ref when inserting dag: %w, name: %s, version: %w", err, task.TaskRef.Name, task.TaskRef.Version)
 		}
 
 	} else {
@@ -267,14 +267,14 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		RETURNING task_id;`,
 			uuid.NewString(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
 			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
-			return fmt.Errorf("failed to insert line task: %s", err.Error())
+			return fmt.Errorf("failed to insert line task: %w", err)
 		}
 	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
 		VALUES ($1, $2, $3, $4)`, dagID, taskId, task.Name, version); err != nil {
-		return fmt.Errorf("failed to insert dag task: %s", err.Error())
+		return fmt.Errorf("failed to insert dag task: %w", err)
 	}
 
 	return nil
