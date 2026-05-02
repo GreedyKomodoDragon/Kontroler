@@ -824,18 +824,28 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 }
 
 func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx, dagId int, tasks []Task, parameters [][]string) error {
-	// Build a map to store task parameters
-	taskParamMap := make(map[int][]Parameter)
-
-	// Flatten parameters and associate them with task indices
-	var flattenedParams []string
-	taskIndices := make(map[string]int)
-
+	// Map param name -> list of task indices that reference it
+	paramIndices := make(map[string][]int)
+	uniqueParams := make(map[string]struct{})
 	for i, taskParams := range parameters {
 		for _, param := range taskParams {
-			flattenedParams = append(flattenedParams, param)
-			taskIndices[param] = i
+			paramIndices[param] = append(paramIndices[param], i)
+			uniqueParams[param] = struct{}{}
 		}
+	}
+
+	if len(uniqueParams) == 0 {
+		// no parameters, initialize empty slices
+		for i := range tasks {
+			tasks[i].Parameters = []Parameter{}
+		}
+		return nil
+	}
+
+	// Flatten unique param names
+	flattenedParams := make([]string, 0, len(uniqueParams))
+	for name := range uniqueParams {
+		flattenedParams = append(flattenedParams, name)
 	}
 
 	// Query all parameters in a single batch
@@ -849,29 +859,29 @@ func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx,
 	}
 	defer rows.Close()
 
+	// Initialize parameter slices
+	for i := range tasks {
+		tasks[i].Parameters = []Parameter{}
+	}
+
 	// Map the results to their respective tasks
 	for rows.Next() {
 		var name string
 		var isSecret bool
 		var value string
 
-		err := rows.Scan(&name, &isSecret, &value)
-		if err != nil {
+		if err := rows.Scan(&name, &isSecret, &value); err != nil {
 			return err
 		}
 
-		// Find the task index from the taskIndices map
-		taskIdx := taskIndices[name]
-		taskParamMap[taskIdx] = append(taskParamMap[taskIdx], Parameter{
-			Name:     name,
-			IsSecret: isSecret,
-			Value:    value,
-		})
-	}
-
-	// Assign the collected parameters back to tasks
-	for i := range tasks {
-		tasks[i].Parameters = taskParamMap[i]
+		indices := paramIndices[name]
+		for _, idx := range indices {
+			tasks[idx].Parameters = append(tasks[idx].Parameters, Parameter{
+				Name:     name,
+				IsSecret: isSecret,
+				Value:    value,
+			})
+		}
 	}
 
 	return nil
