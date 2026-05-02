@@ -576,6 +576,7 @@ func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (
 }
 
 func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {
+	incrQueryCounter()
 	rows, err := s.db.Query(`
 	SELECT 
 		dt.dag_task_id,
@@ -720,6 +721,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		WHERE dag_id = ? AND name IN (%s);
 		`, strings.Join(placeholders, ","))
 
+		incrQueryCounter()
 		rowsParams, err := s.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, err

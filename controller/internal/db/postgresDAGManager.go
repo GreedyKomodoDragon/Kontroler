@@ -398,6 +398,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 }
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {
+	incrQueryCounter()
 	rows, err := p.pool.Query(ctx, `
 	SELECT 
 		dt.dag_task_id,
@@ -514,6 +515,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		}
 
 		// Query all parameter values in a single call
+		incrQueryCounter()
 		rowsParams, err := p.pool.Query(ctx, `
 		SELECT name, isSecret, defaultValue
 		FROM DAG_Parameters
