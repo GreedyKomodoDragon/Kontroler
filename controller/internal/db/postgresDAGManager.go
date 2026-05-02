@@ -257,7 +257,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		SELECT task_id FROM Tasks
 		WHERE name = $1 AND inline = FALSE and version = $2;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
 		if err != nil {
-			return fmt.Errorf("failed to get task ref when inserting dag: %w, name: %s, version: %w", err, task.TaskRef.Name, task.TaskRef.Version)
+			return fmt.Errorf("failed to get task ref when inserting dag: %w, name: %s, version: %v", err, task.TaskRef.Name, task.TaskRef.Version)
 		}
 
 	} else {
