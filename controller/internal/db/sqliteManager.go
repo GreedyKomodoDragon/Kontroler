@@ -1071,27 +1071,77 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 }
 
 func (s *sqliteDAGManager) fetchTaskParameters(ctx context.Context, tx *sql.Tx, dagId int, tasks []Task, parameters [][]string) error {
-	for i := 0; i < len(tasks); i++ {
-		tasks[i].Parameters = []Parameter{}
-		for _, parameter := range parameters[i] {
-			param := Parameter{Name: parameter}
-			err := tx.QueryRowContext(ctx, `
-				SELECT isSecret, defaultValue
-				FROM DAG_Parameters
-				WHERE dag_id = ? and name = ?;
-			`, dagId, parameter).Scan(&param.IsSecret, &param.Value)
-
-			if err == sql.ErrNoRows {
-				continue
+	// Build a map of parameter name -> task indices that reference it
+	paramIndices := make(map[string][]int)
+	uniqueParams := make(map[string]struct{})
+	for i, taskParams := range parameters {
+		for _, p := range taskParams {
+			paramIndices[p] = append(paramIndices[p], i)
+			if _, ok := uniqueParams[p]; !ok {
+				uniqueParams[p] = struct{}{}
 			}
-
-			if err != nil {
-				return err
-			}
-
-			tasks[i].Parameters = append(tasks[i].Parameters, param)
 		}
 	}
+
+	if len(uniqueParams) == 0 {
+		// Initialize empty parameter slices and return
+		for i := range tasks {
+			tasks[i].Parameters = []Parameter{}
+		}
+		return nil
+	}
+
+	// Flatten unique param names into a slice for the IN clause
+	flattened := make([]string, 0, len(uniqueParams))
+	for name := range uniqueParams {
+		flattened = append(flattened, name)
+	}
+
+	// Build placeholders and args for the query: dag_id + param names
+	placeholders := make([]string, 0, len(flattened))
+	args := make([]interface{}, 0, len(flattened)+1)
+	args = append(args, dagId)
+	for _, name := range flattened {
+		placeholders = append(placeholders, "?")
+		args = append(args, name)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT name, isSecret, defaultValue
+		FROM DAG_Parameters
+		WHERE dag_id = ? AND name IN (%s);
+		`, strings.Join(placeholders, ","))
+
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Initialize task parameter slices
+	for i := range tasks {
+		tasks[i].Parameters = []Parameter{}
+	}
+
+	// Populate parameters for tasks from query results
+	for rows.Next() {
+		var name string
+		var isSecret bool
+		var value string
+		if err := rows.Scan(&name, &isSecret, &value); err != nil {
+			return err
+		}
+
+		indices := paramIndices[name]
+		for _, idx := range indices {
+			tasks[idx].Parameters = append(tasks[idx].Parameters, Parameter{
+				Name:     name,
+				IsSecret: isSecret,
+				Value:    value,
+			})
+		}
+	}
+
 	return nil
 }
 
