@@ -6,22 +6,13 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v2"
+	icfg "kontroler-controller/internal/config"
 )
 
-type LogStore struct {
-	StoreType  string                   `yaml:"storeType"`
-	FileSystem FileSystemLogStoreConfig `yaml:"fileSystem"`
-	S3Configs  S3LogStoreConfig         `yaml:"s3"`
-}
-
-type S3LogStoreConfig struct {
-	BucketName string `yaml:"bucketName"`
-	Endpoint   string `yaml:"endpoint,omitempty"`
-}
-
-type FileSystemLogStoreConfig struct {
-	BaseDir string `yaml:"baseDir"`
-}
+// Reuse LogStore and related structs from internal/config to avoid duplication
+type LogStore = icfg.LogStore
+type S3LogStoreConfig = icfg.S3LogStoreConfig
+type FileSystemLogStoreConfig = icfg.FileSystemLogStoreConfig
 
 type ServerConfig struct {
 	KubeConfigPath string   `yaml:"kubeConfigPath"`

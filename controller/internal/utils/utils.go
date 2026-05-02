@@ -61,29 +61,29 @@ func SetupPostgresContainer(ctx context.Context) (*pgxpool.Pool, error) {
 		Started:          true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to start container: %v", err)
+		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
 	host, err := postgresC.Host(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get container host: %v", err)
+		return nil, fmt.Errorf("failed to get container host: %w", err)
 	}
 
 	port, err := postgresC.MappedPort(ctx, "5432")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get container port: %v", err)
+		return nil, fmt.Errorf("failed to get container port: %w", err)
 	}
 
 	databaseURL := fmt.Sprintf("postgres://postgres:password@%s:%s/testdb?sslmode=disable", host, port.Port())
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create pool: %v", err)
+		return nil, fmt.Errorf("failed to create pool: %w", err)
 	}
 
 	// Check if we can acquire a connection
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire connection: %v", err)
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
 	}
 	defer conn.Release() // Release the connection after checking
 

@@ -186,7 +186,7 @@ func (p *postgresDAGManager) insertDAG(ctx context.Context, tx pgx.Tx, dag *v1al
 		version := getTaskVersion(&task)
 
 		if err := p.createDependencyConnection(ctx, tx, dagID, &task, version); err != nil {
-			return fmt.Errorf("failed to create dependency connection: %s", err)
+			return fmt.Errorf("failed to create dependency connection: %w", err)
 		}
 	}
 
@@ -241,7 +241,7 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 	if task.PodTemplate != nil {
 		json, err := task.PodTemplate.Serialize()
 		if err != nil {
-			return fmt.Errorf("failed to serialise podTemplate: %s", err.Error())
+			return fmt.Errorf("failed to serialise podTemplate: %w", err)
 		}
 
 		jsonValue = &json
@@ -267,14 +267,14 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		RETURNING task_id;`,
 			uuid.NewString(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
 			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
-			return fmt.Errorf("failed to insert line task: %s", err.Error())
+			return fmt.Errorf("failed to insert line task: %w", err)
 		}
 	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
 		VALUES ($1, $2, $3, $4)`, dagID, taskId, task.Name, version); err != nil {
-		return fmt.Errorf("failed to insert dag task: %s", err.Error())
+		return fmt.Errorf("failed to insert dag task: %w", err)
 	}
 
 	return nil
@@ -398,6 +398,7 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 }
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {
+	incrQueryCounter()
 	rows, err := p.pool.Query(ctx, `
 	SELECT 
 		dt.dag_task_id,
@@ -438,7 +439,11 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 
 	defer rows.Close()
 
+	// Collect tasks and their parameter names first to avoid N+1 queries
 	tasks := []Task{}
+	paramsForTasks := [][]string{}
+	var dagIDForParams int = -1
+
 	for rows.Next() {
 		var task Task
 		var parameters []string
@@ -451,22 +456,11 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 			return nil, err
 		}
 
-		task.Parameters = []Parameter{}
-		for _, parameter := range parameters {
-			param := Parameter{
-				Name: parameter,
-			}
+		// remember the DAG id (same for all rows)
+		dagIDForParams = dagId
 
-			if err := p.pool.QueryRow(ctx, `
-			SELECT isSecret, defaultValue
-			FROM DAG_Parameters
-			WHERE dag_id = $1 and name = $2;
-			`, dagId, parameter).Scan(&param.IsSecret, &param.Value); err != nil {
-				return nil, err
-			}
-
-			task.Parameters = append(task.Parameters, param)
-		}
+		// store parameter names; actual Parameter objects will be populated in batch below
+		paramsForTasks = append(paramsForTasks, parameters)
 
 		var podTemplate *v1alpha1.PodTemplateSpec
 		if podTemplateJSON.Valid {
@@ -500,8 +494,62 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 
 		task.PodTemplate = podTemplate
 
+		// append task with empty Parameters for now
+		task.Parameters = []Parameter{}
 		tasks = append(tasks, task)
+	}
 
+	// If there are parameters to fetch, batch query them
+	if len(paramsForTasks) > 0 {
+		// Build unique list of parameter names
+		uniqueParams := make(map[string]struct{})
+		for _, pnames := range paramsForTasks {
+			for _, pn := range pnames {
+				uniqueParams[pn] = struct{}{}
+			}
+		}
+
+		flattened := make([]string, 0, len(uniqueParams))
+		for name := range uniqueParams {
+			flattened = append(flattened, name)
+		}
+
+		// Query all parameter values in a single call
+		incrQueryCounter()
+		rowsParams, err := p.pool.Query(ctx, `
+		SELECT name, isSecret, defaultValue
+		FROM DAG_Parameters
+		WHERE dag_id = $1 AND name = ANY($2)
+		`, dagIDForParams, flattened)
+		if err != nil {
+			return nil, err
+		}
+		defer rowsParams.Close()
+
+		paramMap := make(map[string]Parameter)
+		for rowsParams.Next() {
+			var name string
+			var isSecret bool
+			var value string
+			if err := rowsParams.Scan(&name, &isSecret, &value); err != nil {
+				return nil, err
+			}
+			paramMap[name] = Parameter{Name: name, IsSecret: isSecret, Value: value}
+		}
+
+		// Ensure all requested params found
+		for _, name := range flattened {
+			if _, ok := paramMap[name]; !ok {
+				return nil, fmt.Errorf("failed to get parameter '%s'", name)
+			}
+		}
+
+		// Populate task.Parameters from the map (presence already validated)
+		for i := range tasks {
+			for _, pname := range paramsForTasks[i] {
+				tasks[i].Parameters = append(tasks[i].Parameters, paramMap[pname])
+			}
+		}
 	}
 
 	return tasks, nil
@@ -774,18 +822,28 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 }
 
 func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx, dagId int, tasks []Task, parameters [][]string) error {
-	// Build a map to store task parameters
-	taskParamMap := make(map[int][]Parameter)
-
-	// Flatten parameters and associate them with task indices
-	var flattenedParams []string
-	taskIndices := make(map[string]int)
-
+	// Map param name -> list of task indices that reference it
+	paramIndices := make(map[string][]int)
+	uniqueParams := make(map[string]struct{})
 	for i, taskParams := range parameters {
 		for _, param := range taskParams {
-			flattenedParams = append(flattenedParams, param)
-			taskIndices[param] = i
+			paramIndices[param] = append(paramIndices[param], i)
+			uniqueParams[param] = struct{}{}
 		}
+	}
+
+	if len(uniqueParams) == 0 {
+		// no parameters, initialize empty slices
+		for i := range tasks {
+			tasks[i].Parameters = []Parameter{}
+		}
+		return nil
+	}
+
+	// Flatten unique param names
+	flattenedParams := make([]string, 0, len(uniqueParams))
+	for name := range uniqueParams {
+		flattenedParams = append(flattenedParams, name)
 	}
 
 	// Query all parameters in a single batch
@@ -799,29 +857,29 @@ func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx,
 	}
 	defer rows.Close()
 
+	// Initialize parameter slices
+	for i := range tasks {
+		tasks[i].Parameters = []Parameter{}
+	}
+
 	// Map the results to their respective tasks
 	for rows.Next() {
 		var name string
 		var isSecret bool
 		var value string
 
-		err := rows.Scan(&name, &isSecret, &value)
-		if err != nil {
+		if err := rows.Scan(&name, &isSecret, &value); err != nil {
 			return err
 		}
 
-		// Find the task index from the taskIndices map
-		taskIdx := taskIndices[name]
-		taskParamMap[taskIdx] = append(taskParamMap[taskIdx], Parameter{
-			Name:     name,
-			IsSecret: isSecret,
-			Value:    value,
-		})
-	}
-
-	// Assign the collected parameters back to tasks
-	for i := range tasks {
-		tasks[i].Parameters = taskParamMap[i]
+		indices := paramIndices[name]
+		for _, idx := range indices {
+			tasks[idx].Parameters = append(tasks[idx].Parameters, Parameter{
+				Name:     name,
+				IsSecret: isSecret,
+				Value:    value,
+			})
+		}
 	}
 
 	return nil

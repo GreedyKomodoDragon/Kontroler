@@ -97,7 +97,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
 			return nil
 		}
-		return fmt.Errorf("error in opening stream: %v", err)
+		return fmt.Errorf("error in opening stream: %w", err)
 	}
 	defer logStream.Close()
 
@@ -108,7 +108,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
-		return fmt.Errorf("error initiating multipart upload: %v", err)
+		return fmt.Errorf("error initiating multipart upload: %w", err)
 	}
 
 	uploadID := createOutput.UploadId
@@ -139,7 +139,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 				s.cleanupPartialUpload(ctx, objectKey, uploadID)
 				return nil
 			}
-			return fmt.Errorf("error reading logs: %v", readErr)
+			return fmt.Errorf("error reading logs: %w", readErr)
 		}
 
 		if n > 0 {
@@ -171,7 +171,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 				Body:   bytes.NewReader(buffer.Bytes()),
 			})
 			if err != nil {
-				return fmt.Errorf("error uploading small log file: %v", err)
+				return fmt.Errorf("error uploading small log file: %w", err)
 			}
 			log.Log.Info("Logs successfully uploaded to S3 bucket with PutObject", "bucket", *s.bucketName, "key", objectKey)
 			return nil
@@ -193,7 +193,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 				Parts: completedParts,
 			},
 		}); err != nil {
-			return fmt.Errorf("error completing multipart upload: %v", err)
+			return fmt.Errorf("error completing multipart upload: %w", err)
 		}
 		log.Log.Info("Logs successfully uploaded to S3 bucket with multipart upload", "bucket", *s.bucketName, "key", objectKey)
 	}
@@ -216,7 +216,7 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 			Key:      aws.String(objectKey),
 			UploadId: uploadID,
 		})
-		return fmt.Errorf("error uploading part %d: %v", partNumber, err)
+		return fmt.Errorf("error uploading part %d: %w", partNumber, err)
 	}
 
 	// Record the completed part and reset buffer
@@ -279,7 +279,7 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 	for paginator.HasMorePages() {
 		output, err := paginator.NextPage(ctx)
 		if err != nil {
-			return fmt.Errorf("error listing objects: %v", err)
+			return fmt.Errorf("error listing objects: %w", err)
 		}
 
 		// Collect object identifiers from this page
@@ -311,7 +311,7 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("error deleting objects batch: %v", err)
+			return fmt.Errorf("error deleting objects batch: %w", err)
 		}
 	}
 
