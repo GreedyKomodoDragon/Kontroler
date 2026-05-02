@@ -2,11 +2,12 @@ package db_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"testing"
 	"time"
+
+	"os"
 
 	"kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
