@@ -55,6 +55,7 @@ OPERATOR_SDK_VERSION ?= v1.34.1
 
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
+SERVER_IMG ?= greedykomodo/kontroler-server:$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 
@@ -150,12 +151,23 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+build: build-controller build-server
 
-.PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+.PHONY: build-controller
+build-controller: manifests generate fmt vet ## Build controller binary.
+	go build -o bin/controller cmd/controller/main.go
+
+.PHONY: build-server
+build-server: fmt vet ## Build server binary.
+	go build -o bin/server cmd/server/main.go
+
+.PHONY: run-controller
+run-controller: manifests generate fmt vet ## Run controller from your host.
+	go run ./cmd/controller/main.go
+
+.PHONY: run-server
+run-server: fmt vet ## Run server from your host.
+	go run ./cmd/server/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -167,6 +179,89 @@ docker-build: ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+
+.PHONY: docker-build-server
+docker-build-server: ## Build docker image for the server.
+	$(CONTAINER_TOOL) build -t ${SERVER_IMG} -f Dockerfile.server .
+
+.PHONY: docker-push-server
+docker-push-server: ## Push docker image for the server.
+	$(CONTAINER_TOOL) push ${SERVER_IMG}
+
+##@ Kind Cluster Management
+
+KIND_CLUSTER_NAME ?= kind
+
+.PHONY: kind-create
+kind-create: ## Create kind cluster
+	kind create cluster --name $(KIND_CLUSTER_NAME) --config <(echo 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnodes:\n  - role: control-plane\n    kubeadmConfigPatches:\n      - |\n        kind: InitConfiguration\n        nodeRegistration:\n          kubeletExtraArgs:\n            node-labels: "ingress-ready=true"\n    extraPortMappings:\n      - containerPort: 80\n        hostPort: 80\n        protocol: TCP\n      - containerPort: 443\n        hostPort: 443\n        protocol: TCP\n  - role: worker\n  - role: worker')
+
+.PHONY: kind-delete
+kind-delete: ## Delete kind cluster
+	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-load-controller
+kind-load-controller: docker-build ## Build & load controller image to kind
+	kind load docker-image $(IMG) --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-load-server
+kind-load-server: docker-build-server ## Build & load server image to kind
+	kind load docker-image $(SERVER_IMG) --name $(KIND_CLUSTER_NAME)
+
+.PHONY: kind-load-all
+kind-load-all: kind-load-controller kind-load-server ## Load all images to kind
+
+##@ Kind Backing Services (Helm)
+
+.PHONY: kind-deploy-postgres
+kind-deploy-postgres: ## Deploy PostgreSQL via bitnami helm chart
+	helm upgrade --install postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
+		--set auth.postgresPassword=postgres \
+		--set primary.persistence.enabled=false \
+		--set tls.enabled=false
+
+.PHONY: kind-deploy-cert-manager
+kind-deploy-cert-manager: ## Deploy cert-manager
+	helm upgrade --install cert-manager jetstack/cert-manager \
+		--repo https://charts.jetstack.io \
+		--namespace cert-manager --create-namespace \
+		--set crds.enabled=true
+
+.PHONY: kind-deploy-minio
+kind-deploy-minio: ## Deploy MinIO for S3 log storage (optional)
+	helm upgrade --install minio oci://registry-1.docker.io/bitnamicharts/minio \
+		--set auth.rootUser=minioadmin \
+		--set auth.rootPassword=minioadmin \
+		--set persistence.enabled=false
+
+##@ Kind Kontroler Deployment
+
+.PHONY: kind-deploy-kontroler
+kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
+	helm upgrade --install kontroler ../helm/kontroler \
+		--set controller.image=$(IMG) \
+		--set server.image=$(SERVER_IMG) \
+		--set db.type=postgresql \
+		--set db.postgresql.endpoint=postgres-postgresql.default.svc.cluster.local:5432 \
+		--set "db.postgresql.password.secret=postgres-postgresql" \
+		--set "db.postgresql.password.key=postgres-password" \
+		--set certManager.enabled=false \
+		--set controller.leaderElectionID="610a3770.greedykomodo"
+
+.PHONY: kind-bootstrap
+kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-deploy-kontroler ## Full kind cluster setup with all services
+	@echo "Kind cluster ready with Kontroler deployed!"
+	@echo "Controller logs: kubectl logs -l app=kontroler-controller -n default -f"
+	@echo "Server logs: kubectl logs -l app=kontroler-server -n default -f"
+
+##@ Port Forwarding
+
+.PHONY: kind-portforward
+kind-portforward: ## Port forward to access server UI locally
+	@echo "Port forwarding to server (8080) and UI (3000)..."
+	(kubectl port-forward svc/kontroler-server 8080:8080 & \
+	 kubectl port-forward svc/kontroler-ui 3000:3000 & \
+	 wait)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

@@ -23,6 +23,10 @@ issues:
       linters:
         - dupl
         - lll
+    - path: "internal/server/*" # Ignore duplication and long lines in server internal files
+      linters:
+        - dupl
+        - lll
     - path: "_test\\.go$"  # Ignore all test files
       linters:
         - dupl

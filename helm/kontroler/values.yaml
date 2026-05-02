@@ -73,6 +73,7 @@ kubeconfig:
 controller:
   enabled: true
   image: greedykomodo/kontroler-controller:0.0.1
+  imagePullPolicy: IfNotPresent
   config:
     path: /etc/kontroler/config/
     value:
@@ -179,6 +180,7 @@ server:
   enabled: true
   replicaCount: 1
   image: "greedykomodo/kontroler-server:0.0.1"
+  imagePullPolicy: IfNotPresent
   config:
     path: /etc/kontroler/config/
     value:

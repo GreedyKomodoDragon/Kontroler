@@ -1724,7 +1724,7 @@ func testDAGManager_Workspace_full(t *testing.T, dm db.DBDAGManager) {
 					AccessModes: []v1.PersistentVolumeAccessMode{
 						v1.ReadWriteOnce,
 					},
-					Resources: v1.ResourceRequirements{
+					Resources: v1.VolumeResourceRequirements{
 						Requests: v1.ResourceList{
 							// storage
 							v1.ResourceStorage: resource.MustParse("1Gi"),
@@ -1791,7 +1791,7 @@ func testDAGManager_Workspace_non_optional_only(t *testing.T, dm db.DBDAGManager
 					AccessModes: []v1.PersistentVolumeAccessMode{
 						v1.ReadWriteOnce,
 					},
-					Resources: v1.ResourceRequirements{
+					Resources: v1.VolumeResourceRequirements{
 						Requests: v1.ResourceList{
 							// storage
 							v1.ResourceStorage: resource.MustParse("1Gi"),

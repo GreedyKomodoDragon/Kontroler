@@ -1,4 +1,4 @@
-# Build the manager binary
+# Build the server binary
 FROM golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
@@ -12,19 +12,17 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY cmd/controller/main.go cmd/controller/main.go
-COPY api/ api/
-COPY internal/ internal/
+COPY cmd/server/ cmd/server/
+COPY internal/server/ internal/server/
 
 # Build
-# Build for the target architecture specified by Docker buildx
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -a -o manager cmd/controller/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o server cmd/server/main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/server .
 USER 65532:65532
 
-ENTRYPOINT ["/manager"]
+ENTRYPOINT ["/server"]
