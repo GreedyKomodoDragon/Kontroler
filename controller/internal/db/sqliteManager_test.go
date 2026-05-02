@@ -291,7 +291,60 @@ func Test_SQLite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
+func Test_SQLite_DAGManager_SharedParameters(t *testing.T) {
+	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
+		DBPath: dbPath,
+	})
+	require.NoError(t, err)
+
+	err = dm.InitaliseDatabase(context.Background())
+	require.NoError(t, err)
+
+	dag := &v1alpha1.DAG{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test_shared_params",
+		},
+		Spec: v1alpha1.DAGSpec{
+			Parameters: []v1alpha1.DagParameterSpec{{Name: "param1", DefaultValue: "value1"}},
+			Task: []v1alpha1.TaskSpec{
+				{
+					Name:       "task1",
+					Command:    []string{"echo"},
+					Image:      "alpine",
+					Parameters: []string{"param1"},
+				},
+				{
+					Name:       "task2",
+					Command:    []string{"echo"},
+					Image:      "alpine",
+					Parameters: []string{"param1"},
+				},
+			},
+		},
+	}
+
+	err = dm.InsertDAG(context.Background(), dag, "default")
+	require.NoError(t, err)
+
+	runID, err := dm.CreateDAGRun(context.Background(), "name", &v1alpha1.DagRunSpec{DagName: "test_shared_params"}, map[string]v1alpha1.ParameterSpec{}, nil)
+	require.NoError(t, err)
+
+	tasks, err := dm.GetStartingTasks(context.Background(), "test_shared_params", runID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+
+	for _, task := range tasks {
+		require.Len(t, task.Parameters, 1)
+		require.Equal(t, "param1", task.Parameters[0].Name)
+		require.Equal(t, "value1", task.Parameters[0].Value)
+	}
+}
+
+func Test_SQLite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
