@@ -118,22 +118,31 @@ var _ = BeforeSuite(func() {
 
 	//+kubebuilder:scaffold:webhook
 
+	mgrErrCh := make(chan error, 1)
 	go func() {
 		defer GinkgoRecover()
-		err = mgr.Start(ctx)
-		Expect(err).NotTo(HaveOccurred())
+		mgrErrCh <- mgr.Start(ctx)
 	}()
 
 	// wait for the webhook server to get ready
 	dialer := &net.Dialer{Timeout: time.Second}
 	addrPort := fmt.Sprintf("%s:%d", webhookInstallOptions.LocalServingHost, webhookInstallOptions.LocalServingPort)
 	Eventually(func() error {
+		select {
+		case mgrErr := <-mgrErrCh:
+			if mgrErr != nil {
+				return fmt.Errorf("manager exited before webhook became ready: %w", mgrErr)
+			}
+			return fmt.Errorf("manager exited before webhook became ready")
+		default:
+		}
+
 		conn, err := tls.DialWithDialer(dialer, "tcp", addrPort, &tls.Config{InsecureSkipVerify: true})
 		if err != nil {
 			return err
 		}
 		return conn.Close()
-	}).Should(Succeed())
+	}, 30*time.Second, 250*time.Millisecond).Should(Succeed())
 
 })
 

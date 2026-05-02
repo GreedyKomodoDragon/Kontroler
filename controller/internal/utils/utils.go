@@ -51,7 +51,10 @@ func SetupPostgresContainer(ctx context.Context) (*pgxpool.Pool, error) {
 			"POSTGRES_PASSWORD": "password",
 			"POSTGRES_DB":       "testdb",
 		},
-		WaitingFor: wait.ForListeningPort("5432/tcp"),
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("5432/tcp"),
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+		),
 	}
 	postgresC, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -71,7 +74,7 @@ func SetupPostgresContainer(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to get container port: %v", err)
 	}
 
-	databaseURL := fmt.Sprintf("postgres://postgres:password@%s:%s/testdb", host, port.Port())
+	databaseURL := fmt.Sprintf("postgres://postgres:password@%s:%s/testdb?sslmode=disable", host, port.Port())
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %v", err)
