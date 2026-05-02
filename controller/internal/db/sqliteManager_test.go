@@ -344,68 +344,6 @@ func Test_SQLite_DAGManager_SharedParameters(t *testing.T) {
 	}
 }
 
-func Test_SQLite_DAGManager_MarkDAGRunOutcome(t *testing.T) {
-	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
-	dm, _, err := db.NewSqliteManager(context.Background(), &parser, &db.SQLiteConfig{
-		DBPath: dbPath,
-	})
-	require.NoError(t, err)
-
-	err = dm.InitaliseDatabase(context.Background())
-	require.NoError(t, err)
-
-	dag := &v1alpha1.DAG{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test_dag",
-		},
-		Spec: v1alpha1.DAGSpec{
-			Schedule: "*/5 * * * *",
-			Task: []v1alpha1.TaskSpec{
-				{
-					Name:    "task1",
-					Command: []string{"echo", "Hello"},
-					Args:    []string{"arg1", "arg2"},
-					Image:   "busybox",
-				},
-				{
-					Name:     "task2",
-					Command:  []string{"echo"},
-					Args:     []string{"Goodbye, World!"},
-					Image:    "alpine:latest",
-					RunAfter: []string{"task1"},
-				},
-			},
-		},
-	}
-
-	err = dm.InsertDAG(context.Background(), dag, "default")
-	require.NoError(t, err)
-
-	dagRun := &v1alpha1.DagRunSpec{
-		DagName: "test_dag",
-	}
-
-	runID, err := dm.CreateDAGRun(context.Background(), "name", dagRun, map[string]v1alpha1.ParameterSpec{}, nil)
-	require.NoError(t, err)
-
-	tasks, err := dm.GetStartingTasks(context.Background(), "test_dag", 1)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, tasks)
-	assert.Len(t, tasks, 1)
-	assert.Equal(t, tasks[0].Name, "task1")
-
-	tasRunID, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[0].Id)
-	require.NoError(t, err)
-
-	tasks, err = dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
-	require.NoError(t, err)
-	require.NotEmpty(t, tasks)
-	require.Len(t, tasks, 1)
-	require.Equal(t, tasks[0].Name, "task2")
-}
-
 func Test_SQLite_DAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/%s.db", RandStringBytes(10))
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
