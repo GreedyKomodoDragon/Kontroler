@@ -32,8 +32,18 @@ type LogStore interface {
 	DeleteLogs(ctx context.Context, dagrunId int) error
 }
 
+type s3Client interface {
+	CreateMultipartUpload(ctx context.Context, params *s3.CreateMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error)
+	UploadPart(ctx context.Context, params *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error)
+	CompleteMultipartUpload(ctx context.Context, params *s3.CompleteMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error)
+	PutObject(ctx context.Context, params *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	AbortMultipartUpload(ctx context.Context, params *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error)
+	DeleteObjects(ctx context.Context, params *s3.DeleteObjectsInput, opts ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, opts ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+}
+
 type s3LogStore struct {
-	client     *s3.Client
+	client     s3Client
 	bucketName *string
 	fetching   map[string]bool
 	lock       *sync.RWMutex
@@ -78,27 +88,62 @@ func NewLogStore() (LogStore, error) {
 }
 
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
-	defer func() {
+	getter := &coreV1PodLogsGetter{client: clientSet, ns: pod.Namespace}
+	return s.uploadLogsWithGetter(ctx, dagrunId, getter, pod, func() {
 		if err := RemoveFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
 			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
 		}
-	}()
+	})
+}
 
-	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
+func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, getter podLogsGetter, pod *v1.Pod, finaliserCleanup func()) error {
+	if finaliserCleanup != nil {
+		defer finaliserCleanup()
+	}
+
+	objectKey := fmt.Sprintf("%v/%s-log.txt", dagrunId, pod.UID)
 	buffer := bytes.NewBuffer(nil)
 
-	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
-		Follow: true,
-	})
+	// Attempt to open the log stream with a short timeout and a couple of retries.
+	var logStream io.ReadCloser
+	var cancelStream context.CancelFunc
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		req := getter.GetLogs(pod.Name, &v1.PodLogOptions{
+			Follow:    true,
+			Container: pod.Spec.Containers[0].Name,
+		})
 
-	logStream, err := req.Stream(ctx)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		logStream, lastErr = req.Stream(openCtx)
+		if lastErr == nil {
+			cancelStream = cancel
+			break
+		}
+
+		cancel()
+
+		if strings.Contains(lastErr.Error(), "not found") {
 			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
 			return nil
 		}
-		return fmt.Errorf("error in opening stream: %w", err)
+
+		if i < 2 {
+			time.Sleep(time.Duration(1<<i) * time.Second)
+			continue
+		}
+
+		return fmt.Errorf("error in opening stream: %w", lastErr)
 	}
+
+	if logStream == nil {
+		return fmt.Errorf("failed to open log stream: %v", lastErr)
+	}
+	defer func() {
+		if cancelStream != nil {
+			cancelStream()
+		}
+	}()
 	defer logStream.Close()
 
 	reader := bufio.NewReader(logStream)
@@ -128,14 +173,12 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		n, readErr := reader.Read(chunk)
 
 		if readErr != nil && readErr != io.EOF {
-			// Check if pod was deleted
 			isPodDeleted := strings.Contains(readErr.Error(), "not found") ||
 				strings.Contains(readErr.Error(), "connection refused") ||
 				strings.Contains(readErr.Error(), "has been terminated")
 
 			if isPodDeleted {
 				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
-				// Clean up any partial upload
 				s.cleanupPartialUpload(ctx, objectKey, uploadID)
 				return nil
 			}
@@ -242,7 +285,8 @@ func (s *s3LogStore) IsFetching(dagRunId int, pod *v1.Pod) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	_, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]
+	// Use pod UID to avoid collisions when pod names are reused
+	_, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.UID)]
 	return ok
 }
 
@@ -250,11 +294,12 @@ func (s *s3LogStore) MarkAsFetching(dagRunId int, pod *v1.Pod) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if _, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]; ok {
+	key := fmt.Sprintf("%v-%s", dagRunId, pod.UID)
+	if _, ok := s.fetching[key]; ok {
 		return fmt.Errorf("already fetching")
 	}
 
-	s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)] = true
+	s.fetching[key] = true
 	return nil
 }
 
@@ -262,7 +307,7 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
+	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.UID))
 }
 
 func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
@@ -270,24 +315,26 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 	var objectIds []types.ObjectIdentifier
 	ptrTrue := true
 
-	// List all objects with pagination
-	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
-		Bucket: s.bucketName,
-		Prefix: aws.String(prefix),
-	})
-
-	for paginator.HasMorePages() {
-		output, err := paginator.NextPage(ctx)
+	// List all objects using ListObjectsV2 with continuation
+	var cont *string
+	for {
+		output, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            s.bucketName,
+			Prefix:            aws.String(prefix),
+			ContinuationToken: cont,
+		})
 		if err != nil {
 			return fmt.Errorf("error listing objects: %w", err)
 		}
 
-		// Collect object identifiers from this page
 		for _, object := range output.Contents {
-			objectIds = append(objectIds, types.ObjectIdentifier{
-				Key: object.Key,
-			})
+			objectIds = append(objectIds, types.ObjectIdentifier{Key: object.Key})
 		}
+
+		if output.IsTruncated == nil || !*output.IsTruncated {
+			break
+		}
+		cont = output.NextContinuationToken
 	}
 
 	if len(objectIds) == 0 {

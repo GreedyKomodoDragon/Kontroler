@@ -42,7 +42,8 @@ func (f *fileSystemLogStore) IsFetching(dagRunId int, pod *v1.Pod) bool {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 
-	_, ok := f.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]
+	// Use pod UID to avoid collisions when pod names are reused
+	_, ok := f.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.UID)]
 	return ok
 }
 
@@ -50,7 +51,8 @@ func (f *fileSystemLogStore) MarkAsFetching(dagRunId int, pod *v1.Pod) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	key := fmt.Sprintf("%v-%s", dagRunId, pod.Name)
+	// Use pod UID to avoid collisions when pod names are reused
+	key := fmt.Sprintf("%v-%s", dagRunId, pod.UID)
 	if _, ok := f.fetching[key]; ok {
 		return fmt.Errorf("already fetching")
 	}
@@ -63,13 +65,40 @@ func (f *fileSystemLogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	delete(f.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
+	delete(f.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.UID))
+}
+
+type podLogsGetter interface {
+	GetLogs(podName string, opts *v1.PodLogOptions) podLogStreamer
+}
+
+type podLogStreamer interface {
+	Stream(ctx context.Context) (io.ReadCloser, error)
+}
+
+type coreV1PodLogsGetter struct {
+	client *kubernetes.Clientset
+	ns     string
+}
+
+func (c *coreV1PodLogsGetter) GetLogs(podName string, opts *v1.PodLogOptions) podLogStreamer {
+	return c.client.CoreV1().Pods(c.ns).GetLogs(podName, opts)
 }
 
 func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
-	defer func() {
+	getter := &coreV1PodLogsGetter{client: clientSet, ns: pod.Namespace}
+	return f.uploadLogsWithGetter(ctx, dagrunId, getter, pod, func() {
+		// remove finaliser when done
 		if err := RemoveFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
 			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
+		}
+	})
+}
+
+func (f *fileSystemLogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, getter podLogsGetter, pod *v1.Pod, finaliserCleanup func()) error {
+	defer func() {
+		if finaliserCleanup != nil {
+			finaliserCleanup()
 		}
 	}()
 
@@ -85,49 +114,65 @@ func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clien
 	}
 	defer logFile.Close()
 
-	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
-		Follow: true,
-	})
+	// Attempt to open the log stream with a short timeout and a couple of retries.
+	// This avoids long blocking when the API server is transiently unavailable.
+	var logStream io.ReadCloser
+	var cancelStream context.CancelFunc
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		req := getter.GetLogs(pod.Name, &v1.PodLogOptions{
+			Follow:    true,
+			Container: pod.Spec.Containers[0].Name,
+		})
 
-	logStream, err := req.Stream(ctx)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		logStream, lastErr = req.Stream(openCtx)
+		if lastErr == nil {
+			cancelStream = cancel
+			break
+		}
+
+		// clean up this attempt's context
+		cancel()
+
+		if strings.Contains(lastErr.Error(), "not found") {
 			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
 			return nil
 		}
-		return fmt.Errorf("error in opening stream: %w", err)
+
+		// transient error - retry a couple of times
+		if i < 2 {
+			time.Sleep(time.Duration(1<<i) * time.Second)
+			continue
+		}
+
+		return fmt.Errorf("error in opening stream: %w", lastErr)
 	}
+
+	if logStream == nil {
+		return fmt.Errorf("failed to open log stream: %v", lastErr)
+	}
+	defer func() {
+		if cancelStream != nil {
+			cancelStream()
+		}
+	}()
 	defer logStream.Close()
 
-	reader := bufio.NewReader(logStream)
 	writer := bufio.NewWriter(logFile)
-
-	buffer := make([]byte, 4096)
-	for {
-		n, readErr := reader.Read(buffer)
-		if n > 0 {
-			if _, err := writer.Write(buffer[:n]); err != nil {
-				return fmt.Errorf("error writing to log file: %w", err)
-			}
-			if err := writer.Flush(); err != nil {
-				return fmt.Errorf("error flushing log file: %w", err)
-			}
+	// Use io.Copy which is simpler and efficient for streaming until EOF
+	if _, err := io.Copy(writer, logStream); err != nil {
+		if strings.Contains(err.Error(), "not found") ||
+			strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), "has been terminated") {
+			log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
+			return nil
 		}
+		return fmt.Errorf("error reading logs: %w", err)
+	}
 
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			if strings.Contains(readErr.Error(), "not found") ||
-				strings.Contains(readErr.Error(), "connection refused") ||
-				strings.Contains(readErr.Error(), "has been terminated") {
-				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
-				return nil
-			}
-			return fmt.Errorf("error reading logs: %w", readErr)
-		}
-
-		time.Sleep(time.Second)
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("error flushing log file: %w", err)
 	}
 
 	log.Log.Info("Logs successfully written to file", "path", logPath)
