@@ -383,23 +383,12 @@ func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskId int)
 
 	container := pod.Spec.Containers[0]
 	dbTask := &db.Task{
-		Id:      taskId,
-		Name:    container.Name,
-		Args:    container.Args,
-		Command: container.Command,
-		Image:   container.Image,
-		PodTemplate: &v1alpha1.PodTemplateSpec{
-			Volumes:                      pod.Spec.Volumes,
-			VolumeMounts:                 container.VolumeMounts,
-			ImagePullSecrets:             pod.Spec.ImagePullSecrets,
-			SecurityContext:              pod.Spec.SecurityContext,
-			NodeSelector:                 pod.Spec.NodeSelector,
-			Tolerations:                  pod.Spec.Tolerations,
-			Affinity:                     pod.Spec.Affinity,
-			ServiceAccountName:           pod.Spec.ServiceAccountName,
-			AutomountServiceAccountToken: pod.Spec.AutomountServiceAccountToken,
-			ActiveDeadlineSeconds:        pod.Spec.ActiveDeadlineSeconds,
-		},
+		Id:          taskId,
+		Name:        container.Name,
+		Args:        container.Args,
+		Command:     container.Command,
+		Image:       container.Image,
+		PodTemplate: v1alpha1.PodTemplateSpecFromK8s(&pod.Spec, &container),
 	}
 
 	if script != nil {

@@ -23,7 +23,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -65,12 +64,10 @@ var _ = Describe("DAG Controller", func() {
 						Workspace: kontrolerv1alpha1.Workspace{
 							Enabled: true,
 							PvcSpec: kontrolerv1alpha1.PVC{
-								AccessModes: []corev1.PersistentVolumeAccessMode{
-									corev1.ReadWriteOnce,
-								},
-								Resources: corev1.VolumeResourceRequirements{
-									Requests: corev1.ResourceList{
-										corev1.ResourceStorage: apiresource.MustParse("1Gi"),
+								AccessModes: []string{string(corev1.ReadWriteOnce)},
+								Resources: &kontrolerv1alpha1.ResourceRequirements{
+									Requests: map[string]string{
+										"storage": "1Gi",
 									},
 								},
 							},
@@ -160,12 +157,10 @@ var _ = Describe("DAG Controller", func() {
 					Workspace: kontrolerv1alpha1.Workspace{
 						Enabled: true,
 						PvcSpec: kontrolerv1alpha1.PVC{
-							AccessModes: []corev1.PersistentVolumeAccessMode{
-								corev1.ReadWriteOnce,
-							},
-							Resources: corev1.VolumeResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: apiresource.MustParse("1Gi"),
+							AccessModes: []string{string(corev1.ReadWriteOnce)},
+							Resources: &kontrolerv1alpha1.ResourceRequirements{
+								Requests: map[string]string{
+									"storage": "1Gi",
 								},
 							},
 						},
@@ -335,12 +330,10 @@ task cleanup {
 					Workspace: kontrolerv1alpha1.Workspace{
 						Enabled: true,
 						PvcSpec: kontrolerv1alpha1.PVC{
-							AccessModes: []corev1.PersistentVolumeAccessMode{
-								corev1.ReadWriteOnce,
-							},
-							Resources: corev1.VolumeResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: apiresource.MustParse("1Gi"),
+							AccessModes: []string{string(corev1.ReadWriteOnce)},
+							Resources: &kontrolerv1alpha1.ResourceRequirements{
+								Requests: map[string]string{
+									"storage": "1Gi",
 								},
 							},
 						},
@@ -409,12 +402,10 @@ task cleanup {
 					Workspace: kontrolerv1alpha1.Workspace{
 						Enabled: true,
 						PvcSpec: kontrolerv1alpha1.PVC{
-							AccessModes: []corev1.PersistentVolumeAccessMode{
-								corev1.ReadWriteOnce,
-							},
-							Resources: corev1.VolumeResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: apiresource.MustParse("1Gi"),
+							AccessModes: []string{string(corev1.ReadWriteOnce)},
+							Resources: &kontrolerv1alpha1.ResourceRequirements{
+								Requests: map[string]string{
+									"storage": "1Gi",
 								},
 							},
 						},

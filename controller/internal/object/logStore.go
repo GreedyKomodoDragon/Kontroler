@@ -20,8 +20,10 @@ import (
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const (
-	minPartSize int = 5 * 1024 * 1024
+var (
+	defaultMinPartSize       int           = 5 * 1024 * 1024
+	defaultStreamRetryCount  int           = 3
+	defaultStreamOpenTimeout time.Duration = 30 * time.Second
 )
 
 type LogStore interface {
@@ -32,11 +34,26 @@ type LogStore interface {
 	DeleteLogs(ctx context.Context, dagrunId int) error
 }
 
+type s3Client interface {
+	CreateMultipartUpload(ctx context.Context, params *s3.CreateMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error)
+	UploadPart(ctx context.Context, params *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error)
+	CompleteMultipartUpload(ctx context.Context, params *s3.CompleteMultipartUploadInput, opts ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error)
+	PutObject(ctx context.Context, params *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	AbortMultipartUpload(ctx context.Context, params *s3.AbortMultipartUploadInput, opts ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error)
+	DeleteObjects(ctx context.Context, params *s3.DeleteObjectsInput, opts ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, opts ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+}
+
 type s3LogStore struct {
-	client     *s3.Client
+	client     s3Client
 	bucketName *string
 	fetching   map[string]bool
 	lock       *sync.RWMutex
+
+	// configurable for tests
+	minPartSize       int
+	streamRetryCount  int
+	streamOpenTimeout time.Duration
 }
 
 func NewLogStore() (LogStore, error) {
@@ -78,27 +95,82 @@ func NewLogStore() (LogStore, error) {
 }
 
 func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
-	defer func() {
+	getter := &coreV1PodLogsGetter{client: clientSet, ns: pod.Namespace}
+	return s.uploadLogsWithGetter(ctx, dagrunId, getter, pod, func() {
 		if err := RemoveFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
 			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
 		}
+	})
+}
+
+func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, getter podLogsGetter, pod *v1.Pod, finaliserCleanup func()) error {
+	shouldCleanup := false
+	defer func() {
+		if shouldCleanup && finaliserCleanup != nil {
+			finaliserCleanup()
+		}
 	}()
 
-	objectKey := fmt.Sprintf("/%v/%s-log.txt", dagrunId, pod.UID)
+	objectKey := fmt.Sprintf("%v/%s-log.txt", dagrunId, pod.UID)
 	buffer := bytes.NewBuffer(nil)
 
-	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
-		Follow: true,
-	})
+	// Attempt to open the log stream with a short timeout and a couple of retries.
+	var logStream io.ReadCloser
+	var cancelStream context.CancelFunc
+	var lastErr error
+	// determine retry & timeout
+	retryCount := s.streamRetryCount
+	topen := s.streamOpenTimeout
+	if retryCount == 0 {
+		retryCount = defaultStreamRetryCount
+	}
+	if topen == 0 {
+		topen = defaultStreamOpenTimeout
+	}
 
-	logStream, err := req.Stream(ctx)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
+	for i := 0; i < retryCount; i++ {
+		openCtx, cancel := context.WithTimeout(ctx, topen)
+		// guard container presence
+		if len(pod.Spec.Containers) == 0 {
+			log.Log.Error(fmt.Errorf("no containers in pod"), "cannot fetch logs", "pod", pod.Name)
+			cancel()
 			return nil
 		}
-		return fmt.Errorf("error in opening stream: %w", err)
+		req := getter.GetLogs(pod.Name, &v1.PodLogOptions{
+			Follow:    true,
+			Container: pod.Spec.Containers[0].Name,
+		})
+
+		logStream, lastErr = req.Stream(openCtx)
+		if lastErr == nil {
+			cancelStream = cancel
+			break
+		}
+
+		cancel()
+
+		if strings.Contains(lastErr.Error(), "not found") {
+			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
+			shouldCleanup = true
+			return nil
+		}
+
+		if i < retryCount-1 {
+			time.Sleep(time.Duration(1<<i) * time.Second)
+			continue
+		}
+
+		return fmt.Errorf("error in opening stream: %w", lastErr)
 	}
+
+	if logStream == nil {
+		return fmt.Errorf("failed to open log stream: %v", lastErr)
+	}
+	defer func() {
+		if cancelStream != nil {
+			cancelStream()
+		}
+	}()
 	defer logStream.Close()
 
 	reader := bufio.NewReader(logStream)
@@ -119,24 +191,38 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 	// Ensure cleanup of partial upload on any error
 	defer func() {
 		if !hasUploadedParts || err != nil {
-			s.cleanupPartialUpload(ctx, objectKey, uploadID)
+			s.cleanupPartialUpload(objectKey, uploadID)
 		}
 	}()
 
+	// determine minPartSize to use
+	localMinPart := s.minPartSize
+	if localMinPart == 0 {
+		localMinPart = defaultMinPartSize
+	}
+
 	for {
-		chunk := make([]byte, 1024*1024) // 1 MB read buffer
+		// Use a read chunk size that aligns with the configured part size to encourage
+		// predictable multipart splitting in tests. Cap at 1MB for production performance.
+		chunkSize := localMinPart
+		if chunkSize <= 0 {
+			chunkSize = 1024 * 1024
+		}
+		if chunkSize > 1024*1024 {
+			chunkSize = 1024 * 1024
+		}
+		chunk := make([]byte, chunkSize)
 		n, readErr := reader.Read(chunk)
 
 		if readErr != nil && readErr != io.EOF {
-			// Check if pod was deleted
 			isPodDeleted := strings.Contains(readErr.Error(), "not found") ||
 				strings.Contains(readErr.Error(), "connection refused") ||
 				strings.Contains(readErr.Error(), "has been terminated")
 
 			if isPodDeleted {
 				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
-				// Clean up any partial upload
-				s.cleanupPartialUpload(ctx, objectKey, uploadID)
+				s.cleanupPartialUpload(objectKey, uploadID)
+				shouldCleanup = true
 				return nil
 			}
 			return fmt.Errorf("error reading logs: %w", readErr)
@@ -146,7 +232,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 			buffer.Write(chunk[:n])
 		}
 
-		if buffer.Len() >= minPartSize {
+		if buffer.Len() >= localMinPart {
 			hasUploadedParts = true
 			if err := s.uploadPart(ctx, buffer, uploadID, &completedParts, partNumber, objectKey); err != nil {
 				return err
@@ -163,7 +249,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 
 	// Handle remaining data
 	if buffer.Len() > 0 {
-		if buffer.Len() < minPartSize && !hasUploadedParts {
+		if buffer.Len() < localMinPart && !hasUploadedParts {
 			// Upload small file as single object
 			_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 				Bucket: s.bucketName,
@@ -174,6 +260,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 				return fmt.Errorf("error uploading small log file: %w", err)
 			}
 			log.Log.Info("Logs successfully uploaded to S3 bucket with PutObject", "bucket", *s.bucketName, "key", objectKey)
+			shouldCleanup = true
 			return nil
 		}
 
@@ -198,6 +285,7 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 		log.Log.Info("Logs successfully uploaded to S3 bucket with multipart upload", "bucket", *s.bucketName, "key", objectKey)
 	}
 
+	shouldCleanup = true
 	return nil
 }
 
@@ -211,11 +299,7 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 		Body:       bytes.NewReader(buffer.Bytes()),
 	})
 	if err != nil {
-		_, _ = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
-			Bucket:   s.bucketName,
-			Key:      aws.String(objectKey),
-			UploadId: uploadID,
-		})
+		s.cleanupPartialUpload(objectKey, uploadID)
 		return fmt.Errorf("error uploading part %d: %w", partNumber, err)
 	}
 
@@ -228,8 +312,11 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 	return nil
 }
 
-func (s *s3LogStore) cleanupPartialUpload(ctx context.Context, objectKey string, uploadID *string) {
-	if _, err := s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+func (s *s3LogStore) cleanupPartialUpload(objectKey string, uploadID *string) {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err := s.client.AbortMultipartUpload(cleanupCtx, &s3.AbortMultipartUploadInput{
 		Bucket:   s.bucketName,
 		Key:      aws.String(objectKey),
 		UploadId: uploadID,
@@ -242,7 +329,8 @@ func (s *s3LogStore) IsFetching(dagRunId int, pod *v1.Pod) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	_, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]
+	// Use pod UID to avoid collisions when pod names are reused
+	_, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.UID)]
 	return ok
 }
 
@@ -250,11 +338,12 @@ func (s *s3LogStore) MarkAsFetching(dagRunId int, pod *v1.Pod) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if _, ok := s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]; ok {
+	key := fmt.Sprintf("%v-%s", dagRunId, pod.UID)
+	if _, ok := s.fetching[key]; ok {
 		return fmt.Errorf("already fetching")
 	}
 
-	s.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)] = true
+	s.fetching[key] = true
 	return nil
 }
 
@@ -262,7 +351,7 @@ func (s *s3LogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
+	delete(s.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.UID))
 }
 
 func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
@@ -270,24 +359,26 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 	var objectIds []types.ObjectIdentifier
 	ptrTrue := true
 
-	// List all objects with pagination
-	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
-		Bucket: s.bucketName,
-		Prefix: aws.String(prefix),
-	})
-
-	for paginator.HasMorePages() {
-		output, err := paginator.NextPage(ctx)
+	// List all objects using ListObjectsV2 with continuation
+	var cont *string
+	for {
+		output, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            s.bucketName,
+			Prefix:            aws.String(prefix),
+			ContinuationToken: cont,
+		})
 		if err != nil {
 			return fmt.Errorf("error listing objects: %w", err)
 		}
 
-		// Collect object identifiers from this page
 		for _, object := range output.Contents {
-			objectIds = append(objectIds, types.ObjectIdentifier{
-				Key: object.Key,
-			})
+			objectIds = append(objectIds, types.ObjectIdentifier{Key: object.Key})
 		}
+
+		if output.IsTruncated == nil || !*output.IsTruncated {
+			break
+		}
+		cont = output.NextContinuationToken
 	}
 
 	if len(objectIds) == 0 {
@@ -303,7 +394,7 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 		}
 
 		batch := objectIds[i:end]
-		_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		output, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: s.bucketName,
 			Delete: &types.Delete{
 				Objects: batch,
@@ -312,6 +403,10 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 		})
 		if err != nil {
 			return fmt.Errorf("error deleting objects batch: %w", err)
+		}
+		if len(output.Errors) > 0 {
+			first := output.Errors[0]
+			return fmt.Errorf("delete objects returned errors for batch (size=%d, quiet=%t): key=%v code=%v message=%v", len(batch), ptrTrue, first.Key, first.Code, first.Message)
 		}
 	}
 

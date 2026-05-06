@@ -10,7 +10,7 @@ import (
 )
 
 func ServeLogWithRange(c *fiber.Ctx, dagRunId int, podName string, logFetcher LogFetcher) error {
-	logFileKey := fmt.Sprintf("/%v/%s-log.txt", dagRunId, podName)
+	logFileKey := fmt.Sprintf("%v/%s-log.txt", dagRunId, podName)
 
 	exists, fileSize, err := logFetcher.LogFileExists(&logFileKey)
 	if err != nil {
