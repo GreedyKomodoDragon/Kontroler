@@ -3,22 +3,23 @@ package object
 import (
 	"bytes"
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	typesk8s "k8s.io/apimachinery/pkg/types"
-)
+	"sync"
+}
 
 func TestS3Upload_Multipart_UploadsMultipleParts_Extra(t *testing.T) {
 	fake := &fakeS3Client{}
-	s := &s3LogStore{client: fake, bucketName: aws.String("my-bucket"), fetching: map[string]bool{}, lock: &sync.RWMutex{}}
+	s := &s3LogStore{client: fake, bucketName: aws.String("my-bucket"), fetching: map[string]bool{}, lock: &sync.RWMutex{}, minPartSize: 32 * 1024}
 
-	sz := minPartSize*2 + 100
-	data := bytes.Repeat([]byte("A"), int(sz))
+	sz := s.minPartSize*3 + 10
+	data := bytes.Repeat([]byte("B"), int(sz))
 	stream := &s3FakeStreamer{data: data}
 	getter := &s3FakeGetter{stream: stream}
 
@@ -31,8 +32,12 @@ func TestS3Upload_Multipart_UploadsMultipleParts_Extra(t *testing.T) {
 
 	fake.mu.Lock()
 	uploads := fake.uploadCount
+	etags := append([]string(nil), fake.uploadedETags...)
 	fake.mu.Unlock()
-	require.GreaterOrEqual(t, uploads, 2)
+
+	expectedParts := (int(sz) + s.minPartSize - 1) / s.minPartSize
+	require.Equal(t, expectedParts, uploads)
+	require.Equal(t, expectedParts, len(etags))
 	require.True(t, fake.completeCalled)
 }
 
@@ -69,7 +74,7 @@ func TestFetchingMapConcurrency_Extra(t *testing.T) {
 
 	// s3 store
 	fake := &fakeS3Client{}
-	s := &s3LogStore{client: fake, bucketName: aws.String("my-bucket"), fetching: map[string]bool{}, lock: &sync.RWMutex{}}
+	s := &s3LogStore{client: fake, bucketName: aws.String("my-bucket"), fetching: map[string]bool{}, lock: &sync.RWMutex{}, minPartSize: 32 * 1024}
 
 	results = make(chan bool, concurrency)
 	for i := 0; i < concurrency; i++ {

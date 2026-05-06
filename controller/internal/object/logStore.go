@@ -20,8 +20,10 @@ import (
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const (
-	minPartSize int = 5 * 1024 * 1024
+var (
+	defaultMinPartSize       int           = 5 * 1024 * 1024
+	defaultStreamRetryCount  int           = 3
+	defaultStreamOpenTimeout time.Duration = 30 * time.Second
 )
 
 type LogStore interface {
@@ -47,6 +49,11 @@ type s3LogStore struct {
 	bucketName *string
 	fetching   map[string]bool
 	lock       *sync.RWMutex
+
+	// configurable for tests
+	minPartSize       int
+	streamRetryCount  int
+	streamOpenTimeout time.Duration
 }
 
 func NewLogStore() (LogStore, error) {
@@ -108,8 +115,24 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 	var logStream io.ReadCloser
 	var cancelStream context.CancelFunc
 	var lastErr error
-	for i := 0; i < 3; i++ {
-		openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// determine retry & timeout
+	retryCount := s.streamRetryCount
+	topen := s.streamOpenTimeout
+	if retryCount == 0 {
+		retryCount = defaultStreamRetryCount
+	}
+	if topen == 0 {
+		topen = defaultStreamOpenTimeout
+	}
+
+	for i := 0; i < retryCount; i++ {
+		openCtx, cancel := context.WithTimeout(ctx, topen)
+		// guard container presence
+		if len(pod.Spec.Containers) == 0 {
+			log.Log.Error(fmt.Errorf("no containers in pod"), "cannot fetch logs", "pod", pod.Name)
+			cancel()
+			return nil
+		}
 		req := getter.GetLogs(pod.Name, &v1.PodLogOptions{
 			Follow:    true,
 			Container: pod.Spec.Containers[0].Name,
@@ -128,7 +151,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 			return nil
 		}
 
-		if i < 2 {
+		if i < retryCount-1 {
 			time.Sleep(time.Duration(1<<i) * time.Second)
 			continue
 		}
@@ -168,6 +191,12 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 		}
 	}()
 
+	// determine minPartSize to use
+	localMinPart := s.minPartSize
+	if localMinPart == 0 {
+		localMinPart = defaultMinPartSize
+	}
+
 	for {
 		chunk := make([]byte, 1024*1024) // 1 MB read buffer
 		n, readErr := reader.Read(chunk)
@@ -189,7 +218,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 			buffer.Write(chunk[:n])
 		}
 
-		if buffer.Len() >= minPartSize {
+		if buffer.Len() >= localMinPart {
 			hasUploadedParts = true
 			if err := s.uploadPart(ctx, buffer, uploadID, &completedParts, partNumber, objectKey); err != nil {
 				return err
@@ -206,7 +235,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 
 	// Handle remaining data
 	if buffer.Len() > 0 {
-		if buffer.Len() < minPartSize && !hasUploadedParts {
+		if buffer.Len() < localMinPart && !hasUploadedParts {
 			// Upload small file as single object
 			_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 				Bucket: s.bucketName,

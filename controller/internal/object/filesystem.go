@@ -20,6 +20,10 @@ type fileSystemLogStore struct {
 	baseDir  string
 	fetching map[string]bool
 	lock     *sync.RWMutex
+
+	// configurable for tests
+	streamRetryCount  int
+	streamOpenTimeout time.Duration
 }
 
 func NewFileSystemLogStore(baseDir string) (LogStore, error) {
@@ -114,13 +118,28 @@ func (f *fileSystemLogStore) uploadLogsWithGetter(ctx context.Context, dagrunId 
 	}
 	defer logFile.Close()
 
-	// Attempt to open the log stream with a short timeout and a couple of retries.
-	// This avoids long blocking when the API server is transiently unavailable.
+	// Attempt to open the log stream with a short timeout and a configurable number of retries.
 	var logStream io.ReadCloser
 	var cancelStream context.CancelFunc
 	var lastErr error
-	for i := 0; i < 3; i++ {
-		openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+
+	retryCount := f.streamRetryCount
+	topen := f.streamOpenTimeout
+	if retryCount == 0 {
+		retryCount = defaultStreamRetryCount
+	}
+	if topen == 0 {
+		topen = defaultStreamOpenTimeout
+	}
+
+	for i := 0; i < retryCount; i++ {
+		openCtx, cancel := context.WithTimeout(ctx, topen)
+		// guard container presence
+		if len(pod.Spec.Containers) == 0 {
+			log.Log.Error(fmt.Errorf("no containers in pod"), "cannot fetch logs", "pod", pod.Name)
+			cancel()
+			return nil
+		}
 		req := getter.GetLogs(pod.Name, &v1.PodLogOptions{
 			Follow:    true,
 			Container: pod.Spec.Containers[0].Name,
@@ -140,8 +159,8 @@ func (f *fileSystemLogStore) uploadLogsWithGetter(ctx context.Context, dagrunId 
 			return nil
 		}
 
-		// transient error - retry a couple of times
-		if i < 2 {
+		// transient error - retry
+		if i < retryCount-1 {
 			time.Sleep(time.Duration(1<<i) * time.Second)
 			continue
 		}
