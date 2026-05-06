@@ -22,6 +22,8 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,21 +36,23 @@ type DagParameterSpec struct {
 }
 
 // PodTemplateSpec defines the template for the pod of a task
+// Note: use CRD-safe local types to avoid controller-gen emitting $ref to core/v1
+// and causing forbidden $ref entries in the CRD schema.
 type PodTemplateSpec struct {
 	// +optional
-	Volumes []corev1.Volume `json:"volumes,omitempty"`
+	Volumes []Volume `json:"volumes,omitempty"`
 	// +optional
-	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
+	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
 	// +optional
-	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+	ImagePullSecrets []LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// +optional
-	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	SecurityContext *PodSecurityContext `json:"securityContext,omitempty"`
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// +optional
-	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	Tolerations []Toleration `json:"tolerations,omitempty"`
 	// +optional
-	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+	Affinity *Affinity `json:"affinity,omitempty"`
 	// +optional
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 	// ActiveDeadlineSeconds is how long the pod will last for (basically a time-limit)
@@ -58,7 +62,73 @@ type PodTemplateSpec struct {
 	// +optional
 	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 	// +optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources *ResourceRequirements `json:"resources,omitempty"`
+}
+
+// Local CRD-safe types mirroring the fields we need from core/v1
+type EmptyDirVolumeSource struct{}
+
+type PersistentVolumeClaimVolumeSource struct {
+	ClaimName string `json:"claimName"`
+}
+
+type Volume struct {
+	Name string `json:"name"`
+	// Only support EmptyDir and PersistentVolumeClaim for now
+	EmptyDir              *EmptyDirVolumeSource              `json:"emptyDir,omitempty"`
+	PersistentVolumeClaim *PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty"`
+}
+
+type VolumeMount struct {
+	Name      string `json:"name"`
+	MountPath string `json:"mountPath"`
+	ReadOnly  bool   `json:"readOnly,omitempty"`
+}
+
+type LocalObjectReference struct {
+	Name string `json:"name"`
+}
+
+type PodSecurityContext struct {
+	// minimal mapping — expand if needed
+	FSGroup *int64 `json:"fsGroup,omitempty"`
+}
+
+type Toleration struct {
+	Key      string `json:"key,omitempty"`
+	Operator string `json:"operator,omitempty"`
+	Value    string `json:"value,omitempty"`
+	Effect   string `json:"effect,omitempty"`
+	// +optional
+	TolerationSeconds *int64 `json:"tolerationSeconds,omitempty"`
+}
+
+type Affinity struct {
+	// keep opaque for brevity; map to corev1.Affinity in conversion
+	NodeAffinity    *apiextensionsv1.JSON `json:"nodeAffinity,omitempty"`
+	PodAffinity     *apiextensionsv1.JSON `json:"podAffinity,omitempty"`
+	PodAntiAffinity *apiextensionsv1.JSON `json:"podAntiAffinity,omitempty"`
+}
+
+type ResourceRequirements struct {
+	// simplified: requests/limits maps
+	Limits   map[string]string `json:"limits,omitempty"`
+	Requests map[string]string `json:"requests,omitempty"`
+}
+
+// PVC and Workspace local types
+type PVC struct {
+	AccessModes []string              `json:"accessModes,omitempty"`
+	Selector    *metav1.LabelSelector `json:"selector,omitempty"`
+	// simplified resources
+	Resources        *ResourceRequirements `json:"resources,omitempty"`
+	StorageClassName *string               `json:"storageClassName,omitempty"`
+	VolumeMode       *string               `json:"volumeMode,omitempty"`
+}
+
+type Workspace struct {
+	Enabled bool `json:"enable"`
+	PvcSpec PVC  `json:"pvc"`
 }
 
 func (p PodTemplateSpec) Serialize() (string, error) {
@@ -68,6 +138,183 @@ func (p PodTemplateSpec) Serialize() (string, error) {
 	}
 
 	return string(jsonData), nil
+}
+
+// Conversion helper: convert this CRD-safe PodTemplateSpec into k8s core types
+func (p *PodTemplateSpec) ToK8sParts() (volumes []corev1.Volume, volumeMounts []corev1.VolumeMount, imagePullSecrets []corev1.LocalObjectReference, securityContext *corev1.PodSecurityContext, tolerations []corev1.Toleration, affinity *corev1.Affinity, resources *corev1.ResourceRequirements) {
+	// volumes
+	for _, v := range p.Volumes {
+		var vol corev1.Volume
+		vol.Name = v.Name
+		if v.EmptyDir != nil {
+			vol.VolumeSource = corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+		} else if v.PersistentVolumeClaim != nil {
+			vol.VolumeSource = corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: v.PersistentVolumeClaim.ClaimName}}
+		}
+		volumes = append(volumes, vol)
+	}
+
+	// volumeMounts
+	for _, vm := range p.VolumeMounts {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: vm.Name, MountPath: vm.MountPath, ReadOnly: vm.ReadOnly})
+	}
+
+	// imagePullSecrets
+	for _, s := range p.ImagePullSecrets {
+		imagePullSecrets = append(imagePullSecrets, corev1.LocalObjectReference{Name: s.Name})
+	}
+
+	// securityContext (limited)
+	if p.SecurityContext != nil {
+		securityContext = &corev1.PodSecurityContext{}
+		if p.SecurityContext.FSGroup != nil {
+			securityContext.FSGroup = p.SecurityContext.FSGroup
+		}
+	}
+
+	// tolerations
+	for _, t := range p.Tolerations {
+		tolerations = append(tolerations, corev1.Toleration{Key: t.Key, Operator: corev1.TolerationOperator(t.Operator), Value: t.Value, Effect: corev1.TaintEffect(t.Effect), TolerationSeconds: t.TolerationSeconds})
+	}
+
+	// affinity: best-effort (not converting complex structures)
+	if p.Affinity != nil {
+		// This is an approximation: we marshal/unmarshal via JSON to/from core type
+		b, _ := json.Marshal(p.Affinity)
+		var a corev1.Affinity
+		_ = json.Unmarshal(b, &a)
+		affinity = &a
+	}
+
+	// resources
+	if p.Resources != nil {
+		r := corev1.ResourceList{}
+		l := corev1.ResourceList{}
+		for k, v := range p.Resources.Limits {
+			q, err := resource.ParseQuantity(v)
+			if err == nil {
+				l[corev1.ResourceName(k)] = q
+			}
+		}
+		for k, v := range p.Resources.Requests {
+			q, err := resource.ParseQuantity(v)
+			if err == nil {
+				r[corev1.ResourceName(k)] = q
+			}
+		}
+		resources = &corev1.ResourceRequirements{Limits: l, Requests: r}
+	}
+
+	return
+}
+
+func (p PVC) ToK8sPersistentVolumeClaimSpec() corev1.PersistentVolumeClaimSpec {
+	accessModes := make([]corev1.PersistentVolumeAccessMode, 0, len(p.AccessModes))
+	for _, mode := range p.AccessModes {
+		accessModes = append(accessModes, corev1.PersistentVolumeAccessMode(mode))
+	}
+
+	var volumeMode *corev1.PersistentVolumeMode
+	if p.VolumeMode != nil {
+		vm := corev1.PersistentVolumeMode(*p.VolumeMode)
+		volumeMode = &vm
+	}
+
+	resources := corev1.VolumeResourceRequirements{}
+	if p.Resources != nil {
+		if len(p.Resources.Limits) > 0 {
+			resources.Limits = corev1.ResourceList{}
+			for k, v := range p.Resources.Limits {
+				q, err := resource.ParseQuantity(v)
+				if err == nil {
+					resources.Limits[corev1.ResourceName(k)] = q
+				}
+			}
+		}
+		if len(p.Resources.Requests) > 0 {
+			resources.Requests = corev1.ResourceList{}
+			for k, v := range p.Resources.Requests {
+				q, err := resource.ParseQuantity(v)
+				if err == nil {
+					resources.Requests[corev1.ResourceName(k)] = q
+				}
+			}
+		}
+	}
+
+	return corev1.PersistentVolumeClaimSpec{
+		AccessModes:      accessModes,
+		Resources:        resources,
+		Selector:         p.Selector,
+		StorageClassName: p.StorageClassName,
+		VolumeMode:       volumeMode,
+	}
+}
+
+func PodTemplateSpecFromK8s(podSpec *corev1.PodSpec, container *corev1.Container) *PodTemplateSpec {
+	if podSpec == nil || container == nil {
+		return &PodTemplateSpec{}
+	}
+
+	pt := &PodTemplateSpec{
+		NodeSelector:                 podSpec.NodeSelector,
+		ServiceAccountName:           podSpec.ServiceAccountName,
+		AutomountServiceAccountToken: podSpec.AutomountServiceAccountToken,
+		ActiveDeadlineSeconds:        podSpec.ActiveDeadlineSeconds,
+	}
+
+	for _, v := range podSpec.Volumes {
+		lv := Volume{Name: v.Name}
+		if v.EmptyDir != nil {
+			lv.EmptyDir = &EmptyDirVolumeSource{}
+		}
+		if v.PersistentVolumeClaim != nil {
+			lv.PersistentVolumeClaim = &PersistentVolumeClaimVolumeSource{ClaimName: v.PersistentVolumeClaim.ClaimName}
+		}
+		pt.Volumes = append(pt.Volumes, lv)
+	}
+
+	for _, vm := range container.VolumeMounts {
+		pt.VolumeMounts = append(pt.VolumeMounts, VolumeMount{Name: vm.Name, MountPath: vm.MountPath, ReadOnly: vm.ReadOnly})
+	}
+
+	for _, s := range podSpec.ImagePullSecrets {
+		pt.ImagePullSecrets = append(pt.ImagePullSecrets, LocalObjectReference{Name: s.Name})
+	}
+
+	if podSpec.SecurityContext != nil {
+		pt.SecurityContext = &PodSecurityContext{FSGroup: podSpec.SecurityContext.FSGroup}
+	}
+
+	for _, t := range podSpec.Tolerations {
+		pt.Tolerations = append(pt.Tolerations, Toleration{
+			Key:               t.Key,
+			Operator:          string(t.Operator),
+			Value:             t.Value,
+			Effect:            string(t.Effect),
+			TolerationSeconds: t.TolerationSeconds,
+		})
+	}
+
+	if podSpec.Affinity != nil {
+		b, _ := json.Marshal(podSpec.Affinity)
+		var a Affinity
+		_ = json.Unmarshal(b, &a)
+		pt.Affinity = &a
+	}
+
+	if len(container.Resources.Limits) > 0 || len(container.Resources.Requests) > 0 {
+		r := &ResourceRequirements{Limits: map[string]string{}, Requests: map[string]string{}}
+		for k, v := range container.Resources.Limits {
+			r.Limits[string(k)] = v.String()
+		}
+		for k, v := range container.Resources.Requests {
+			r.Requests[string(k)] = v.String()
+		}
+		pt.Resources = r
+	}
+
+	return pt
 }
 
 // TaskSpec defines the structure of a task in the DAG
@@ -118,20 +365,6 @@ type Conditional struct {
 type Webhook struct {
 	URL       string `json:"url"`
 	VerifySSL bool   `json:"verifySSL"`
-}
-
-type PVC struct {
-	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes"`
-	// +optional
-	Selector         *metav1.LabelSelector             `json:"selector,omitempty"`
-	Resources        corev1.VolumeResourceRequirements `json:"resources,omitempty"`
-	StorageClassName *string                           `json:"storageClassName,omitempty"`
-	VolumeMode       *corev1.PersistentVolumeMode      `json:"volumeMode,omitempty"`
-}
-
-type Workspace struct {
-	Enabled bool `json:"enable"`
-	PvcSpec PVC  `json:"pvc"`
 }
 
 // DAGSpec defines the desired state of DAG
