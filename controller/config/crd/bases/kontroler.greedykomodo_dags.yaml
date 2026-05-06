@@ -97,8 +97,10 @@ spec:
                         type: string
                       type: array
                     podTemplate:
-                      description: PodTemplateSpec defines the template for the pod
-                        of a task
+                      description: 'PodTemplateSpec defines the template for the pod
+                        of a task Note: use CRD-safe local types to avoid controller-gen
+                        emitting $ref to core/v1 and causing forbidden $ref entries
+                        in the CRD schema.'
                       properties:
                         activeDeadlineSeconds:
                           description: ActiveDeadlineSeconds is how long the pod will
@@ -108,34 +110,101 @@ spec:
                           format: int64
                           type: integer
                         affinity:
-                          $ref: '#/definitions/k8s.io~1api~1core~1v1~0Affinity'
+                          properties:
+                            nodeAffinity:
+                              description: keep opaque for brevity; map to corev1.Affinity
+                                in conversion
+                              x-kubernetes-preserve-unknown-fields: true
+                            podAffinity:
+                              x-kubernetes-preserve-unknown-fields: true
+                            podAntiAffinity:
+                              x-kubernetes-preserve-unknown-fields: true
+                          type: object
                         automountServiceAccountToken:
                           type: boolean
                         imagePullSecrets:
                           items:
-                            $ref: '#/definitions/k8s.io~1api~1core~1v1~0LocalObjectReference'
+                            properties:
+                              name:
+                                type: string
+                            required:
+                            - name
+                            type: object
                           type: array
                         nodeSelector:
                           additionalProperties:
                             type: string
                           type: object
                         resources:
-                          $ref: '#/definitions/k8s.io~1api~1core~1v1~0ResourceRequirements'
+                          properties:
+                            limits:
+                              additionalProperties:
+                                type: string
+                              description: 'simplified: requests/limits maps'
+                              type: object
+                            requests:
+                              additionalProperties:
+                                type: string
+                              type: object
+                          type: object
                         securityContext:
-                          $ref: '#/definitions/k8s.io~1api~1core~1v1~0PodSecurityContext'
+                          properties:
+                            fsGroup:
+                              description: minimal mapping — expand if needed
+                              format: int64
+                              type: integer
+                          type: object
                         serviceAccountName:
                           type: string
                         tolerations:
                           items:
-                            $ref: '#/definitions/k8s.io~1api~1core~1v1~0Toleration'
+                            properties:
+                              effect:
+                                type: string
+                              key:
+                                type: string
+                              operator:
+                                type: string
+                              tolerationSeconds:
+                                format: int64
+                                type: integer
+                              value:
+                                type: string
+                            type: object
                           type: array
                         volumeMounts:
                           items:
-                            $ref: '#/definitions/k8s.io~1api~1core~1v1~0VolumeMount'
+                            properties:
+                              mountPath:
+                                type: string
+                              name:
+                                type: string
+                              readOnly:
+                                type: boolean
+                            required:
+                            - mountPath
+                            - name
+                            type: object
                           type: array
                         volumes:
                           items:
-                            $ref: '#/definitions/k8s.io~1api~1core~1v1~0Volume'
+                            properties:
+                              emptyDir:
+                                description: Only support EmptyDir and PersistentVolumeClaim
+                                  for now
+                                type: object
+                              name:
+                                type: string
+                              persistentVolumeClaim:
+                                properties:
+                                  claimName:
+                                    type: string
+                                required:
+                                - claimName
+                                type: object
+                            required:
+                            - name
+                            type: object
                           type: array
                       type: object
                     runAfter:
@@ -179,13 +248,25 @@ spec:
                   enable:
                     type: boolean
                   pvc:
+                    description: PVC and Workspace local types
                     properties:
                       accessModes:
                         items:
-                          $ref: '#/definitions/k8s.io~1api~1core~1v1~0PersistentVolumeAccessMode'
+                          type: string
                         type: array
                       resources:
-                        $ref: '#/definitions/k8s.io~1api~1core~1v1~0VolumeResourceRequirements'
+                        description: simplified resources
+                        properties:
+                          limits:
+                            additionalProperties:
+                              type: string
+                            description: 'simplified: requests/limits maps'
+                            type: object
+                          requests:
+                            additionalProperties:
+                              type: string
+                            type: object
+                        type: object
                       selector:
                         description: A label selector is a label query over a set
                           of resources. The result of matchLabels and matchExpressions
@@ -240,9 +321,7 @@ spec:
                       storageClassName:
                         type: string
                       volumeMode:
-                        $ref: '#/definitions/k8s.io~1api~1core~1v1~0PersistentVolumeMode'
-                    required:
-                    - accessModes
+                        type: string
                     type: object
                 required:
                 - enable
