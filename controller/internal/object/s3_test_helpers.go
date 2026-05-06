@@ -24,6 +24,7 @@ type fakeS3Client struct {
 	uploadCount      int
 	uploadedETags    []string
 	uploadedBodies   [][]byte
+	listObjectsPages [][]types.Object
 	mu               sync.Mutex
 }
 
@@ -32,7 +33,7 @@ func (f *fakeS3Client) CreateMultipartUpload(ctx context.Context, params *s3.Cre
 }
 
 func (f *fakeS3Client) UploadPart(ctx context.Context, params *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
-	b, _ := ioutil.ReadAll(params.Body.(io.Reader))
+	b, _ := ioutil.ReadAll(params.Body)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.uploadCount++
@@ -53,7 +54,7 @@ func (f *fakeS3Client) CompleteMultipartUpload(ctx context.Context, params *s3.C
 }
 
 func (f *fakeS3Client) PutObject(ctx context.Context, params *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	b, _ := ioutil.ReadAll(params.Body.(io.Reader))
+	b, _ := ioutil.ReadAll(params.Body)
 	f.mu.Lock()
 	f.putBody = b
 	f.putKey = *params.Key
@@ -73,7 +74,27 @@ func (f *fakeS3Client) DeleteObjects(ctx context.Context, params *s3.DeleteObjec
 }
 
 func (f *fakeS3Client) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, opts ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
-	return &s3.ListObjectsV2Output{Contents: []types.Object{}}, nil
+	if len(f.listObjectsPages) == 0 {
+		return &s3.ListObjectsV2Output{Contents: []types.Object{}}, nil
+	}
+
+	page := 0
+	if params.ContinuationToken != nil {
+		_, _ = fmt.Sscanf(*params.ContinuationToken, "page-%d", &page)
+	}
+	if page < 0 || page >= len(f.listObjectsPages) {
+		return &s3.ListObjectsV2Output{Contents: []types.Object{}}, nil
+	}
+
+	isTruncated := page < len(f.listObjectsPages)-1
+	output := &s3.ListObjectsV2Output{
+		Contents:    f.listObjectsPages[page],
+		IsTruncated: aws.Bool(isTruncated),
+	}
+	if isTruncated {
+		output.NextContinuationToken = aws.String(fmt.Sprintf("page-%d", page+1))
+	}
+	return output, nil
 }
 
 // test stream/getter types used by multiple tests

@@ -104,9 +104,12 @@ func (s *s3LogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *ku
 }
 
 func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, getter podLogsGetter, pod *v1.Pod, finaliserCleanup func()) error {
-	if finaliserCleanup != nil {
-		defer finaliserCleanup()
-	}
+	shouldCleanup := false
+	defer func() {
+		if shouldCleanup && finaliserCleanup != nil {
+			finaliserCleanup()
+		}
+	}()
 
 	objectKey := fmt.Sprintf("%v/%s-log.txt", dagrunId, pod.UID)
 	buffer := bytes.NewBuffer(nil)
@@ -148,6 +151,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 
 		if strings.Contains(lastErr.Error(), "not found") {
 			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
+			shouldCleanup = true
 			return nil
 		}
 
@@ -187,7 +191,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 	// Ensure cleanup of partial upload on any error
 	defer func() {
 		if !hasUploadedParts || err != nil {
-			s.cleanupPartialUpload(ctx, objectKey, uploadID)
+			s.cleanupPartialUpload(objectKey, uploadID)
 		}
 	}()
 
@@ -217,7 +221,8 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 
 			if isPodDeleted {
 				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
-				s.cleanupPartialUpload(ctx, objectKey, uploadID)
+				s.cleanupPartialUpload(objectKey, uploadID)
+				shouldCleanup = true
 				return nil
 			}
 			return fmt.Errorf("error reading logs: %w", readErr)
@@ -255,6 +260,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 				return fmt.Errorf("error uploading small log file: %w", err)
 			}
 			log.Log.Info("Logs successfully uploaded to S3 bucket with PutObject", "bucket", *s.bucketName, "key", objectKey)
+			shouldCleanup = true
 			return nil
 		}
 
@@ -279,6 +285,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 		log.Log.Info("Logs successfully uploaded to S3 bucket with multipart upload", "bucket", *s.bucketName, "key", objectKey)
 	}
 
+	shouldCleanup = true
 	return nil
 }
 
@@ -292,11 +299,7 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 		Body:       bytes.NewReader(buffer.Bytes()),
 	})
 	if err != nil {
-		_, _ = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
-			Bucket:   s.bucketName,
-			Key:      aws.String(objectKey),
-			UploadId: uploadID,
-		})
+		s.cleanupPartialUpload(objectKey, uploadID)
 		return fmt.Errorf("error uploading part %d: %w", partNumber, err)
 	}
 
@@ -309,8 +312,11 @@ func (s *s3LogStore) uploadPart(ctx context.Context, buffer *bytes.Buffer, uploa
 	return nil
 }
 
-func (s *s3LogStore) cleanupPartialUpload(ctx context.Context, objectKey string, uploadID *string) {
-	if _, err := s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+func (s *s3LogStore) cleanupPartialUpload(objectKey string, uploadID *string) {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err := s.client.AbortMultipartUpload(cleanupCtx, &s3.AbortMultipartUploadInput{
 		Bucket:   s.bucketName,
 		Key:      aws.String(objectKey),
 		UploadId: uploadID,
@@ -388,7 +394,7 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 		}
 
 		batch := objectIds[i:end]
-		_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		output, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: s.bucketName,
 			Delete: &types.Delete{
 				Objects: batch,
@@ -397,6 +403,10 @@ func (s *s3LogStore) DeleteLogs(ctx context.Context, dagrunId int) error {
 		})
 		if err != nil {
 			return fmt.Errorf("error deleting objects batch: %w", err)
+		}
+		if len(output.Errors) > 0 {
+			first := output.Errors[0]
+			return fmt.Errorf("delete objects returned errors for batch (size=%d, quiet=%t): key=%v code=%v message=%v", len(batch), ptrTrue, first.Key, first.Code, first.Message)
 		}
 	}
 

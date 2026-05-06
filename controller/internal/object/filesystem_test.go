@@ -76,6 +76,13 @@ func TestFetchingStatus(t *testing.T) {
 			UID:       types.UID("test-uid-123"),
 		},
 	}
+	pod2 := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+			UID:       types.UID("test-uid-456"),
+		},
+	}
 	dagRunId := 123
 
 	// Initial state should be not fetching
@@ -86,15 +93,21 @@ func TestFetchingStatus(t *testing.T) {
 
 	// Should be fetching now
 	require.True(t, store.IsFetching(dagRunId, pod), "Should be fetching after marking")
+	require.False(t, store.IsFetching(dagRunId, pod2), "Second pod with same name but different UID should be independent")
 
 	// Try marking again - should fail
 	require.Error(t, store.MarkAsFetching(dagRunId, pod), "Should not be able to mark as fetching twice")
 
+	require.NoError(t, store.MarkAsFetching(dagRunId, pod2), "Second pod with same name but different UID should be markable")
+	require.True(t, store.IsFetching(dagRunId, pod2), "Second pod should be tracked independently")
+
 	// Unlist fetching
 	store.UnlistFetching(dagRunId, pod)
+	store.UnlistFetching(dagRunId, pod2)
 
 	// Should not be fetching anymore
 	require.False(t, store.IsFetching(dagRunId, pod), "Should not be fetching after unlisting")
+	require.False(t, store.IsFetching(dagRunId, pod2), "Second pod should not be fetching after unlisting")
 }
 
 func TestDeleteLogs(t *testing.T) {

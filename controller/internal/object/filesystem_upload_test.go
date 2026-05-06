@@ -108,20 +108,20 @@ func TestUploadLogsWithGetter_PodDeleted(t *testing.T) {
 	// Should not return error if pod is already deleted
 	require.NoError(t, store.(*fileSystemLogStore).uploadLogsWithGetter(ctx, 43, getter, pod, nil))
 
-	// file should exist but be empty or absent -- code returns nil without writing
+	// file is created before stream open; for deleted pod it should be present and empty
 	path := filepath.Join(base, "43", "uid-2-log.txt")
-	_, err = os.Stat(path)
-	// either not created or zero size
-	if err == nil {
-		b, _ := os.ReadFile(path)
-		require.Equal(t, 0, len(b))
-	}
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(b))
 }
 
 func TestUploadLogsWithGetter_RetryThenSuccess(t *testing.T) {
 	base := t.TempDir()
 	store, err := NewFileSystemLogStore(base)
 	require.NoError(t, err)
+	fs := store.(*fileSystemLogStore)
+	fs.streamRetryCount = 4
+	fs.streamOpenTimeout = 250 * time.Millisecond
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -143,6 +143,7 @@ func TestUploadLogsWithGetter_RetryThenSuccess(t *testing.T) {
 	defer cancel()
 
 	require.NoError(t, store.(*fileSystemLogStore).uploadLogsWithGetter(ctx, 44, getter, pod, nil))
+	require.EqualValues(t, 3, atomic.LoadInt32(&getter.calls))
 
 	path := filepath.Join(base, "44", "uid-3-log.txt")
 	b, err := os.ReadFile(path)
