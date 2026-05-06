@@ -3,6 +3,7 @@ package object
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,8 +12,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	typesk8s "k8s.io/apimachinery/pkg/types"
-	"sync"
-}
+)
 
 func TestS3Upload_Multipart_UploadsMultipleParts_Extra(t *testing.T) {
 	fake := &fakeS3Client{}

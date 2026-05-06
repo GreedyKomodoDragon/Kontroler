@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	v1 "k8s.io/api/core/v1"
 )
 
 // fake S3 client used by tests
@@ -74,3 +75,20 @@ func (f *fakeS3Client) DeleteObjects(ctx context.Context, params *s3.DeleteObjec
 func (f *fakeS3Client) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, opts ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	return &s3.ListObjectsV2Output{Contents: []types.Object{}}, nil
 }
+
+// test stream/getter types used by multiple tests
+type s3FakeStreamer struct {
+	data []byte
+	err  error
+}
+
+func (f *s3FakeStreamer) Stream(ctx context.Context) (io.ReadCloser, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return io.NopCloser(bytes.NewReader(f.data)), nil
+}
+
+type s3FakeGetter struct{ stream podLogStreamer }
+
+func (f *s3FakeGetter) GetLogs(name string, opts *v1.PodLogOptions) podLogStreamer { return f.stream }

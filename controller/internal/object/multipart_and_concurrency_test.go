@@ -12,7 +12,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	typesk8s "k8s.io/apimachinery/pkg/types"
-}
+)
 
 func TestS3Upload_Multipart_UploadsMultipleParts(t *testing.T) {
 	fake := &fakeS3Client{}

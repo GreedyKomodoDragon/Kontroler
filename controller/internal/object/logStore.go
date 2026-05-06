@@ -198,7 +198,16 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 	}
 
 	for {
-		chunk := make([]byte, 1024*1024) // 1 MB read buffer
+		// Use a read chunk size that aligns with the configured part size to encourage
+		// predictable multipart splitting in tests. Cap at 1MB for production performance.
+		chunkSize := localMinPart
+		if chunkSize <= 0 {
+			chunkSize = 1024 * 1024
+		}
+		if chunkSize > 1024*1024 {
+			chunkSize = 1024 * 1024
+		}
+		chunk := make([]byte, chunkSize)
 		n, readErr := reader.Read(chunk)
 
 		if readErr != nil && readErr != io.EOF {
