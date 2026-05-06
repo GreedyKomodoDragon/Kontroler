@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -1710,7 +1709,7 @@ func testDAGManager_CreateDagRun_Scripts(t *testing.T, dm db.DBDAGManager) {
 
 func testDAGManager_Workspace_full(t *testing.T, dm db.DBDAGManager) {
 	storageClassName := "standard"
-	block := v1.PersistentVolumeBlock
+	block := "Block"
 
 	dag := &v1alpha1.DAG{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1721,13 +1720,10 @@ func testDAGManager_Workspace_full(t *testing.T, dm db.DBDAGManager) {
 				Enabled: true,
 				PvcSpec: v1alpha1.PVC{
 					StorageClassName: &storageClassName,
-					AccessModes: []v1.PersistentVolumeAccessMode{
-						v1.ReadWriteOnce,
-					},
-					Resources: v1.VolumeResourceRequirements{
-						Requests: v1.ResourceList{
-							// storage
-							v1.ResourceStorage: resource.MustParse("1Gi"),
+					AccessModes:      []string{string(v1.ReadWriteOnce)},
+					Resources: &v1alpha1.ResourceRequirements{
+						Requests: map[string]string{
+							"storage": "1Gi",
 						},
 					},
 					VolumeMode: &block,
@@ -1768,16 +1764,16 @@ func testDAGManager_Workspace_full(t *testing.T, dm db.DBDAGManager) {
 	require.NoError(t, err)
 	require.NotNil(t, pvc)
 	require.Equal(t, storageClassName, *pvc.StorageClassName)
-	require.Equal(t, v1.ReadWriteOnce, pvc.AccessModes[0])
-	require.Equal(t, v1.PersistentVolumeBlock, *pvc.VolumeMode)
-	require.Equal(t, resource.MustParse("1Gi"), pvc.Resources.Requests[v1.ResourceStorage])
+	require.Equal(t, string(v1.ReadWriteOnce), pvc.AccessModes[0])
+	require.Equal(t, string(v1.PersistentVolumeBlock), *pvc.VolumeMode)
+	require.Equal(t, "1Gi", pvc.Resources.Requests["storage"])
 	require.Equal(t, "test", pvc.Selector.MatchLabels["app"])
 }
 
 // no selector included
 func testDAGManager_Workspace_non_optional_only(t *testing.T, dm db.DBDAGManager) {
 	storageClassName := "standard"
-	block := v1.PersistentVolumeBlock
+	block := "Block"
 
 	dag := &v1alpha1.DAG{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1788,13 +1784,10 @@ func testDAGManager_Workspace_non_optional_only(t *testing.T, dm db.DBDAGManager
 				Enabled: true,
 				PvcSpec: v1alpha1.PVC{
 					StorageClassName: &storageClassName,
-					AccessModes: []v1.PersistentVolumeAccessMode{
-						v1.ReadWriteOnce,
-					},
-					Resources: v1.VolumeResourceRequirements{
-						Requests: v1.ResourceList{
-							// storage
-							v1.ResourceStorage: resource.MustParse("1Gi"),
+					AccessModes:      []string{string(v1.ReadWriteOnce)},
+					Resources: &v1alpha1.ResourceRequirements{
+						Requests: map[string]string{
+							"storage": "1Gi",
 						},
 					},
 					VolumeMode: &block,
@@ -1830,9 +1823,9 @@ func testDAGManager_Workspace_non_optional_only(t *testing.T, dm db.DBDAGManager
 	require.NoError(t, err)
 	require.NotNil(t, pvc)
 	require.Equal(t, storageClassName, *pvc.StorageClassName)
-	require.Equal(t, v1.ReadWriteOnce, pvc.AccessModes[0])
-	require.Equal(t, v1.PersistentVolumeBlock, *pvc.VolumeMode)
-	require.Equal(t, resource.MustParse("1Gi"), pvc.Resources.Requests[v1.ResourceStorage])
+	require.Equal(t, string(v1.ReadWriteOnce), pvc.AccessModes[0])
+	require.Equal(t, string(v1.PersistentVolumeBlock), *pvc.VolumeMode)
+	require.Equal(t, "1Gi", pvc.Resources.Requests["storage"])
 	require.Nil(t, pvc.Selector)
 }
 

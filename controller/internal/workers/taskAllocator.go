@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
 	"kontroler-controller/internal/utils"
 
@@ -218,24 +219,27 @@ func (t *taskAllocator) addDefaultContainer(podSpec *v1.PodSpec, task *db.Task, 
 
 // Helper function to apply PodTemplate attributes to the pod spec
 func (t *taskAllocator) applyPodTemplate(podSpec *v1.PodSpec, task *db.Task) {
-	podSpec.Volumes = append(podSpec.Volumes, task.PodTemplate.Volumes...)
-	podSpec.ImagePullSecrets = task.PodTemplate.ImagePullSecrets
-	podSpec.SecurityContext = task.PodTemplate.SecurityContext
+	// Convert CRD-safe PodTemplateSpec to k8s types
+	volumes, mounts, imagePullSecrets, securityContext, tolerations, affinity, resources := task.PodTemplate.ToK8sParts()
+
+	podSpec.Volumes = append(podSpec.Volumes, volumes...)
+	podSpec.ImagePullSecrets = append(podSpec.ImagePullSecrets, imagePullSecrets...)
+	podSpec.SecurityContext = securityContext
 	podSpec.NodeSelector = task.PodTemplate.NodeSelector
-	podSpec.Tolerations = task.PodTemplate.Tolerations
-	podSpec.Affinity = task.PodTemplate.Affinity
+	podSpec.Tolerations = append(podSpec.Tolerations, tolerations...)
+	podSpec.Affinity = affinity
 	podSpec.ServiceAccountName = task.PodTemplate.ServiceAccountName
 	podSpec.AutomountServiceAccountToken = task.PodTemplate.AutomountServiceAccountToken
 	podSpec.ActiveDeadlineSeconds = task.PodTemplate.ActiveDeadlineSeconds
 
 	if podSpec.Containers[0].VolumeMounts == nil {
-		podSpec.Containers[0].VolumeMounts = task.PodTemplate.VolumeMounts
+		podSpec.Containers[0].VolumeMounts = mounts
 	} else {
-		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, task.PodTemplate.VolumeMounts...)
+		podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, mounts...)
 	}
 
-	if task.PodTemplate.Resources != nil {
-		podSpec.Containers[0].Resources = *task.PodTemplate.Resources
+	if resources != nil {
+		podSpec.Containers[0].Resources = *resources
 	}
 }
 
@@ -266,7 +270,7 @@ func (t *taskAllocator) CreateEnvs(task *db.Task) *[]v1.EnvVar {
 	return &envs
 }
 
-func containsVolumeMount(slice []v1.VolumeMount, item v1.VolumeMount) bool {
+func containsVolumeMount(slice []v1alpha1.VolumeMount, item v1.VolumeMount) bool {
 	for _, v := range slice {
 		if v.Name == item.Name && v.MountPath == item.MountPath && v.ReadOnly == item.ReadOnly {
 			return true
@@ -275,7 +279,7 @@ func containsVolumeMount(slice []v1.VolumeMount, item v1.VolumeMount) bool {
 	return false
 }
 
-func containsVolume(slice []v1.Volume, item v1.Volume) bool {
+func containsVolume(slice []v1alpha1.Volume, item v1.Volume) bool {
 	for _, v := range slice {
 		if v.Name == item.Name {
 			return true

@@ -3,6 +3,7 @@ package object
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -20,6 +22,10 @@ type fileSystemLogStore struct {
 	baseDir  string
 	fetching map[string]bool
 	lock     *sync.RWMutex
+
+	// configurable for tests
+	streamRetryCount  int
+	streamOpenTimeout time.Duration
 }
 
 func NewFileSystemLogStore(baseDir string) (LogStore, error) {
@@ -42,7 +48,8 @@ func (f *fileSystemLogStore) IsFetching(dagRunId int, pod *v1.Pod) bool {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 
-	_, ok := f.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.Name)]
+	// Use pod UID to avoid collisions when pod names are reused
+	_, ok := f.fetching[fmt.Sprintf("%v-%s", dagRunId, pod.UID)]
 	return ok
 }
 
@@ -50,7 +57,8 @@ func (f *fileSystemLogStore) MarkAsFetching(dagRunId int, pod *v1.Pod) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	key := fmt.Sprintf("%v-%s", dagRunId, pod.Name)
+	// Use pod UID to avoid collisions when pod names are reused
+	key := fmt.Sprintf("%v-%s", dagRunId, pod.UID)
 	if _, ok := f.fetching[key]; ok {
 		return fmt.Errorf("already fetching")
 	}
@@ -63,13 +71,41 @@ func (f *fileSystemLogStore) UnlistFetching(dagRunId int, pod *v1.Pod) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	delete(f.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.Name))
+	delete(f.fetching, fmt.Sprintf("%v-%s", dagRunId, pod.UID))
+}
+
+type podLogsGetter interface {
+	GetLogs(podName string, opts *v1.PodLogOptions) podLogStreamer
+}
+
+type podLogStreamer interface {
+	Stream(ctx context.Context) (io.ReadCloser, error)
+}
+
+type coreV1PodLogsGetter struct {
+	client *kubernetes.Clientset
+	ns     string
+}
+
+func (c *coreV1PodLogsGetter) GetLogs(podName string, opts *v1.PodLogOptions) podLogStreamer {
+	return c.client.CoreV1().Pods(c.ns).GetLogs(podName, opts)
 }
 
 func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clientSet *kubernetes.Clientset, pod *v1.Pod) error {
-	defer func() {
+	getter := &coreV1PodLogsGetter{client: clientSet, ns: pod.Namespace}
+	return f.uploadLogsWithGetter(ctx, dagrunId, getter, pod, func() {
+		// remove finaliser when done
 		if err := RemoveFinalizer(clientSet, pod.Name, pod.Namespace, "kontroler/logcollection"); err != nil {
 			log.Log.Error(err, "error removing finalizer", "pod", pod.Name, "namespace", pod.Namespace)
+		}
+	})
+}
+
+func (f *fileSystemLogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, getter podLogsGetter, pod *v1.Pod, finaliserCleanup func()) error {
+	shouldCleanup := false
+	defer func() {
+		if shouldCleanup && finaliserCleanup != nil {
+			finaliserCleanup()
 		}
 	}()
 
@@ -85,51 +121,83 @@ func (f *fileSystemLogStore) UploadLogs(ctx context.Context, dagrunId int, clien
 	}
 	defer logFile.Close()
 
-	req := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{
-		Follow: true,
-	})
+	var logStream io.ReadCloser
+	var lastErr error
 
-	logStream, err := req.Stream(ctx)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name)
+	retryCount := f.streamRetryCount
+	if retryCount <= 0 {
+		retryCount = defaultStreamRetryCount
+	}
+
+	if len(pod.Spec.Containers) == 0 {
+		err := fmt.Errorf("no containers configured for pod")
+		log.Log.Error(err, "cannot fetch logs", "pod", pod.Name)
+		return err
+	}
+
+	for i := 0; i < retryCount; i++ {
+		req := getter.GetLogs(pod.Name, &v1.PodLogOptions{
+			Follow:    true,
+			Container: pod.Spec.Containers[0].Name,
+		})
+
+		logStream, lastErr = req.Stream(ctx)
+		if lastErr == nil {
+			break
+		}
+
+		if apierrors.IsNotFound(lastErr) || strings.Contains(lastErr.Error(), "not found") {
+			log.Log.Info("pod already deleted, cannot fetch logs", "pod", pod.Name, "error", lastErr)
+			shouldCleanup = true
 			return nil
 		}
-		return fmt.Errorf("error in opening stream: %w", err)
+
+		if i < retryCount-1 {
+			backoff := time.Duration(1<<i) * time.Second
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+			continue
+		}
+
+		return fmt.Errorf("error in opening stream: %w", lastErr)
+	}
+
+	if logStream == nil {
+		return fmt.Errorf("failed to open log stream: %v", lastErr)
 	}
 	defer logStream.Close()
 
-	reader := bufio.NewReader(logStream)
 	writer := bufio.NewWriter(logFile)
-
-	buffer := make([]byte, 4096)
-	for {
-		n, readErr := reader.Read(buffer)
-		if n > 0 {
-			if _, err := writer.Write(buffer[:n]); err != nil {
-				return fmt.Errorf("error writing to log file: %w", err)
-			}
-			if err := writer.Flush(); err != nil {
-				return fmt.Errorf("error flushing log file: %w", err)
-			}
+	if _, err := io.Copy(writer, logStream); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Log.Info("pod deleted while reading logs", "pod", pod.Name, "error", err)
+			shouldCleanup = true
+			return nil
 		}
-
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			if strings.Contains(readErr.Error(), "not found") ||
-				strings.Contains(readErr.Error(), "connection refused") ||
-				strings.Contains(readErr.Error(), "has been terminated") {
-				log.Log.Info("pod deleted while reading logs", "pod", pod.Name)
-				return nil
-			}
-			return fmt.Errorf("error reading logs: %w", readErr)
+		if errors.Is(err, context.Canceled) {
+			return err
 		}
-
-		time.Sleep(time.Second)
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			log.Log.Info("log stream ended", "pod", pod.Name, "error", err)
+		} else if strings.Contains(err.Error(), "not found") ||
+			strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), "has been terminated") {
+			log.Log.Info("pod deleted while reading logs", "pod", pod.Name, "error", err)
+			shouldCleanup = true
+			return nil
+		} else {
+			return fmt.Errorf("error reading logs: %w", err)
+		}
 	}
 
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("error flushing log file: %w", err)
+	}
+
+	shouldCleanup = true
 	log.Log.Info("Logs successfully written to file", "path", logPath)
 	return nil
 }

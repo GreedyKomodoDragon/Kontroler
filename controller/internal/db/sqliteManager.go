@@ -667,16 +667,12 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		}
 
 		if pvcName.Valid {
-			podTemplate.Volumes = append(podTemplate.Volumes, v1.Volume{
-				Name: "workspace",
-				VolumeSource: v1.VolumeSource{
-					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-						ClaimName: pvcName.String,
-					},
-				},
+			podTemplate.Volumes = append(podTemplate.Volumes, v1alpha1.Volume{
+				Name:                  "workspace",
+				PersistentVolumeClaim: &v1alpha1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName.String},
 			})
 
-			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1.VolumeMount{
+			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1alpha1.VolumeMount{
 				Name:      "workspace",
 				MountPath: "/workspace",
 			})
@@ -953,16 +949,12 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		}
 
 		if pvcName.Valid {
-			podTemplate.Volumes = append(podTemplate.Volumes, v1.Volume{
-				Name: "workspace",
-				VolumeSource: v1.VolumeSource{
-					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-						ClaimName: pvcName.String,
-					},
-				},
+			podTemplate.Volumes = append(podTemplate.Volumes, v1alpha1.Volume{
+				Name:                  "workspace",
+				PersistentVolumeClaim: &v1alpha1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName.String},
 			})
 
-			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1.VolumeMount{
+			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1alpha1.VolumeMount{
 				Name:      "workspace",
 				MountPath: "/workspace",
 			})

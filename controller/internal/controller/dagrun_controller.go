@@ -226,13 +226,7 @@ func (r *DagRunReconciler) createPVC(ctx context.Context, dagRun *kontrolerv1alp
 				"kontroler.greedykomodo/pvc.finalizer",
 			},
 		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes:      pvcTemplate.AccessModes,
-			Resources:        pvcTemplate.Resources,
-			Selector:         pvcTemplate.Selector,
-			StorageClassName: pvcTemplate.StorageClassName,
-			VolumeMode:       pvcTemplate.VolumeMode,
-		},
+		Spec: pvcTemplate.ToK8sPersistentVolumeClaimSpec(),
 	}
 
 	// Create the PVC

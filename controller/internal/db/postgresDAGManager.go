@@ -477,16 +477,12 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 
 		// auto inject workspace if workspace is enabled
 		if pvcName.Valid {
-			podTemplate.Volumes = append(podTemplate.Volumes, v1.Volume{
-				Name: "workspace",
-				VolumeSource: v1.VolumeSource{
-					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-						ClaimName: pvcName.String,
-					},
-				},
+			podTemplate.Volumes = append(podTemplate.Volumes, v1alpha1.Volume{
+				Name:                  "workspace",
+				PersistentVolumeClaim: &v1alpha1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName.String},
 			})
 
-			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1.VolumeMount{
+			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1alpha1.VolumeMount{
 				Name:      "workspace",
 				MountPath: "/workspace",
 			})
@@ -797,16 +793,12 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 
 		// auto inject workspace if workspace is enabled
 		if pvcName.Valid {
-			podTemplate.Volumes = append(podTemplate.Volumes, v1.Volume{
-				Name: "workspace",
-				VolumeSource: v1.VolumeSource{
-					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-						ClaimName: pvcName.String,
-					},
-				},
+			podTemplate.Volumes = append(podTemplate.Volumes, v1alpha1.Volume{
+				Name:                  "workspace",
+				PersistentVolumeClaim: &v1alpha1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName.String},
 			})
 
-			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1.VolumeMount{
+			podTemplate.VolumeMounts = append(podTemplate.VolumeMounts, v1alpha1.VolumeMount{
 				Name:      "workspace",
 				MountPath: "/workspace",
 			})
