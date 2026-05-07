@@ -45,6 +45,9 @@ type DAGReconciler struct {
 	DbManager db.DBDAGManager
 }
 
+// defaultConcurrency controls bounded parallelism for batch operations in controllers
+const defaultConcurrency = 8
+
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags/finalizers,verbs=update
@@ -63,7 +66,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	var dag kontrolerv1alpha1.DAG
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
 		if errors.IsNotFound(err) {
-			return r.handleDeletion(ctx, req, dag)
+			return r.handleDeletion(ctx, req.NamespacedName)
 		}
 		return ctrl.Result{}, err
 	}
@@ -73,7 +76,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	// Check if the DAG is marked for deletion
 	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, req, dag)
+		return r.handleDeletion(ctx, req.NamespacedName)
 	}
 
 	// Process DSL if provided. Only do work when the DSL has changed (hash-based).
@@ -197,7 +200,7 @@ func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs 
 	}
 
 	// bounded concurrency
-	const concurrency = 8
+	const concurrency = defaultConcurrency
 	sem := make(chan struct{}, concurrency)
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -240,7 +243,7 @@ func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs 
 		return
 	}
 
-	const concurrency = 8
+	const concurrency = defaultConcurrency
 	sem := make(chan struct{}, concurrency)
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -276,24 +279,32 @@ func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs 
 	_ = g.Wait()
 }
 
-func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, dag kontrolerv1alpha1.DAG) (ctrl.Result, error) {
+func (r *DAGReconciler) handleDeletion(ctx context.Context, namespacedName types.NamespacedName) (ctrl.Result, error) {
 	// The DAG is being deleted, remove it from the database
-	taskNames, err := r.deleteFromDatabase(ctx, req.NamespacedName)
+	taskNames, err := r.deleteFromDatabase(ctx, namespacedName)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Remove the finalizer if it exists
-	if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
-		controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
-		old := dag.DeepCopy()
-		if err := r.Patch(ctx, &dag, client.MergeFrom(old)); err != nil {
-			log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
-			return ctrl.Result{}, err
+	// Try to fetch the DAG in order to remove its finalizer if present. If the object
+	// is already gone, skip the finalizer removal step.
+	var dag kontrolerv1alpha1.DAG
+	if err := r.Get(ctx, namespacedName, &dag); err == nil {
+		// Remove the finalizer if it exists
+		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
+			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
+			old := dag.DeepCopy()
+			if err := r.Patch(ctx, &dag, client.MergeFrom(old)); err != nil {
+				log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
+				return ctrl.Result{}, err
+			}
 		}
+	} else if !errors.IsNotFound(err) {
+		// If we got an error other than NotFound when fetching the DAG, return it
+		return ctrl.Result{}, err
 	}
 
-	r.removingDagTaskFinalisers(ctx, taskNames, req.Namespace)
+	r.removingDagTaskFinalisers(ctx, taskNames, namespacedName.Namespace)
 
 	return ctrl.Result{}, nil
 }

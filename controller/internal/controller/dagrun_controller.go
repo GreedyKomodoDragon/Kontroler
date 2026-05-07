@@ -91,7 +91,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// check if dag exists
 	ok, dagId, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)
 	if err != nil {
-		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagName)
+		log.Log.Error(err, "failed to check if dag exists", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
@@ -176,7 +176,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	for _, task := range tasks {
 		taskRunId, err := r.DbManager.MarkTaskAsStarted(ctx, runId, task.Id)
 		if err != nil {
-			log.Log.Error(err, "failed to mask task as stated", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
+			log.Log.Error(err, "failed to mark task as started", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
 			continue
 		}
 
@@ -264,7 +264,7 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 	}
 
 	// delete pods in parallel with bounded concurrency
-	const podConcurrency = 8
+	const podConcurrency = defaultConcurrency
 	sem := make(chan struct{}, podConcurrency)
 	g, gctx := errgroup.WithContext(ctx)
 	for _, pod := range pods {
@@ -323,8 +323,9 @@ func deletePVCByNameAndNamespace(ctx context.Context, c client.Client, name stri
 	}
 
 	// Remove all finalizers from the PVC
+	old := pvc.DeepCopy()
 	pvc.Finalizers = []string{}
-	if err := c.Update(ctx, pvc); err != nil {
+	if err := c.Patch(ctx, pvc, client.MergeFrom(old)); err != nil {
 		return err
 	}
 
@@ -376,7 +377,8 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 		}
 	}
 	pod.ObjectMeta.Finalizers = finalisers
-	if err := c.Update(ctx, pod); err != nil {
+	old := pod.DeepCopy()
+	if err := c.Patch(ctx, pod, client.MergeFrom(old)); err != nil {
 		return err
 	}
 

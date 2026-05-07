@@ -20,7 +20,7 @@ import (
 var _ = Describe("DAG DSL hash behavior", func() {
 	ctx := context.Background()
 
-	It("writes a kontoler/dsl-hash annotation when processing DSL", func() {
+	It("writes a kontroler/dsl-hash annotation when processing DSL", func() {
 		name := "dsl-hash-write"
 		nn := types.NamespacedName{Name: name, Namespace: "default"}
 
@@ -99,7 +99,7 @@ task cleanup {
 		Expect(k8sClient.Delete(ctx, reconciled)).To(Succeed())
 	})
 
-	It("skips processing when kontoler/dsl-hash already present", func() {
+	It("skips processing when kontroler/dsl-hash already present", func() {
 		name := "dsl-hash-skip"
 		nn := types.NamespacedName{Name: name, Namespace: "default"}
 

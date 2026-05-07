@@ -150,10 +150,37 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	configController, err := config.ParseConfig(configPath)
-	if err != nil {
-		setupLog.Error(err, "failed to parse config")
-		os.Exit(1)
+	var configController *config.ControllerConfig
+	var err error
+	if configPath == "" {
+		// Provide a sensible default config for in-cluster / test runs when no configpath
+		configController = &config.ControllerConfig{
+			LeaderElectionID: os.Getenv("LEADER_ELECTION_ID"),
+			Workers: config.WorkerConfigs{
+				WorkerType:   "memory",
+				PollDuration: "100ms",
+				Workers: []config.WorkerConfig{{
+					Namespace: "default",
+					Count:     1,
+				}},
+			},
+			LogStore: config.LogStore{
+				StoreType: "filesystem",
+				FileSystem: config.FileSystemLogStoreConfig{
+					BaseDir: "/tmp/kontroler-logs",
+				},
+			},
+		}
+		// Ensure LEADER_ELECTION_ID has a default
+		if configController.LeaderElectionID == "" {
+			configController.LeaderElectionID = "kontroler"
+		}
+	} else {
+		configController, err = config.ParseConfig(configPath)
+		if err != nil {
+			setupLog.Error(err, "failed to parse config")
+			os.Exit(1)
+		}
 	}
 
 	// Create map of unique namespaces from worker configs

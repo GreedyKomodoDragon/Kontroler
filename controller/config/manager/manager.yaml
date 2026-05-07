@@ -71,7 +71,7 @@ spec:
         args:
         - --leader-elect
         image: controller:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: manager
         env:
         - name: DB_NAME
