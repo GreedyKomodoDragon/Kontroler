@@ -80,7 +80,8 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Add finalizer if it doesn't exist
 	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
 		dagRun.Finalizers = append(dagRun.Finalizers, dagRunFinalizer)
-		if err := r.Update(ctx, &dagRun); err != nil {
+		old := dagRun.DeepCopy()
+		if err := r.Patch(ctx, &dagRun, client.MergeFrom(old)); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -199,10 +200,13 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	}
 
+	old := dagRun.DeepCopy()
 	dagRun.Status.DagRunId = runId
-	if err := r.Status().Update(ctx, &dagRun); err != nil {
-		log.Log.Error(err, "failed to update DagRun status with runID", "dag_id", dagRun.Spec.DagName)
-		return ctrl.Result{}, err
+	if old.Status.DagRunId != dagRun.Status.DagRunId {
+		if err := r.Status().Patch(ctx, &dagRun, client.MergeFrom(old)); err != nil {
+			log.Log.Error(err, "failed to update DagRun status with runID", "dag_id", dagRun.Spec.DagName)
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -273,7 +277,8 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 
 	// Remove the finalizer
 	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
-	if err := r.Update(ctx, dagRun); err != nil {
+	old := dagRun.DeepCopy()
+	if err := r.Patch(ctx, dagRun, client.MergeFrom(old)); err != nil {
 		return ctrl.Result{}, err
 	}
 
