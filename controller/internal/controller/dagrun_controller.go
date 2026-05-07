@@ -80,13 +80,16 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Add finalizer if it doesn't exist
 	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
-		dagRun.Finalizers = append(dagRun.Finalizers, dagRunFinalizer)
 		old := dagRun.DeepCopy()
+		dagRun.Finalizers = append(dagRun.Finalizers, dagRunFinalizer)
 		if err := r.Patch(ctx, &dagRun, client.MergeFrom(old)); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
-	}
+		// Requeue so the reconcile loop continues and sees the object with the
+		// finalizer in place. Because GenerationChangedPredicate filters out
+		// metadata-only updates, requeueing ensures we process the object.
+		return ctrl.Result{Requeue: true}, nil
+	} 
 
 	// check if dag exists
 	ok, dagId, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)
@@ -287,8 +290,8 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 	}
 
 	// Remove the finalizer
-	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
 	old := dagRun.DeepCopy()
+	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
 	if err := r.Patch(ctx, dagRun, client.MergeFrom(old)); err != nil {
 		return ctrl.Result{}, err
 	}

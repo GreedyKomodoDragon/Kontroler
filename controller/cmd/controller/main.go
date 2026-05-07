@@ -285,7 +285,9 @@ func main() {
 
 		defer dbConn.Close()
 	default:
-		setupLog.Error(err, "unsupported DAG manager provided, 'postgresql' or 'sqlite'")
+		dbType := os.Getenv("DB_TYPE")
+		setupErr := fmt.Errorf("unsupported DAG manager provided, must be 'postgresql' or 'sqlite' (DB_TYPE=%q)", dbType)
+		setupLog.Error(setupErr, "unsupported DAG manager provided")
 		os.Exit(1)
 	}
 

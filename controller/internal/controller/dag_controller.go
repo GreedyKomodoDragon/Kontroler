@@ -216,17 +216,17 @@ func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs 
 				return nil
 			}
 
+			old := dagTask.DeepCopy()
 			if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
 				if updated := controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
 					log.Log.Error(fmt.Errorf("AddFinalizer failed"), "failed to add finalizer to dagTask", "taskRef", tr)
 					return nil
 				}
 
-				old := dagTask.DeepCopy()
 				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
 					log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", tr)
 				}
-			}
+			} 
 
 			return nil
 		})
@@ -261,16 +261,16 @@ func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs 
 
 			if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
 
+				old := dagTask.DeepCopy()
 				if updated := controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
 					log.Log.Error(fmt.Errorf("RemoveFinalizer failed"), "failed to remove finalizer to dagTask", "taskRef", tr)
 					return nil
 				}
 
-				old := dagTask.DeepCopy()
 				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
 					log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", tr)
 				}
-			}
+			} 
 
 			return nil
 		})
@@ -292,8 +292,8 @@ func (r *DAGReconciler) handleDeletion(ctx context.Context, namespacedName types
 	if err := r.Get(ctx, namespacedName, &dag); err == nil {
 		// Remove the finalizer if it exists
 		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
-			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
 			old := dag.DeepCopy()
+			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
 			if err := r.Patch(ctx, &dag, client.MergeFrom(old)); err != nil {
 				log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
 				return ctrl.Result{}, err

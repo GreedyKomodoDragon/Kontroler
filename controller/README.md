@@ -139,7 +139,8 @@ Running local e2e (quick checklist)
 
 2. Install CRDs and (optionally) cert-manager:
    - make install
-   - kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.5.3/cert-manager.yaml
+   - For cert-manager installation follow the official docs: https://cert-manager.io/docs/installation/
+    (or use the latest release manifest: https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml)
    - kubectl -n cert-manager wait deployment.apps/cert-manager-webhook --for condition=Available --timeout=5m
 
 3. Deploy the manager with the loaded image:
@@ -149,10 +150,10 @@ Running local e2e (quick checklist)
    - kubectl -n operator-system get pods
    - kubectl -n operator-system describe pod <pod> (if Pending / CrashLoopBackOff)
 
-If you want these defaults changed (for example, move the built-in config
-into a mounted ConfigMap, or require an explicit configpath) tell me and I
-can either make the code require a configpath or add a sample config and
-update the deployment to mount it.
+> **NOTE**: To change the built-in defaults you can mount a ConfigMap with a
+> full config file and pass `--configpath` to the manager, or open a PR/issue
+> to update the repository defaults. This keeps runtime behaviour explicit for
+> production deployments.
 
 ## License
 
