@@ -18,9 +18,9 @@ package controller
 
 import (
 	"context"
-	sterrors "errors"
 	"crypto/sha256"
 	"encoding/hex"
+	sterrors "errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
