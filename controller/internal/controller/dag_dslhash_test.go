@@ -30,6 +30,17 @@ parameters {
   environment {
     default "production"
   }
+}
+
+graph {
+  setup
+}
+
+task setup {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Setting up environment'"]
+  parameters ["environment"]
 }`
 
 		dag := &kontrolerv1alpha1.DAG{
@@ -71,6 +82,17 @@ parameters {
   environment {
     default "production"
   }
+}
+
+graph {
+  setup
+}
+
+task setup {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Setting up environment'"]
+  parameters ["environment"]
 }`
 		hash := sha256.Sum256([]byte(dsl))
 		hs := hex.EncodeToString(hash[:])
