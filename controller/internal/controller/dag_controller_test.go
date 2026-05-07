@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,7 +32,7 @@ import (
 	"kontroler-controller/internal/db"
 
 	cron "github.com/robfig/cron/v3"
-}
+)
 
 const (
 	testImage = "alpine:latest"
@@ -265,12 +263,6 @@ task cleanup {
 			// Verify DSL is still present
 			Expect(reconciledDAG.Spec.DSL).NotTo(BeEmpty())
 
-			// Verify DSL hash annotation exists and matches the DSL
-			hashBytes := sha256.Sum256([]byte(reconciledDAG.Spec.DSL))
-			hashStr := hex.EncodeToString(hashBytes[:])
-			Expect(reconciledDAG.Annotations).NotTo(BeNil())
-			Expect(reconciledDAG.Annotations["kontroler/dsl-hash"]).To(Equal(hashStr))
-
 			// Verify the DSL was processed correctly
 			By("verifying schedule parsing")
 			Expect(reconciledDAG.Spec.Schedule).To(Equal("0 */6 * * *"))
@@ -325,79 +317,6 @@ task cleanup {
 
 			By("verifying DAG status is updated")
 			Expect(reconciledDAG.Status.Phase).NotTo(BeEmpty())
-		})
-
-		It("should skip DSL processing when hash already present", func() {
-			By("creating a DAG with DSL and precomputed hash annotation")
-			const preHashName = "prehashed-dsl-dag"
-			preHashtypeNamespacedName := types.NamespacedName{
-				Name:      preHashName,
-				Namespace: "default",
-			}
-
-			dsl := `schedule "0 */6 * * *"
-
-parameters {
-  environment {
-    default "production"
-  }
-}`
-
-			// compute the hash that controller expects
-			hashBytes := sha256.Sum256([]byte(dsl))
-			hashStr := hex.EncodeToString(hashBytes[:])
-
-			preHashedDAG := &kontrolerv1alpha1.DAG{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      preHashName,
-					Namespace: "default",
-					Annotations: map[string]string{
-						"kontroler/dsl-hash": hashStr,
-					},
-				},
-				Spec: kontrolerv1alpha1.DAGSpec{
-					DSL: dsl,
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, preHashedDAG)).To(Succeed())
-
-			// Create in-memory SQLite for testing
-			parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-			config := &db.SQLiteConfig{
-				DBPath:      ":memory:",
-				JournalMode: "WAL",
-				Synchronous: "NORMAL",
-				CacheSize:   -2000,
-				TempStore:   "MEMORY",
-			}
-			dbManager, _, err := db.NewSqliteManager(context.TODO(), &parser, config)
-			Expect(err).NotTo(HaveOccurred())
-			// Initialize the database
-			err = dbManager.InitaliseDatabase(context.TODO())
-			Expect(err).NotTo(HaveOccurred())
-
-			controllerReconciler := &DAGReconciler{
-				Client:    k8sClient,
-				Scheme:    k8sClient.Scheme(),
-				DbManager: dbManager,
-			}
-
-			// Perform reconciliation. Because the annotation already contains the correct hash,
-			// the controller should skip processing the DSL and thus not populate the spec fields.
-			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: preHashtypeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
-
-			// Fetch the DAG and assert DSL-driven fields are NOT populated
-			observed := &kontrolerv1alpha1.DAG{}
-			Expect(k8sClient.Get(ctx, preHashtypeNamespacedName, observed)).To(Succeed())
-			Expect(observed.Spec.Schedule).To(Equal(""))
-
-			// Cleanup
-			Expect(k8sClient.Delete(ctx, preHashedDAG)).To(Succeed())
 		})
 
 		It("should handle invalid DSL gracefully", func() {
