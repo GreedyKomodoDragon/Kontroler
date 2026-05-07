@@ -30,10 +30,16 @@ parameters {
   environment {
     default "production"
   }
+  replicas {
+    default "3"
+  }
 }
 
 graph {
-  setup
+  setup -> deploy
+  setup -> test
+  deploy -> cleanup
+  test -> cleanup
 }
 
 task setup {
@@ -41,6 +47,27 @@ task setup {
   command ["sh", "-c"]
   args ["echo 'Setting up environment'"]
   parameters ["environment"]
+}
+
+task deploy {
+  image "alpine:latest"
+  script """
+  echo "Deploying application to $ENVIRONMENT"
+  echo "Using $REPLICAS replicas"
+  """
+  parameters ["environment", "replicas"]
+}
+
+task test {
+  image "alpine:latest"
+  script "echo 'Running tests'"
+  retry [1, 2, 125]
+}
+
+task cleanup {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Cleaning up resources'"]
 }`
 
 		dag := &kontrolerv1alpha1.DAG{
@@ -82,10 +109,16 @@ parameters {
   environment {
     default "production"
   }
+  replicas {
+    default "3"
+  }
 }
 
 graph {
-  setup
+  setup -> deploy
+  setup -> test
+  deploy -> cleanup
+  test -> cleanup
 }
 
 task setup {
@@ -93,6 +126,27 @@ task setup {
   command ["sh", "-c"]
   args ["echo 'Setting up environment'"]
   parameters ["environment"]
+}
+
+task deploy {
+  image "alpine:latest"
+  script """
+  echo "Deploying application to $ENVIRONMENT"
+  echo "Using $REPLICAS replicas"
+  """
+  parameters ["environment", "replicas"]
+}
+
+task test {
+  image "alpine:latest"
+  script "echo 'Running tests'"
+  retry [1, 2, 125]
+}
+
+task cleanup {
+  image "alpine:latest"
+  command ["sh", "-c"]
+  args ["echo 'Cleaning up resources'"]
 }`
 		hash := sha256.Sum256([]byte(dsl))
 		hs := hex.EncodeToString(hash[:])
