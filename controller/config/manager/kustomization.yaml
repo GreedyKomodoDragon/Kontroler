@@ -2,7 +2,9 @@ resources:
 - manager.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+  # REPLACE_ME: set to your registry/image, e.g. registry.example.com/operator
+  # REPLACE_ME: set to a proper release tag, e.g. v1.2.3
 images:
 - name: controller
-  newName: greedykomodo/kontroler-controller
-  newTag: 0.0.1
+  newName: example.com/operator
+  newTag: v0.0.1

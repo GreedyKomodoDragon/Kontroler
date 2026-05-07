@@ -20,11 +20,13 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -78,17 +80,21 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Add finalizer if it doesn't exist
 	if !containsString(dagRun.Finalizers, dagRunFinalizer) {
+		old := dagRun.DeepCopy()
 		dagRun.Finalizers = append(dagRun.Finalizers, dagRunFinalizer)
-		if err := r.Update(ctx, &dagRun); err != nil {
+		if err := r.Patch(ctx, &dagRun, client.MergeFrom(old)); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
-	}
+		// Requeue so the reconcile loop continues and sees the object with the
+		// finalizer in place. Because GenerationChangedPredicate filters out
+		// metadata-only updates, requeueing ensures we process the object.
+		return ctrl.Result{Requeue: true}, nil
+	} 
 
 	// check if dag exists
 	ok, dagId, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)
 	if err != nil {
-		log.Log.Error(err, "failed to check if dag exits", "dag_id", dagRun.Spec.DagName)
+		log.Log.Error(err, "failed to check if dag exists", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
@@ -173,7 +179,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	for _, task := range tasks {
 		taskRunId, err := r.DbManager.MarkTaskAsStarted(ctx, runId, task.Id)
 		if err != nil {
-			log.Log.Error(err, "failed to mask task as stated", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
+			log.Log.Error(err, "failed to mark task as started", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
 			continue
 		}
 
@@ -198,10 +204,13 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	}
 
+	old := dagRun.DeepCopy()
 	dagRun.Status.DagRunId = runId
-	if err := r.Status().Update(ctx, &dagRun); err != nil {
-		log.Log.Error(err, "failed to update DagRun status with runID", "dag_id", dagRun.Spec.DagName)
-		return ctrl.Result{}, err
+	if old.Status.DagRunId != dagRun.Status.DagRunId {
+		if err := r.Status().Patch(ctx, &dagRun, client.MergeFrom(old)); err != nil {
+			log.Log.Error(err, "failed to update DagRun status with runID", "dag_id", dagRun.Spec.DagName)
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -211,6 +220,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 func (r *DagRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kontrolerv1alpha1.DagRun{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
 }
 
@@ -256,12 +266,22 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 		return ctrl.Result{}, err
 	}
 
+	// delete pods in parallel with bounded concurrency
+	const podConcurrency = defaultConcurrency
+	sem := make(chan struct{}, podConcurrency)
+	g, gctx := errgroup.WithContext(ctx)
 	for _, pod := range pods {
-		if err := deletePodByNameAndNamespace(ctx, r.Client, pod.Name, pod.Namespace); err != nil {
-			log.Log.Error(err, "failed to delete pod", "podName", pod.Name, "podNamespace", pod.Namespace)
-			continue
-		}
+		pod := pod
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+			if err := deletePodByNameAndNamespace(gctx, r.Client, pod.Name, pod.Namespace); err != nil {
+				log.Log.Error(err, "failed to delete pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+			}
+			return nil
+		})
 	}
+	_ = g.Wait()
 
 	// Delete the DAG run from database
 	if err := r.DbManager.DeleteDagRun(ctx, dagRun.Status.DagRunId); err != nil {
@@ -270,8 +290,9 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 	}
 
 	// Remove the finalizer
+	old := dagRun.DeepCopy()
 	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
-	if err := r.Update(ctx, dagRun); err != nil {
+	if err := r.Patch(ctx, dagRun, client.MergeFrom(old)); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -305,8 +326,9 @@ func deletePVCByNameAndNamespace(ctx context.Context, c client.Client, name stri
 	}
 
 	// Remove all finalizers from the PVC
+	old := pvc.DeepCopy()
 	pvc.Finalizers = []string{}
-	if err := c.Update(ctx, pvc); err != nil {
+	if err := c.Patch(ctx, pvc, client.MergeFrom(old)); err != nil {
 		return err
 	}
 
@@ -358,7 +380,8 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 		}
 	}
 	pod.ObjectMeta.Finalizers = finalisers
-	if err := c.Update(ctx, pod); err != nil {
+	old := pod.DeepCopy()
+	if err := c.Patch(ctx, pod, client.MergeFrom(old)); err != nil {
 		return err
 	}
 

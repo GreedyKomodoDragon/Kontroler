@@ -71,9 +71,15 @@ spec:
         args:
         - --leader-elect
         image: controller:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: manager
         env:
+        - name: DB_TYPE
+          value: sqlite
+        - name: SQLITE_PATH
+          # Use a persistent path in production. ":memory:" is suitable only for tests.
+          value: "/data/kontroler.db"
+        # PostgreSQL-related envs should be supplied via a Secret in production.
         - name: DB_NAME
           value: kubeconductor
         - name: DB_USER
@@ -81,7 +87,10 @@ spec:
         - name: DB_ENDPOINT
           value: my-release-postgresql.default.svc.cluster.local:5432
         - name: DB_PASSWORD
-          value: 
+          valueFrom:
+            secretKeyRef:
+              name: kontroler-db-secret
+              key: password
         - name: JOB_TTL
           value: "180"
         securityContext:

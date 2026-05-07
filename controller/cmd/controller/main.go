@@ -150,10 +150,37 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	configController, err := config.ParseConfig(configPath)
-	if err != nil {
-		setupLog.Error(err, "failed to parse config")
-		os.Exit(1)
+	var configController *config.ControllerConfig
+	var err error
+	if configPath == "" {
+		// Provide a sensible default config for in-cluster / test runs when no configpath
+		configController = &config.ControllerConfig{
+			LeaderElectionID: os.Getenv("LEADER_ELECTION_ID"),
+			Workers: config.WorkerConfigs{
+				WorkerType:   "memory",
+				PollDuration: "100ms",
+				Workers: []config.WorkerConfig{{
+					Namespace: "default",
+					Count:     1,
+				}},
+			},
+			LogStore: config.LogStore{
+				StoreType: "filesystem",
+				FileSystem: config.FileSystemLogStoreConfig{
+					BaseDir: "/tmp/kontroler-logs",
+				},
+			},
+		}
+		// Ensure LEADER_ELECTION_ID has a default
+		if configController.LeaderElectionID == "" {
+			configController.LeaderElectionID = "kontroler"
+		}
+	} else {
+		configController, err = config.ParseConfig(configPath)
+		if err != nil {
+			setupLog.Error(err, "failed to parse config")
+			os.Exit(1)
+		}
 	}
 
 	// Create map of unique namespaces from worker configs
@@ -258,7 +285,9 @@ func main() {
 
 		defer dbConn.Close()
 	default:
-		setupLog.Error(err, "unsupported DAG manager provided, 'postgresql' or 'sqlite'")
+		dbType := os.Getenv("DB_TYPE")
+		setupErr := fmt.Errorf("unsupported DAG manager provided, must be 'postgresql' or 'sqlite' (DB_TYPE=%q)", dbType)
+		setupLog.Error(setupErr, "unsupported DAG manager provided")
 		os.Exit(1)
 	}
 
