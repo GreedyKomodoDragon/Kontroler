@@ -18,9 +18,12 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	sterrors "errors"
 	"fmt"
 
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -28,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/dagdsl"
@@ -40,6 +44,9 @@ type DAGReconciler struct {
 	Scheme    *runtime.Scheme
 	DbManager db.DBDAGManager
 }
+
+// defaultConcurrency controls bounded parallelism for batch operations in controllers
+const defaultConcurrency = 8
 
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=dags/status,verbs=get;update;patch
@@ -59,25 +66,44 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	var dag kontrolerv1alpha1.DAG
 	if err := r.Get(ctx, req.NamespacedName, &dag); err != nil {
 		if errors.IsNotFound(err) {
-			return r.handleDeletion(ctx, req, dag)
+			return r.handleDeletion(ctx, req.NamespacedName)
 		}
 		return ctrl.Result{}, err
 	}
 
+	// Keep a copy of the original object for patching later
+	orig := dag.DeepCopy()
+
 	// Check if the DAG is marked for deletion
 	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, req, dag)
+		return r.handleDeletion(ctx, req.NamespacedName)
 	}
 
-	// Process DSL if provided
+	// Process DSL if provided. Only do work when the DSL has changed (hash-based).
 	if dag.Spec.DSL != "" {
-		if err := r.processDSL(ctx, &dag); err != nil {
-			return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to process DSL: %s", err.Error()))
+		hashBytes := sha256.Sum256([]byte(dag.Spec.DSL))
+		hashStr := hex.EncodeToString(hashBytes[:])
+
+		existingHash := ""
+		if dag.Annotations != nil {
+			existingHash = dag.Annotations["kontroler/dsl-hash"]
 		}
 
-		// Update the DAG with the processed DSL content
-		if err := r.Update(ctx, &dag); err != nil {
-			return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to update DAG after DSL processing: %s", err.Error()))
+		if existingHash != hashStr {
+			if err := r.processDSL(ctx, &dag); err != nil {
+				return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to process DSL: %s", err.Error()))
+			}
+
+			// Ensure annotations map exists and set the new hash
+			if dag.Annotations == nil {
+				dag.Annotations = map[string]string{}
+			}
+			dag.Annotations["kontroler/dsl-hash"] = hashStr
+
+			// Patch only the changes relative to the original object
+			if err := r.Patch(ctx, &dag, client.MergeFrom(orig)); err != nil {
+				return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to patch DAG after DSL processing: %s", err.Error()))
+			}
 		}
 	}
 
@@ -116,9 +142,16 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 }
 
 func (r *DAGReconciler) markDAGFailed(ctx context.Context, dag *kontrolerv1alpha1.DAG, reason string) (ctrl.Result, error) {
+	// Avoid unnecessary updates
+	if dag.Status.Phase == "Failed" && dag.Status.Message == reason {
+		log.Log.Info("DAG already marked as failed", "dag", dag.Name)
+		return ctrl.Result{}, nil
+	}
+
+	old := dag.DeepCopy()
 	dag.Status.Phase = "Failed"
 	dag.Status.Message = reason
-	if err := r.Status().Update(ctx, dag); err != nil {
+	if err := r.Status().Patch(ctx, dag, client.MergeFrom(old)); err != nil {
 		log.Log.Error(err, "failed to update DAG status", "dag", dag.Name)
 		return ctrl.Result{}, err
 	}
@@ -127,9 +160,16 @@ func (r *DAGReconciler) markDAGFailed(ctx context.Context, dag *kontrolerv1alpha
 }
 
 func (r *DAGReconciler) markDAGSuccessful(ctx context.Context, dag *kontrolerv1alpha1.DAG) (ctrl.Result, error) {
+	// Avoid unnecessary updates
+	if dag.Status.Phase == "Successful" && dag.Status.Message == "DAG reconciled successfully" {
+		log.Log.Info("DAG already marked as successful", "dag", dag.Name)
+		return ctrl.Result{}, nil
+	}
+
+	old := dag.DeepCopy()
 	dag.Status.Phase = "Successful"
 	dag.Status.Message = "DAG reconciled successfully"
-	if err := r.Status().Update(ctx, dag); err != nil {
+	if err := r.Status().Patch(ctx, dag, client.MergeFrom(old)); err != nil {
 		log.Log.Error(err, "failed to update DAG status", "dag", dag.Name)
 		return ctrl.Result{}, err
 	}
@@ -150,79 +190,121 @@ func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName t
 func (r *DAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kontrolerv1alpha1.DAG{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
 }
 
 func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs []kontrolerv1alpha1.TaskRef, namespace string) {
-	for _, taskRef := range taskRefs {
-		var dagTask kontrolerv1alpha1.DagTask
-		if err := r.Get(ctx, types.NamespacedName{
-			Name:      taskRef.Name,
-			Namespace: namespace,
-		}, &dagTask); err != nil {
-			// Log the error and continue
-			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
-			continue
-		}
-
-		if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
-			if updated := controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
-				log.Log.Error(fmt.Errorf("AddFinalizer failed"), "failed to add finalizer to dagTask", "taskRef", taskRef)
-				continue
-			}
-
-			if err := r.Update(ctx, &dagTask); err != nil {
-				log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", taskRef)
-			}
-		}
+	if len(taskRefs) == 0 {
+		return
 	}
+
+	// bounded concurrency
+	const concurrency = defaultConcurrency
+	sem := make(chan struct{}, concurrency)
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, tr := range taskRefs {
+		tr := tr // capture
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+
+			var dagTask kontrolerv1alpha1.DagTask
+			if err := r.Get(gctx, types.NamespacedName{Name: tr.Name, Namespace: namespace}, &dagTask); err != nil {
+				log.Log.Error(err, "failed to fetch dagTask", "taskRef", tr)
+				return nil
+			}
+
+			old := dagTask.DeepCopy()
+			if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+				if updated := controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
+					log.Log.Error(fmt.Errorf("AddFinalizer failed"), "failed to add finalizer to dagTask", "taskRef", tr)
+					return nil
+				}
+
+				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
+					log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", tr)
+				}
+			} 
+
+			return nil
+		})
+	}
+
+	// wait for all goroutines
+	_ = g.Wait()
 }
 
 func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs []string, namespace string) {
 	log.Log.Info("reconcile deletion", "controller", "dag", "namespace", namespace, "method", "removingDagTaskFinalisers", "taskCount", len(taskRefs))
 
-	for _, taskRef := range taskRefs {
-		var dagTask kontrolerv1alpha1.DagTask
-		if err := r.Get(ctx, types.NamespacedName{
-			Name:      taskRef,
-			Namespace: namespace,
-		}, &dagTask); err != nil {
-			// Log the error and continue
-			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
-			continue
-		}
-
-		if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
-
-			if updated := controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
-				log.Log.Error(fmt.Errorf("RemoveFinalizer failed"), "failed to remove finalizer to dagTask", "taskRef", taskRef)
-				continue
-			}
-
-			if err := r.Update(ctx, &dagTask); err != nil {
-				log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", taskRef)
-			}
-		}
+	if len(taskRefs) == 0 {
+		return
 	}
+
+	const concurrency = defaultConcurrency
+	sem := make(chan struct{}, concurrency)
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, tr := range taskRefs {
+		tr := tr
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+
+			var dagTask kontrolerv1alpha1.DagTask
+			if err := r.Get(gctx, types.NamespacedName{Name: tr, Namespace: namespace}, &dagTask); err != nil {
+				log.Log.Error(err, "failed to fetch dagTask", "taskRef", tr)
+				return nil
+			}
+
+			if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+
+				old := dagTask.DeepCopy()
+				if updated := controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
+					log.Log.Error(fmt.Errorf("RemoveFinalizer failed"), "failed to remove finalizer to dagTask", "taskRef", tr)
+					return nil
+				}
+
+				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
+					log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", tr)
+				}
+			} 
+
+			return nil
+		})
+	}
+
+	_ = g.Wait()
 }
 
-func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, dag kontrolerv1alpha1.DAG) (ctrl.Result, error) {
+func (r *DAGReconciler) handleDeletion(ctx context.Context, namespacedName types.NamespacedName) (ctrl.Result, error) {
 	// The DAG is being deleted, remove it from the database
-	taskNames, err := r.deleteFromDatabase(ctx, req.NamespacedName)
+	taskNames, err := r.deleteFromDatabase(ctx, namespacedName)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Remove the finalizer if it exists
-	if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
-		controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
-		if err := r.Update(ctx, &dag); err != nil {
-			log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
-			return ctrl.Result{}, err
+	// Try to fetch the DAG in order to remove its finalizer if present. If the object
+	// is already gone, skip the finalizer removal step.
+	var dag kontrolerv1alpha1.DAG
+	if err := r.Get(ctx, namespacedName, &dag); err == nil {
+		// Remove the finalizer if it exists
+		if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
+			old := dag.DeepCopy()
+			controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
+			if err := r.Patch(ctx, &dag, client.MergeFrom(old)); err != nil {
+				log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
+				return ctrl.Result{}, err
+			}
 		}
+	} else if !errors.IsNotFound(err) {
+		// If we got an error other than NotFound when fetching the DAG, return it
+		return ctrl.Result{}, err
 	}
 
-	r.removingDagTaskFinalisers(ctx, taskNames, req.Namespace)
+	r.removingDagTaskFinalisers(ctx, taskNames, namespacedName.Namespace)
 
 	return ctrl.Result{}, nil
 }
