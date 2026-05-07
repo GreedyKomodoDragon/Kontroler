@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	sterrors "errors"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -28,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/dagdsl"
@@ -64,20 +67,39 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// Keep a copy of the original object for patching later
+	orig := dag.DeepCopy()
+
 	// Check if the DAG is marked for deletion
 	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, req, dag)
 	}
 
-	// Process DSL if provided
+	// Process DSL if provided. Only do work when the DSL has changed (hash-based).
 	if dag.Spec.DSL != "" {
-		if err := r.processDSL(ctx, &dag); err != nil {
-			return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to process DSL: %s", err.Error()))
+		hashBytes := sha256.Sum256([]byte(dag.Spec.DSL))
+		hashStr := hex.EncodeToString(hashBytes[:])
+
+		existingHash := ""
+		if dag.Annotations != nil {
+			existingHash = dag.Annotations["kontroler/dsl-hash"]
 		}
 
-		// Update the DAG with the processed DSL content
-		if err := r.Update(ctx, &dag); err != nil {
-			return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to update DAG after DSL processing: %s", err.Error()))
+		if existingHash != hashStr {
+			if err := r.processDSL(ctx, &dag); err != nil {
+				return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to process DSL: %s", err.Error()))
+			}
+
+			// Ensure annotations map exists and set the new hash
+			if dag.Annotations == nil {
+				dag.Annotations = map[string]string{}
+			}
+			dag.Annotations["kontroler/dsl-hash"] = hashStr
+
+			// Patch only the changes relative to the original object
+			if err := r.Patch(ctx, &dag, client.MergeFrom(orig)); err != nil {
+				return r.markDAGFailed(ctx, &dag, fmt.Sprintf("failed to patch DAG after DSL processing: %s", err.Error()))
+			}
 		}
 	}
 
@@ -150,6 +172,7 @@ func (r *DAGReconciler) deleteFromDatabase(ctx context.Context, namespacedName t
 func (r *DAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kontrolerv1alpha1.DAG{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
 }
 

@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
@@ -94,6 +95,7 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func (r *DagTaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kontrolerv1alpha1.DagTask{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
 }
 
