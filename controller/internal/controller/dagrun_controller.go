@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -262,12 +263,22 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 		return ctrl.Result{}, err
 	}
 
+	// delete pods in parallel with bounded concurrency
+	const podConcurrency = 8
+	sem := make(chan struct{}, podConcurrency)
+	g, gctx := errgroup.WithContext(ctx)
 	for _, pod := range pods {
-		if err := deletePodByNameAndNamespace(ctx, r.Client, pod.Name, pod.Namespace); err != nil {
-			log.Log.Error(err, "failed to delete pod", "podName", pod.Name, "podNamespace", pod.Namespace)
-			continue
-		}
+		pod := pod
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+			if err := deletePodByNameAndNamespace(gctx, r.Client, pod.Name, pod.Namespace); err != nil {
+				log.Log.Error(err, "failed to delete pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+			}
+			return nil
+		})
 	}
+	_ = g.Wait()
 
 	// Delete the DAG run from database
 	if err := r.DbManager.DeleteDagRun(ctx, dagRun.Status.DagRunId); err != nil {

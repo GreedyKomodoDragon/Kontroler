@@ -23,6 +23,7 @@ import (
 	sterrors "errors"
 	"fmt"
 
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -191,58 +192,88 @@ func (r *DAGReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs []kontrolerv1alpha1.TaskRef, namespace string) {
-	for _, taskRef := range taskRefs {
-		var dagTask kontrolerv1alpha1.DagTask
-		if err := r.Get(ctx, types.NamespacedName{
-			Name:      taskRef.Name,
-			Namespace: namespace,
-		}, &dagTask); err != nil {
-			// Log the error and continue
-			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
-			continue
-		}
-
-		if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
-			if updated := controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
-				log.Log.Error(fmt.Errorf("AddFinalizer failed"), "failed to add finalizer to dagTask", "taskRef", taskRef)
-				continue
-			}
-
-			old := dagTask.DeepCopy()
-			if err := r.Patch(ctx, &dagTask, client.MergeFrom(old)); err != nil {
-				log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", taskRef)
-			}
-		}
+	if len(taskRefs) == 0 {
+		return
 	}
+
+	// bounded concurrency
+	const concurrency = 8
+	sem := make(chan struct{}, concurrency)
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, tr := range taskRefs {
+		tr := tr // capture
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+
+			var dagTask kontrolerv1alpha1.DagTask
+			if err := r.Get(gctx, types.NamespacedName{Name: tr.Name, Namespace: namespace}, &dagTask); err != nil {
+				log.Log.Error(err, "failed to fetch dagTask", "taskRef", tr)
+				return nil
+			}
+
+			if !controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+				if updated := controllerutil.AddFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
+					log.Log.Error(fmt.Errorf("AddFinalizer failed"), "failed to add finalizer to dagTask", "taskRef", tr)
+					return nil
+				}
+
+				old := dagTask.DeepCopy()
+				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
+					log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", tr)
+				}
+			}
+
+			return nil
+		})
+	}
+
+	// wait for all goroutines
+	_ = g.Wait()
 }
 
 func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs []string, namespace string) {
 	log.Log.Info("reconcile deletion", "controller", "dag", "namespace", namespace, "method", "removingDagTaskFinalisers", "taskCount", len(taskRefs))
 
-	for _, taskRef := range taskRefs {
-		var dagTask kontrolerv1alpha1.DagTask
-		if err := r.Get(ctx, types.NamespacedName{
-			Name:      taskRef,
-			Namespace: namespace,
-		}, &dagTask); err != nil {
-			// Log the error and continue
-			log.Log.Error(err, "failed to fetch dagTask", "taskRef", taskRef)
-			continue
-		}
-
-		if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
-
-			if updated := controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
-				log.Log.Error(fmt.Errorf("RemoveFinalizer failed"), "failed to remove finalizer to dagTask", "taskRef", taskRef)
-				continue
-			}
-
-			old := dagTask.DeepCopy()
-			if err := r.Patch(ctx, &dagTask, client.MergeFrom(old)); err != nil {
-				log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", taskRef)
-			}
-		}
+	if len(taskRefs) == 0 {
+		return
 	}
+
+	const concurrency = 8
+	sem := make(chan struct{}, concurrency)
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, tr := range taskRefs {
+		tr := tr
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+
+			var dagTask kontrolerv1alpha1.DagTask
+			if err := r.Get(gctx, types.NamespacedName{Name: tr, Namespace: namespace}, &dagTask); err != nil {
+				log.Log.Error(err, "failed to fetch dagTask", "taskRef", tr)
+				return nil
+			}
+
+			if controllerutil.ContainsFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo") {
+
+				if updated := controllerutil.RemoveFinalizer(&dagTask, "dagTask.finalizer.kontroler.greedykomodo"); !updated {
+					log.Log.Error(fmt.Errorf("RemoveFinalizer failed"), "failed to remove finalizer to dagTask", "taskRef", tr)
+					return nil
+				}
+
+				old := dagTask.DeepCopy()
+				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
+					log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", tr)
+				}
+			}
+
+			return nil
+		})
+	}
+
+	_ = g.Wait()
 }
 
 func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, dag kontrolerv1alpha1.DAG) (ctrl.Result, error) {
