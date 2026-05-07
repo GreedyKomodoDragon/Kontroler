@@ -138,9 +138,16 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 }
 
 func (r *DAGReconciler) markDAGFailed(ctx context.Context, dag *kontrolerv1alpha1.DAG, reason string) (ctrl.Result, error) {
+	// Avoid unnecessary updates
+	if dag.Status.Phase == "Failed" && dag.Status.Message == reason {
+		log.Log.Info("DAG already marked as failed", "dag", dag.Name)
+		return ctrl.Result{}, nil
+	}
+
+	old := dag.DeepCopy()
 	dag.Status.Phase = "Failed"
 	dag.Status.Message = reason
-	if err := r.Status().Update(ctx, dag); err != nil {
+	if err := r.Status().Patch(ctx, dag, client.MergeFrom(old)); err != nil {
 		log.Log.Error(err, "failed to update DAG status", "dag", dag.Name)
 		return ctrl.Result{}, err
 	}
@@ -149,9 +156,16 @@ func (r *DAGReconciler) markDAGFailed(ctx context.Context, dag *kontrolerv1alpha
 }
 
 func (r *DAGReconciler) markDAGSuccessful(ctx context.Context, dag *kontrolerv1alpha1.DAG) (ctrl.Result, error) {
+	// Avoid unnecessary updates
+	if dag.Status.Phase == "Successful" && dag.Status.Message == "DAG reconciled successfully" {
+		log.Log.Info("DAG already marked as successful", "dag", dag.Name)
+		return ctrl.Result{}, nil
+	}
+
+	old := dag.DeepCopy()
 	dag.Status.Phase = "Successful"
 	dag.Status.Message = "DAG reconciled successfully"
-	if err := r.Status().Update(ctx, dag); err != nil {
+	if err := r.Status().Patch(ctx, dag, client.MergeFrom(old)); err != nil {
 		log.Log.Error(err, "failed to update DAG status", "dag", dag.Name)
 		return ctrl.Result{}, err
 	}
@@ -194,7 +208,8 @@ func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs 
 				continue
 			}
 
-			if err := r.Update(ctx, &dagTask); err != nil {
+			old := dagTask.DeepCopy()
+			if err := r.Patch(ctx, &dagTask, client.MergeFrom(old)); err != nil {
 				log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", taskRef)
 			}
 		}
@@ -222,7 +237,8 @@ func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs 
 				continue
 			}
 
-			if err := r.Update(ctx, &dagTask); err != nil {
+			old := dagTask.DeepCopy()
+			if err := r.Patch(ctx, &dagTask, client.MergeFrom(old)); err != nil {
 				log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", taskRef)
 			}
 		}
@@ -239,7 +255,8 @@ func (r *DAGReconciler) handleDeletion(ctx context.Context, req ctrl.Request, da
 	// Remove the finalizer if it exists
 	if controllerutil.ContainsFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo") {
 		controllerutil.RemoveFinalizer(&dag, "dag.finalizer.kontroler.greedykomodo")
-		if err := r.Update(ctx, &dag); err != nil {
+		old := dag.DeepCopy()
+		if err := r.Patch(ctx, &dag, client.MergeFrom(old)); err != nil {
 			log.Log.Error(err, "failed to remove finalizer from dag", "dag", dag.Name)
 			return ctrl.Result{}, err
 		}
