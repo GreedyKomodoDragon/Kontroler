@@ -49,7 +49,7 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 	}
 
 	pgEndpoint := os.Getenv("DB_ENDPOINT")
-	if dbUser == "" {
+	if pgEndpoint == "" {
 		return nil, fmt.Errorf("missing DB_ENDPOINT")
 	}
 
@@ -62,6 +62,9 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 	if !exists {
 		sslMode = "disable"
 	}
+
+	// Log the effective DB SSL mode and connection targets for debugging
+	fmt.Printf("[DEBUG] DB SSL mode=%s, endpoint=%s, db=%s, user=%s\n", sslMode, pgEndpoint, dbName, dbUser)
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
 	if err != nil {
