@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -71,7 +72,11 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 		return nil, err
 	}
 
-	if sslMode != "disable" {
+	// Force disable TLS at the pgx config level when sslMode == "disable"
+	if sslMode == "disable" {
+		pgConfig.ConnConfig.TLSConfig = nil
+		log.Info().Msg("Forcing TLSConfig=nil to disable TLS for pgx connection")
+	} else {
 		pgConfig.ConnConfig.TLSConfig = &tls.Config{}
 		if err := UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
 			panic(err)
