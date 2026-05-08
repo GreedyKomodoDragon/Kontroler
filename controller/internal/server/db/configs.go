@@ -68,8 +68,8 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 		return nil, err
 	}
 
-	pgConfig.ConnConfig.TLSConfig = &tls.Config{}
 	if sslMode != "disable" {
+		pgConfig.ConnConfig.TLSConfig = &tls.Config{}
 		if err := UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
 			panic(err)
 		}
