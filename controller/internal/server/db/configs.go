@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rs/zerolog/log"
 )
 
 func UpdateDBSSLConfig(tlsConfig *tls.Config) error {
@@ -50,7 +49,7 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 	}
 
 	pgEndpoint := os.Getenv("DB_ENDPOINT")
-	if pgEndpoint == "" {
+	if dbUser == "" {
 		return nil, fmt.Errorf("missing DB_ENDPOINT")
 	}
 
@@ -64,28 +63,13 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 		sslMode = "disable"
 	}
 
-	// Log the effective DB SSL mode and connection targets for debugging using zerolog
-	log.Info().Str("sslMode", sslMode).Str("endpoint", pgEndpoint).Str("db", dbName).Str("user", dbUser).Msg("DB connection info")
-
-	// Build DSN; omit sslmode parameter when disabling TLS to force a plain connection
-	var dsn string
-	if sslMode == "disable" {
-		dsn = fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName)
-	} else {
-		dsn = fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode)
-	}
-
-	pgConfig, err := pgxpool.ParseConfig(dsn)
+	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
 	if err != nil {
 		return nil, err
 	}
 
-	// Force disable TLS at the pgx config level when sslMode == "disable"
-	if sslMode == "disable" {
-		pgConfig.ConnConfig.TLSConfig = nil
-		log.Info().Msg("Forcing TLSConfig=nil to disable TLS for pgx connection and omitting sslmode in DSN")
-	} else {
-		pgConfig.ConnConfig.TLSConfig = &tls.Config{}
+	pgConfig.ConnConfig.TLSConfig = &tls.Config{}
+	if sslMode != "disable" {
 		if err := UpdateDBSSLConfig(pgConfig.ConnConfig.TLSConfig); err != nil {
 			panic(err)
 		}

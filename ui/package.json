@@ -32,13 +32,11 @@
     "@solidjs/router": "^0.13.3",
     "@tanstack/solid-query": "^5.53.1",
     "apexcharts": "^3.49.1",
-    "axios": "^1.15.0",
-    "follow-redirects": "^1.16.0",
     "js-yaml": "^4.1.0",
     "prismjs": "^1.29.0",
     "solid-apexcharts": "^0.3.4",
     "solid-js": "^1.8.11",
-    "uuid": "^14.0.0",
+    "uuid": "^9.0.1",
     "vis-network": "^9.1.9"
   }
 }

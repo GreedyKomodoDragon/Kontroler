@@ -194,7 +194,7 @@ KIND_CLUSTER_NAME ?= kind
 
 .PHONY: kind-create
 kind-create: ## Create kind cluster
-	kind create cluster --name $(KIND_CLUSTER_NAME) --config <(printf '%b' 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnodes:\n  - role: control-plane\n    kubeadmConfigPatches:\n      - |\n        kind: InitConfiguration\n        nodeRegistration:\n          kubeletExtraArgs:\n            node-labels: "ingress-ready=true"\n    extraPortMappings:\n      - containerPort: 80\n        hostPort: 80\n        protocol: TCP\n      - containerPort: 443\n        hostPort: 443\n        protocol: TCP\n  - role: worker\n  - role: worker')
+	kind create cluster --name $(KIND_CLUSTER_NAME) --config <(echo 'kind: Cluster\napiVersion: kind.x-k8s.io/v1alpha4\nnodes:\n  - role: control-plane\n    kubeadmConfigPatches:\n      - |\n        kind: InitConfiguration\n        nodeRegistration:\n          kubeletExtraArgs:\n            node-labels: "ingress-ready=true"\n    extraPortMappings:\n      - containerPort: 80\n        hostPort: 80\n        protocol: TCP\n      - containerPort: 443\n        hostPort: 443\n        protocol: TCP\n  - role: worker\n  - role: worker')
 
 .PHONY: kind-delete
 kind-delete: ## Delete kind cluster
@@ -240,15 +240,11 @@ kind-deploy-minio: ## Deploy MinIO for S3 log storage (optional)
 kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
 	helm upgrade --install kontroler ../helm/kontroler \
 		--set controller.image=$(IMG) \
-		--set controller.imagePullPolicy=IfNotPresent \
 		--set server.image=$(SERVER_IMG) \
-		--set server.imagePullPolicy=IfNotPresent \
 		--set db.type=postgresql \
 		--set db.postgresql.endpoint=postgres-postgresql.default.svc.cluster.local:5432 \
 		--set "db.postgresql.password.secret=postgres-postgresql" \
 		--set "db.postgresql.password.key=postgres-password" \
-		--set controller.db.ssl.mode=disable \
-		--set server.db.ssl.mode=disable \
 		--set certManager.enabled=false \
 		--set controller.leaderElectionID="610a3770.greedykomodo"
 

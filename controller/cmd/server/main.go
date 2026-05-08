@@ -73,9 +73,6 @@ func main() {
 
 	ctx := context.Background()
 
-	// Emit DB-related env vars to help debug TLS/SSL behavior
-	log.Info().Str("DB_SSL_MODE", os.Getenv("DB_SSL_MODE")).Str("DB_ENDPOINT", os.Getenv("DB_ENDPOINT")).Str("DB_NAME", os.Getenv("DB_NAME")).Msg("DB env")
-
 	switch os.Getenv("DB_TYPE") {
 	case "postgresql":
 		pgConfig, err := db.ConfigurePostgres()

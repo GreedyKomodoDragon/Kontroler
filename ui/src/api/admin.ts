@@ -1,4 +1,4 @@
-import axios from "axios";
+import { request } from "./http";
 import { User } from "../types/admin";
 import { getApiUrl } from "./utils";
 
@@ -9,25 +9,15 @@ export async function getUsers({
 }): Promise<User[]> {
   const page = Number(queryKey[1]);
 
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/auth/users/page/${page - 1}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/auth/users/page/${page - 1}`);
 
-  return result.data.users;
+  return data.users;
 }
 
 export async function getUserPageCount(): Promise<number> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/auth/users/pages/count`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/auth/users/pages/count`);
 
-  return result.data.count;
+  return data.count;
 }
 
 export async function createAccount(
@@ -35,22 +25,16 @@ export async function createAccount(
   password: string,
   role: string
 ): Promise<void> {
-  await axios.post(
-    `${getApiUrl()}/api/v1/auth/create`,
-    {
-      username,
-      password,
-      role,
-    },
-    {
-      withCredentials: true,
-    }
-  );
+  await request(`${getApiUrl()}/api/v1/auth/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password, role }),
+  });
 }
 
 export async function deleteAccount(username: string): Promise<void> {
-  await axios.delete(`${getApiUrl()}/api/v1/auth/users/${username}`, {
-    withCredentials: true,
+  await request(`${getApiUrl()}/api/v1/auth/users/${username}`, {
+    method: "DELETE",
   });
 }
 
@@ -58,14 +42,9 @@ export async function updatePassword(
   oldPassword: string,
   password: string
 ): Promise<void> {
-  await axios.post(
-    `${getApiUrl()}/api/v1/auth/password/change`,
-    {
-      oldPassword,
-      password,
-    },
-    {
-      withCredentials: true,
-    }
-  );
+  await request(`${getApiUrl()}/api/v1/auth/password/change`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ oldPassword, password }),
+  });
 }
