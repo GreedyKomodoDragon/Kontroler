@@ -3,10 +3,10 @@ package db
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 )
 
 func UpdateDBSSLConfig(tlsConfig *tls.Config) error {
@@ -63,8 +63,8 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 		sslMode = "disable"
 	}
 
-	// Log the effective DB SSL mode and connection targets for debugging
-	fmt.Printf("[DEBUG] DB SSL mode=%s, endpoint=%s, db=%s, user=%s\n", sslMode, pgEndpoint, dbName, dbUser)
+	// Log the effective DB SSL mode and connection targets for debugging using zerolog
+	log.Info().Str("sslMode", sslMode).Str("endpoint", pgEndpoint).Str("db", dbName).Str("user", dbUser).Msg("DB connection info")
 
 	pgConfig, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode))
 	if err != nil {
