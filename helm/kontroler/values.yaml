@@ -66,6 +66,10 @@ certManager:
     spec:
       selfSigned: {}
 
+webhook:
+  enabled: true
+  failurePolicy: Fail
+
 kubeconfig:
   secret: 
   mountPath: /etc/kontroler/secrets
