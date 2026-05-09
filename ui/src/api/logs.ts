@@ -1,5 +1,5 @@
-import axios from "axios";
 import { getApiUrl } from "./utils";
+import { request } from "./http";
 
 export async function getLogs({
   queryKey,
@@ -10,12 +10,9 @@ export async function getLogs({
     return "";
   }
 
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/logs/run/${queryKey[1]}/pod/${queryKey[2]}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/logs/run/${queryKey[1]}/pod/${queryKey[2]}`);
 
-  return result.data;
+  // request() will return parsed JSON or text. Logs endpoint returns a string body.
+  if (typeof data === "string") return data;
+  return data;
 }

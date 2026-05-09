@@ -2,6 +2,7 @@ package dag
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	kind           = "DagRun"
 	createdBy      = "app.kubernetes.io/created-by"
 	createdByValue = "konductor-operator"
+
+	maxCreateDagRunRetries = 5
+	initialRetryBackoff    = 500 * time.Millisecond
 )
 
 // DagScheduler will every min run a check on the Database to determine if a dag should be started
@@ -84,6 +88,7 @@ func (d *dagscheduler) processDags(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	for _, dagInfo := range dagInfos {
+		dagInfo := dagInfo
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -108,12 +113,58 @@ func (d *dagscheduler) createDagRun(ctx context.Context, dagInfo *db.DagInfo, op
 
 	unstructuredObj := &unstructured.Unstructured{Object: unstructuredDagRun}
 
-	if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, unstructuredObj, opts); err != nil {
-		log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
+	backoff := initialRetryBackoff
+	for attempt := 1; attempt <= maxCreateDagRunRetries; attempt++ {
+		if _, err := d.dynamicClient.Resource(gvr).Namespace(dagInfo.Namespace).Create(ctx, unstructuredObj, opts); err != nil {
+			if attempt < maxCreateDagRunRetries && shouldRetryCreateDagRun(err) {
+				log.Log.Info("retrying DagRun creation after transient error", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace, "attempt", attempt, "nextBackoff", backoff, "error", err.Error())
+
+				select {
+				case <-ctx.Done():
+					log.Log.Info("DagRun creation cancelled while waiting to retry", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
+					return
+				case <-time.After(backoff):
+				}
+
+				if backoff < 5*time.Second {
+					backoff *= 2
+					if backoff > 5*time.Second {
+						backoff = 5 * time.Second
+					}
+				}
+				continue
+			}
+
+			log.Log.Error(err, "failed to create DagRun", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace, "attempt", attempt)
+			return
+		}
+
+		log.Log.Info("DagRun created successfully", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace, "attempt", attempt)
 		return
 	}
+}
 
-	log.Log.Info("DagRun created successfully", "dagId", dagInfo.DagId, "name", name, "namespace", dagInfo.Namespace)
+func shouldRetryCreateDagRun(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	// Webhook service can be temporarily unavailable during controller startup/rollout.
+	if strings.Contains(msg, "failed calling webhook") && strings.Contains(msg, "connection refused") {
+		return true
+	}
+
+	if strings.Contains(msg, "failed calling webhook") && strings.Contains(msg, "i/o timeout") {
+		return true
+	}
+
+	if strings.Contains(msg, "service unavailable") {
+		return true
+	}
+
+	return false
 }
 
 // CreateDagRunObject constructs a DagRun object for the given dagInfo.
