@@ -1,5 +1,5 @@
 import { createEffect, onCleanup, onMount, Setter } from "solid-js";
-import { Network, Data, Options } from "vis-network/standalone/esm/vis-network";
+import { Network, Data, Options } from "vis-network/standalone/esm/vis-network.js";
 
 type Task = {
   status: string;

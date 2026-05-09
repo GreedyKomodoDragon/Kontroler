@@ -1,4 +1,4 @@
-import axios from "axios";
+import { request } from "./http";
 import {
   Dag,
   DagRunAll,
@@ -18,14 +18,9 @@ export async function getDags({
 }: {
   queryKey: string[];
 }): Promise<Dag[]> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/meta/${queryKey[1]}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/dag/meta/${queryKey[1]}`);
 
-  return result.data.dags;
+  return data.dags;
 }
 
 export async function getDagRuns({
@@ -33,29 +28,20 @@ export async function getDagRuns({
 }: {
   queryKey: string[];
 }): Promise<DagRunMeta[]> {
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/runs/${queryKey[1]}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/dag/runs/${queryKey[1]}`);
 
-  return result.data;
+  return data;
 }
 
 export async function getDagRunGraph(runId: number): Promise<DagRunGraph> {
-  const result = await axios.get(`${getApiUrl()}/api/v1/dag/run/${runId}`, {
-    withCredentials: true,
-  });
+  const data = await request(`${getApiUrl()}/api/v1/dag/run/${runId}`);
 
-  return result.data;
+  return data;
 }
 
 export async function getDagRunAll(runId: number): Promise<DagRunAll> {
-  const result = await axios.get(`${getApiUrl()}/api/v1/dag/run/all/${runId}`, {
-    withCredentials: true,
-  });
-  return result.data;
+  const data = await request(`${getApiUrl()}/api/v1/dag/run/all/${runId}`);
+  return data;
 }
 
 export async function getTaskRunDetails(
@@ -66,13 +52,8 @@ export async function getTaskRunDetails(
     return undefined;
   }
 
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/run/task/${runId}/${taskId}`,
-    {
-      withCredentials: true,
-    }
-  );
-  return result.data;
+  const data = await request(`${getApiUrl()}/api/v1/dag/run/task/${runId}/${taskId}`);
+  return data;
 }
 
 export async function getTaskDetails(
@@ -82,40 +63,34 @@ export async function getTaskDetails(
     return undefined;
   }
 
-  const result = await axios.get(`${getApiUrl()}/api/v1/dag/task/${taskId}`, {
-    withCredentials: true,
-  });
-  return result.data;
+  const data = await request(`${getApiUrl()}/api/v1/dag/task/${taskId}`);
+  return data;
 }
 
 export async function createDag(dagForm: DagFormObj): Promise<any> {
-  const result = await axios.post(`${getApiUrl()}/api/v1/dag/create`, dagForm, {
-    withCredentials: true,
+  const data = await request(`${getApiUrl()}/api/v1/dag/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dagForm),
   });
-  return result.data;
+  return data;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const result = await axios.get(`${getApiUrl()}/api/v1/stats/dashboard`, {
-    withCredentials: true,
-  });
-  return result.data;
+  const data = await request(`${getApiUrl()}/api/v1/stats/dashboard`);
+  return data;
 }
 
 export async function getDagRunPageCount(): Promise<number> {
-  const result = await axios.get(`${getApiUrl()}/api/v1/dag/run/pages/count`, {
-    withCredentials: true,
-  });
+  const data = await request(`${getApiUrl()}/api/v1/dag/run/pages/count`);
 
-  return result.data.count;
+  return data.count;
 }
 
 export async function getDagPageCount(): Promise<number> {
-  const result = await axios.get(`${getApiUrl()}/api/v1/dag/pages/count`, {
-    withCredentials: true,
-  });
+  const data = await request(`${getApiUrl()}/api/v1/dag/pages/count`);
 
-  return result.data.count;
+  return data.count;
 }
 
 export async function getDagNames({
@@ -127,14 +102,9 @@ export async function getDagNames({
     return [];
   }
 
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/names?term=${queryKey[1]}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/dag/names?term=${queryKey[1]}`);
 
-  return result.data.names;
+  return data.names;
 }
 
 export async function getDagParameters({
@@ -146,14 +116,9 @@ export async function getDagParameters({
     return [];
   }
 
-  const result = await axios.get(
-    `${getApiUrl()}/api/v1/dag/parameters?name=${queryKey[1]}`,
-    {
-      withCredentials: true,
-    }
-  );
+  const data = await request(`${getApiUrl()}/api/v1/dag/parameters?name=${queryKey[1]}`);
 
-  return result.data.parameters;
+  return data.parameters;
 }
 
 class DagRunError extends Error {
@@ -170,21 +135,15 @@ export async function createDagRun(
   runName: string
 ): Promise<void> {
   try {
-    await axios.post(
-      `${getApiUrl()}/api/v1/dag/run/create`,
-      {
-        name,
-        parameters,
-        namespace,
-        runName,
-      },
-      {
-        withCredentials: true,
-      }
-    );
+    await request(`${getApiUrl()}/api/v1/dag/run/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, parameters, namespace, runName }),
+    });
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
+    const status = (error as any)?.status;
+    if (typeof status === "number") {
+      switch (status) {
         case 401:
           throw new DagRunError("Authentication required. Please log in.");
         case 403:
@@ -200,7 +159,7 @@ export async function createDagRun(
             "Server error occurred while creating DAG run."
           );
         default:
-          throw new DagRunError(error.message || "Failed to create DAG run.");
+          throw new DagRunError((error as Error).message || "Failed to create DAG run.");
       }
     }
     throw new DagRunError("Network error occurred while creating DAG run.");
@@ -213,13 +172,8 @@ export async function getDagTasks({
   queryKey: string[];
 }): Promise<DagTaskDetails[]> {
   try {
-    const result = await axios.get(
-      `${getApiUrl()}/api/v1/dag/dagTask/pages/page/${queryKey[1]}`,
-      {
-        withCredentials: true,
-      }
-    );
-    return result.data;
+    const data = await request(`${getApiUrl()}/api/v1/dag/dagTask/pages/page/${queryKey[1]}`);
+    return data;
   } catch (error) {
     console.error("Failed to fetch DAG tasks:", error);
     throw error;
@@ -228,16 +182,11 @@ export async function getDagTasks({
 
 export async function getDagTaskPageCount(): Promise<number> {
   try {
-    const result = await axios.get(
-      `${getApiUrl()}/api/v1/dag/dagTask/pages/count`,
-      {
-        withCredentials: true,
-      }
-    );
-    if (typeof result.data.count !== "number") {
+    const data = await request(`${getApiUrl()}/api/v1/dag/dagTask/pages/count`);
+    if (typeof data.count !== "number") {
       throw new Error("Invalid response format: count is not a number");
     }
-    return result.data.count;
+    return data.count;
   } catch (error) {
     console.error("Failed to fetch DAG task page count:", error);
     throw error;
@@ -249,12 +198,13 @@ export async function deleteDag(
   name: string
 ): Promise<void> {
   try {
-    await axios.delete(`${getApiUrl()}/api/v1/dag/dag/${namespace}/${name}`, {
-      withCredentials: true,
+    await request(`${getApiUrl()}/api/v1/dag/dag/${namespace}/${name}`, {
+      method: "DELETE",
     });
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
+    const status = (error as any)?.status;
+    if (typeof status === "number") {
+      switch (status) {
         case 401:
           throw new Error("Authentication required. Please log in.");
         case 403:
@@ -282,15 +232,13 @@ export async function deleteDagRun(
       namespace: namespace,
       run: run,
     });
-    await axios.delete(
-      `${getApiUrl()}/api/v1/dag/run/remove?${params.toString()}`,
-      {
-        withCredentials: true,
-      }
-    );
+    await request(`${getApiUrl()}/api/v1/dag/run/remove?${params.toString()}`, {
+      method: "DELETE",
+    });
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
+    const status = (error as any)?.status;
+    if (typeof status === "number") {
+      switch (status) {
         case 401:
           throw new Error("Authentication required. Please log in.");
         case 403:
@@ -313,20 +261,15 @@ export async function suspendDag(
   suspend: boolean
 ): Promise<void> {
   try {
-    await axios.post(
-      `${getApiUrl()}/api/v1/dag/suspend`,
-      {
-        namespace: namespace,
-        name: name,
-        suspend: suspend,
-      },
-      {
-        withCredentials: true,
-      }
-    );
+    await request(`${getApiUrl()}/api/v1/dag/suspend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ namespace: namespace, name: name, suspend: suspend }),
+    });
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
+    const status = (error as any)?.status;
+    if (typeof status === "number") {
+      switch (status) {
         case 401:
           throw new Error("Authentication required. Please log in.");
         case 403:
