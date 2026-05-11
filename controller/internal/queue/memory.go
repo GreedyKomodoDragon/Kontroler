@@ -51,58 +51,11 @@ func (q *MemoryQueue) PushBatch(values []*PodEvent) error {
 }
 
 func (q *MemoryQueue) Pop() (*PodEvent, error) {
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
-
-	available := len(q.data) - q.head
-	if available == 0 {
-		return nil, ErrQueueIsEmpty
-	}
-
-	res := q.data[q.head]
-	q.data[q.head] = nil
-	q.head++
-
-	// Compact if needed
-	if q.head > 1024 && q.head*2 > len(q.data) {
-		remaining := q.data[q.head:]
-		newData := append([]*PodEvent(nil), remaining...)
-		q.data = newData
-		q.head = 0
-	}
-
-	return res, nil
+	return q.PopWithContext(context.Background())
 }
 
 func (q *MemoryQueue) PopBatch(count int) ([]*PodEvent, error) {
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
-
-	available := len(q.data) - q.head
-	if available == 0 {
-		return nil, ErrQueueIsEmpty
-	}
-
-	if count > available {
-		count = available
-	}
-
-	res := make([]*PodEvent, count)
-	copy(res, q.data[q.head:q.head+count])
-
-	for i := 0; i < count; i++ {
-		q.data[q.head+i] = nil
-	}
-	q.head += count
-
-	if q.head > 1024 && q.head*2 > len(q.data) {
-		remaining := q.data[q.head:]
-		newData := append([]*PodEvent(nil), remaining...)
-		q.data = newData
-		q.head = 0
-	}
-
-	return res, nil
+	return q.PopBatchWithContext(context.Background(), count)
 }
 
 func (q *MemoryQueue) PopWithContext(ctx context.Context) (*PodEvent, error) {

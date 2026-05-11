@@ -22,7 +22,6 @@ type PebbleQueue struct {
 	notify            chan struct{}
 	ctx               context.Context
 	cancel            context.CancelFunc
-	wg                sync.WaitGroup
 	lastCommittedHead uint64
 }
 
@@ -46,16 +45,30 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 		notify:  make(chan struct{}, 1),
 		ctx:     ctx,
 		cancel:  cancel,
-		wg:      sync.WaitGroup{},
 	}
 
 	// Initialize counters
-	head, _ := q.getCounter(q.headKey)
-	tail, _ := q.getCounter(q.tailKey)
+	head, err := q.getCounter(q.headKey)
+	if err != nil {
+		db.Close()
+		cancel()
+		return nil, err
+	}
+
+	tail, err := q.getCounter(q.tailKey)
+	if err != nil {
+		db.Close()
+		cancel()
+		return nil, err
+	}
 
 	if tail < head {
 		tail = head
-		q.updateCounter(q.tailKey, tail)
+		if err := q.updateCounter(q.tailKey, tail); err != nil {
+			db.Close()
+			cancel()
+			return nil, err
+		}
 	}
 
 	q.lastCommittedHead = head
@@ -96,56 +109,11 @@ func (q *PebbleQueue) PushBatch(values []*PodEvent) error {
 }
 
 func (q *PebbleQueue) Pop() (*PodEvent, error) {
-	res, err := q.PopBatch(1)
-	if err != nil {
-		return nil, err
-	}
-	return res[0], nil
+	return q.PopWithContext(context.Background())
 }
 
 func (q *PebbleQueue) PopBatch(count int) ([]*PodEvent, error) {
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
-
-	head, _ := q.getCounter(q.headKey)
-	tail, _ := q.getCounter(q.tailKey)
-
-	available := int(tail - head)
-	if available <= 0 {
-		return nil, ErrQueueIsEmpty
-	}
-
-	if count > available {
-		count = available
-	}
-
-	results := make([]*PodEvent, 0, count)
-	batch := q.db.NewBatch()
-
-	for i := 0; i < count; i++ {
-		head++
-		key := fmt.Sprintf(keyFormat, q.topic, head)
-		value, closer, err := q.db.Get([]byte(key))
-		if err != nil {
-			return results, err
-		}
-		var event PodEvent
-		if err := json.Unmarshal(value, &event); err != nil {
-			closer.Close()
-			return results, err
-		}
-		results = append(results, &event)
-		closer.Close()
-		batch.Delete([]byte(key), nil)
-	}
-
-	batch.Set([]byte(q.headKey), []byte(strconv.FormatUint(head, 10)), nil)
-	if err := batch.Commit(pebble.Sync); err != nil {
-		return results, err
-	}
-
-	q.lastCommittedHead = head
-	return results, nil
+	return q.PopBatchWithContext(context.Background(), count)
 }
 
 func (q *PebbleQueue) PopWithContext(ctx context.Context) (*PodEvent, error) {
@@ -247,6 +215,5 @@ func (q *PebbleQueue) Size() (uint64, error) {
 
 func (q *PebbleQueue) Close() error {
 	q.cancel()
-	q.wg.Wait()
 	return q.db.Close()
 }

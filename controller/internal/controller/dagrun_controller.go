@@ -89,7 +89,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// finalizer in place. Because GenerationChangedPredicate filters out
 		// metadata-only updates, requeueing ensures we process the object.
 		return ctrl.Result{Requeue: true}, nil
-	} 
+	}
 
 	// check if dag exists
 	ok, dagId, err := r.DbManager.DagExists(ctx, dagRun.Spec.DagName)

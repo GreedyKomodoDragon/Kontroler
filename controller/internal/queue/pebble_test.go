@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -74,7 +75,7 @@ func TestPushPop(t *testing.T) {
 
 	// Test pop
 	for _, expected := range testCases {
-		got, err := q.Pop()
+		got, err := q.PopWithContext(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, expected, got.Event)
 	}
@@ -84,18 +85,24 @@ func TestPushPop(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), size)
 
-	// Test pop on empty queue
-	_, err = q.Pop()
+	// Test pop on empty queue (should block) - use a short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err = q.PopWithContext(ctx)
 	require.Error(t, err)
+	require.Equal(t, context.DeadlineExceeded, err)
 }
 
 func TestEmptyQueue(t *testing.T) {
 	q, _, cleanup := setupTestQueue(t)
 	defer cleanup()
 
-	// Test pop on empty queue
-	_, err := q.Pop()
+	// Test pop on empty queue (should block) - use a short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := q.PopWithContext(ctx)
 	require.Error(t, err)
+	require.Equal(t, context.DeadlineExceeded, err)
 
 	// Test size on empty queue
 	size, err := q.Size()
@@ -115,7 +122,7 @@ func TestPeek(t *testing.T) {
 	require.NoError(t, q.Push(testValue))
 
 	// Verify value is still there after peek
-	val, err := q.Pop()
+	val, err := q.PopWithContext(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, testValue.Event, val.Event)
 }
@@ -141,7 +148,7 @@ func TestQueuePersistence(t *testing.T) {
 	require.NoError(t, err)
 	defer q2.Close()
 
-	val, err := q2.Pop()
+	val, err := q2.PopWithContext(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, testValue.Event, val.Event)
 }
@@ -165,7 +172,7 @@ func TestLargeQueue(t *testing.T) {
 
 	// Pop all items
 	for i := 0; i < itemCount; i++ {
-		_, err := q.Pop()
+		_, err := q.PopWithContext(context.Background())
 		require.NoError(t, err)
 	}
 

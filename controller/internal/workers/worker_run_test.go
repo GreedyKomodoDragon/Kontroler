@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"kontroler-controller/api/v1alpha1"
-	"kontroler-controller/internal/queue"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/queue"
 	"kontroler-controller/internal/webhook"
 )
 
@@ -27,25 +27,35 @@ type fakeDB struct {
 }
 
 func (f *fakeDB) InitaliseDatabase(ctx context.Context) error { return nil }
-func (f *fakeDB) GetID(ctx context.Context) (string, error)    { return "fake", nil }
+func (f *fakeDB) GetID(ctx context.Context) (string, error)   { return "fake", nil }
 func (f *fakeDB) GetDAGsToStartAndUpdate(ctx context.Context, tm time.Time) ([]*db.DagInfo, error) {
 	return nil, nil
 }
-func (f *fakeDB) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error { return nil }
+func (f *fakeDB) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
+	return nil
+}
 func (f *fakeDB) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error) {
 	return 0, nil
 }
-func (f *fakeDB) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]db.Task, error) { return nil, nil }
-func (f *fakeDB) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)     { return 0, nil }
-func (f *fakeDB) IncrementAttempts(ctx context.Context, taskRunId int) error               { return nil }
+func (f *fakeDB) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]db.Task, error) {
+	return nil, nil
+}
+func (f *fakeDB) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error) {
+	return 0, nil
+}
+func (f *fakeDB) IncrementAttempts(ctx context.Context, taskRunId int) error { return nil }
 func (f *fakeDB) MarkSuccessAndGetNextTasks(ctx context.Context, taskRunId int) ([]db.Task, error) {
 	return nil, nil
 }
-func (f *fakeDB) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error { return nil }
+func (f *fakeDB) MarkDAGRunOutcome(ctx context.Context, dagRunId int, outcome string) error {
+	return nil
+}
 func (f *fakeDB) GetDagParameters(ctx context.Context, dagName string) (map[string]*db.Parameter, error) {
 	return nil, nil
 }
-func (f *fakeDB) DagExists(ctx context.Context, dagName string) (bool, int, error) { return false, 0, nil }
+func (f *fakeDB) DagExists(ctx context.Context, dagName string) (bool, int, error) {
+	return false, 0, nil
+}
 func (f *fakeDB) ShouldRerun(ctx context.Context, taskRunid int, exitCode int32) (bool, error) {
 	return false, nil
 }
@@ -58,24 +68,42 @@ func (f *fakeDB) MarkPodStatus(ctx context.Context, podUid types.UID, name strin
 	f.lastPhase = status
 	return nil
 }
-func (f *fakeDB) DeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) { return nil, nil }
-func (f *fakeDB) FindExistingDAGRun(ctx context.Context, name string) (bool, error)                      { return false, nil }
-func (f *fakeDB) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) { return nil, nil, nil }
-func (f *fakeDB) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error             { return nil }
-func (f *fakeDB) DeleteTask(ctx context.Context, taskName string, namespace string) error                 { return nil }
+func (f *fakeDB) DeleteDAG(ctx context.Context, name string, namespace string) ([]string, error) {
+	return nil, nil
+}
+func (f *fakeDB) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {
+	return false, nil
+}
+func (f *fakeDB) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+	return nil, nil, nil
+}
+func (f *fakeDB) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {
+	return nil
+}
+func (f *fakeDB) DeleteTask(ctx context.Context, taskName string, namespace string) error { return nil }
 func (f *fakeDB) GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error) {
 	return nil, nil
 }
-func (f *fakeDB) GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error) { return &v1alpha1.Webhook{}, nil }
-func (f *fakeDB) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error)    { return nil, nil }
-func (f *fakeDB) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error)               { return true, nil }
+func (f *fakeDB) GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error) {
+	return &v1alpha1.Webhook{}, nil
+}
+func (f *fakeDB) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error) {
+	return nil, nil
+}
+func (f *fakeDB) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
+	return true, nil
+}
 func (f *fakeDB) MarkConnectingTasksAsSuspended(ctx context.Context, dagRunID, taskRunId int) ([]string, error) {
 	return nil, nil
 }
-func (f *fakeDB) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error { return nil }
-func (f *fakeDB) SuspendDagRun(ctx context.Context, dagRunId int) ([]db.RunningPodInfo, error) { return nil, nil }
-func (f *fakeDB) DeleteDagRun(ctx context.Context, dagRunId int) error                       { return nil }
-func (f *fakeDB) DagrunExists(ctx context.Context, dagrunId int) (bool, error)               { return false, nil }
+func (f *fakeDB) AddPodDuration(ctx context.Context, taskRunId int, durationSec int64) error {
+	return nil
+}
+func (f *fakeDB) SuspendDagRun(ctx context.Context, dagRunId int) ([]db.RunningPodInfo, error) {
+	return nil, nil
+}
+func (f *fakeDB) DeleteDagRun(ctx context.Context, dagRunId int) error         { return nil }
+func (f *fakeDB) DagrunExists(ctx context.Context, dagrunId int) (bool, error) { return false, nil }
 func (f *fakeDB) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error) {
 	return "d", "t", "ns", nil
 }
@@ -101,8 +129,8 @@ func TestWorkerProcessesRunningPodAndWritesDB(t *testing.T) {
 			Name:      "p1",
 			Namespace: "default",
 			Annotations: map[string]string{
-				"kontroler/task-rid": "123",
-				"kontroler/dagRun-id":   "456",
+				"kontroler/task-rid":  "123",
+				"kontroler/dagRun-id": "456",
 			},
 			UID: types.UID("uid-1"),
 		},

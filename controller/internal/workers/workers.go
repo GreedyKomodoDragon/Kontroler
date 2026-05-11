@@ -432,6 +432,11 @@ func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.T
 		exitCode = &defaultExitCode
 	}
 
+	if stamp == nil {
+		now := time.Now()
+		stamp = &now
+	}
+
 	if err := w.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name,
 		taskRunId, pod.Status.Phase, *stamp, exitCode, pod.Namespace); err != nil {
 		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
