@@ -83,52 +83,51 @@ func (w *worker) Push(pod *v1.Pod, event string) error {
 
 func (w *worker) Run(ctx context.Context) error {
 	log.Log.Info("worker started")
-	tkr := time.NewTicker(w.pollDuration)
-	defer tkr.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-tkr.C:
-			podEvent, err := w.queue.Pop()
-			if err != nil {
-				if errors.Is(err, queue.ErrQueueIsEmpty) {
-					continue
-				}
+		default:
+		}
 
-				log.Log.Error(err, "failed to pop pod event from queue")
+		podEvent, err := w.queue.PopWithContext(ctx)
+		if err != nil {
+			if errors.Is(err, queue.ErrQueueIsEmpty) {
+				// queue closed or empty; loop and check ctx
 				continue
 			}
 
-			switch podEvent.Event {
-			case "add":
-				log.Log.Info("pod was added", "podUID", podEvent.Pod.UID, "name", podEvent.Pod.Name)
-				w.handleAdd(podEvent.Pod, podEvent.EventTime)
-			case "update":
-				log.Log.Info("pod was updated", "podUID", podEvent.Pod.UID, "name", podEvent.Pod.Name)
-				w.handleUpdate(podEvent.Pod, podEvent.EventTime)
-			default:
-				log.Log.Info("unknown event", "event", podEvent.Event)
-			}
+			log.Log.Error(err, "failed to pop pod event from queue")
+			continue
+		}
+
+		switch podEvent.Event {
+		case "add":
+			log.Log.Info("pod was added", "podUID", podEvent.Pod.UID, "name", podEvent.Pod.Name)
+			w.handleAdd(ctx, podEvent.Pod, podEvent.EventTime)
+		case "update":
+			log.Log.Info("pod was updated", "podUID", podEvent.Pod.UID, "name", podEvent.Pod.Name)
+			w.handleUpdate(ctx, podEvent.Pod, podEvent.EventTime)
+		default:
+			log.Log.Info("unknown event", "event", podEvent.Event)
 		}
 	}
 }
 
-func (w *worker) handleAdd(pod *v1.Pod, eventTime *time.Time) {
+func (w *worker) handleAdd(ctx context.Context, pod *v1.Pod, eventTime *time.Time) {
 	// Record worker processing metric
 	metrics.RecordWorkerTaskProcessing(w.id, "add")
-	w.handleOutcome(pod, "add", eventTime)
+	w.handleOutcome(ctx, pod, "add", eventTime)
 }
 
-func (t *worker) handleUpdate(pod *v1.Pod, eventTime *time.Time) {
+func (t *worker) handleUpdate(ctx context.Context, pod *v1.Pod, eventTime *time.Time) {
 	// Record worker processing metric
 	metrics.RecordWorkerTaskProcessing(t.id, "update")
-	t.handleOutcome(pod, "update", eventTime)
+	t.handleOutcome(ctx, pod, "update", eventTime)
 }
 
-func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) {
-	ctx := context.Background()
+func (w *worker) handleOutcome(ctx context.Context, pod *v1.Pod, event string, eventTime *time.Time) {
 	log.Log.Info("pod event", "worker", w.id, "podUID", pod.UID, "name", pod.Name, "event", event, "eventTime", eventTime)
 
 	// Update queue size metric
@@ -163,7 +162,7 @@ func (w *worker) handleOutcome(pod *v1.Pod, event string, eventTime *time.Time) 
 	}
 
 	if writeState {
-		if err := w.writeStatusToDB(pod, eventTime); err != nil {
+		if err := w.writeStatusToDB(ctx, pod, eventTime); err != nil {
 			log.Log.Error(err, "failed to writeStatusToDB")
 		}
 	}
@@ -402,7 +401,7 @@ func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskId int)
 	return dbTask, nil
 }
 
-func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
+func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.Time) error {
 	taskRunId, err := w.getTaskRunID(pod)
 	if err != nil {
 		return err
@@ -424,7 +423,7 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 		startTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
 		duration = int64(stamp.Sub(startTime).Seconds())
 
-		if err := w.dbManager.AddPodDuration(context.Background(), taskRunId, duration); err != nil {
+		if err := w.dbManager.AddPodDuration(ctx, taskRunId, duration); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 		}
 	} else if pod.Status.Phase == v1.PodFailed {
@@ -433,13 +432,13 @@ func (w *worker) writeStatusToDB(pod *v1.Pod, stamp *time.Time) error {
 		exitCode = &defaultExitCode
 	}
 
-	if err := w.dbManager.MarkPodStatus(context.Background(), pod.UID, pod.Name,
+	if err := w.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name,
 		taskRunId, pod.Status.Phase, *stamp, exitCode, pod.Namespace); err != nil {
 		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
 		return fmt.Errorf("failed to mark pod status: %w", err)
 	}
 
-	webhook, err := w.dbManager.GetWebhookDetails(context.Background(), dagRunId)
+	webhook, err := w.dbManager.GetWebhookDetails(ctx, dagRunId)
 	if err != nil {
 		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
@@ -721,7 +720,7 @@ func (w *worker) isAlreadyFetching(dagRunId int, pod *v1.Pod) bool {
 
 func (w *worker) uploadLogsAndCleanup(ctx context.Context, dagRunId int, pod *v1.Pod) {
 	log.Log.Info("started collecting logs", "pod", pod.Name)
-	if err := w.logStore.UploadLogs(context.Background(), dagRunId, w.clientSet, pod); err != nil {
+	if err := w.logStore.UploadLogs(ctx, dagRunId, w.clientSet, pod); err != nil {
 		log.Log.Error(err, "failed to uploadLogs")
 	}
 

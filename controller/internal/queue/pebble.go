@@ -19,6 +19,7 @@ type PebbleQueue struct {
 	headKey           string
 	tailKey           string
 	mutex             sync.Mutex
+	notify            chan struct{}
 	ctx               context.Context
 	cancel            context.CancelFunc
 	wg                sync.WaitGroup
@@ -42,6 +43,7 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 		headKey: topic + ":head",
 		tailKey: topic + ":tail",
 		mutex:   sync.Mutex{},
+		notify:  make(chan struct{}, 1),
 		ctx:     ctx,
 		cancel:  cancel,
 		wg:      sync.WaitGroup{},
@@ -82,15 +84,23 @@ func (q *PebbleQueue) PushBatch(values []*PodEvent) error {
 	}
 
 	batch.Set([]byte(q.tailKey), []byte(strconv.FormatUint(tail, 10)), nil)
-	return batch.Commit(pebble.Sync)
+	if err := batch.Commit(pebble.Sync); err != nil {
+		return err
+	}
+	// Notify a waiter if any (non-blocking)
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 func (q *PebbleQueue) Pop() (*PodEvent, error) {
-	values, err := q.PopBatch(1)
+	res, err := q.PopBatch(1)
 	if err != nil {
 		return nil, err
 	}
-	return values[0], nil
+	return res[0], nil
 }
 
 func (q *PebbleQueue) PopBatch(count int) ([]*PodEvent, error) {
@@ -136,6 +146,72 @@ func (q *PebbleQueue) PopBatch(count int) ([]*PodEvent, error) {
 
 	q.lastCommittedHead = head
 	return results, nil
+}
+
+func (q *PebbleQueue) PopWithContext(ctx context.Context) (*PodEvent, error) {
+	vals, err := q.PopBatchWithContext(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	return vals[0], nil
+}
+
+func (q *PebbleQueue) PopBatchWithContext(ctx context.Context, count int) ([]*PodEvent, error) {
+	for {
+		q.mutex.Lock()
+		head, _ := q.getCounter(q.headKey)
+		tail, _ := q.getCounter(q.tailKey)
+
+		available := int(tail - head)
+		if available <= 0 {
+			q.mutex.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-q.ctx.Done():
+				return nil, ErrQueueIsEmpty
+			case <-q.notify:
+				// notified, loop and re-check under lock
+			}
+			continue
+		}
+
+		if count > available {
+			count = available
+		}
+
+		results := make([]*PodEvent, 0, count)
+		batch := q.db.NewBatch()
+
+		for i := 0; i < count; i++ {
+			head++
+			key := fmt.Sprintf(keyFormat, q.topic, head)
+			value, closer, err := q.db.Get([]byte(key))
+			if err != nil {
+				q.mutex.Unlock()
+				return results, err
+			}
+			var event PodEvent
+			if err := json.Unmarshal(value, &event); err != nil {
+				closer.Close()
+				q.mutex.Unlock()
+				return results, err
+			}
+			results = append(results, &event)
+			closer.Close()
+			batch.Delete([]byte(key), nil)
+		}
+
+		batch.Set([]byte(q.headKey), []byte(strconv.FormatUint(head, 10)), nil)
+		if err := batch.Commit(pebble.Sync); err != nil {
+			q.mutex.Unlock()
+			return results, err
+		}
+
+		q.lastCommittedHead = head
+		q.mutex.Unlock()
+		return results, nil
+	}
 }
 
 func (q *PebbleQueue) getCounter(key string) (uint64, error) {
