@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +45,7 @@ func TestMemoryPushPop(t *testing.T) {
 
 	// Test pop
 	for _, expected := range testCases {
-		got, err := q.Pop()
+		got, err := q.PopWithContext(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, expected, got)
 	}
@@ -54,18 +55,24 @@ func TestMemoryPushPop(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), size)
 
-	// Test pop on empty queue
-	_, err = q.Pop()
+	// Test pop on empty queue (should block without items) - use a short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err = q.PopWithContext(ctx)
 	require.Error(t, err)
+	require.Equal(t, context.DeadlineExceeded, err)
 }
 
 func TestMemoryEmptyQueue(t *testing.T) {
 	q := setupMemoryTestQueue(t)
 	defer q.Close()
 
-	// Test pop on empty queue
-	_, err := q.Pop()
+	// Test pop on empty queue (should block) - use a short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := q.PopWithContext(ctx)
 	require.Error(t, err)
+	require.Equal(t, context.DeadlineExceeded, err)
 
 	// Test size on empty queue
 	size, err := q.Size()
@@ -100,7 +107,7 @@ func TestMemoryBatchOperations(t *testing.T) {
 	require.Equal(t, uint64(1), size)
 
 	// Pop remaining item
-	result, err := q.Pop()
+	result, err := q.PopWithContext(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, values[2], result)
 }
@@ -111,7 +118,7 @@ func TestMemoryLargeQueue(t *testing.T) {
 
 	// Push many items
 	itemCount := 1000
-	for i := range itemCount {
+	for i := 0; i < itemCount; i++ {
 		require.NoError(t, q.Push(&PodEvent{
 			Pod:   nil,
 			Event: strconv.Itoa(i),
@@ -152,7 +159,7 @@ func TestMemoryQueueConcurrency(t *testing.T) {
 
 	// Start producer
 	go func() {
-		for i := range itemCount {
+		for i := 0; i < itemCount; i++ {
 			require.NoError(t, q.Push(&PodEvent{
 				Pod:   nil,
 				Event: strconv.Itoa(i),
@@ -165,7 +172,8 @@ func TestMemoryQueueConcurrency(t *testing.T) {
 	go func() {
 		count := 0
 		for count < itemCount {
-			if val, err := q.Pop(); err == nil {
+			val, err := q.PopWithContext(context.Background())
+			if err == nil {
 				require.NotEmpty(t, val)
 				count++
 			}
