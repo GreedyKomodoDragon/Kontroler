@@ -226,7 +226,7 @@ func (r *DAGReconciler) updatingDagTaskFinalisers(ctx context.Context, taskRefs 
 				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
 					log.Log.Error(err, "failed to add finalizer to dagTask", "taskRef", tr)
 				}
-			} 
+			}
 
 			return nil
 		})
@@ -270,7 +270,7 @@ func (r *DAGReconciler) removingDagTaskFinalisers(ctx context.Context, taskRefs 
 				if err := r.Patch(gctx, &dagTask, client.MergeFrom(old)); err != nil {
 					log.Log.Error(err, "failed to remove finalizer from dagTask", "taskRef", tr)
 				}
-			} 
+			}
 
 			return nil
 		})
