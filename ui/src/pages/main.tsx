@@ -4,10 +4,12 @@ import { createSignal } from "solid-js";
 import { ApexOptions } from "apexcharts";
 import { getDashboardStats } from "../api/dags";
 import { DashboardStats } from "../types/dag";
+import { createQuery } from "@tanstack/solid-query";
+import Loadable from "../components/loadable";
 
 const Main: Component = () => {
   // Updated bar chart data for DagRun Outcomes (30 Days)
-  const [timeLine, setTimeLine] = createSignal({
+  const [timeLine, setTimeLine] = createSignal<ApexOptions>({
     chart: {
       type: "bar",
       height: 400,
@@ -56,7 +58,7 @@ const Main: Component = () => {
   });
 
   // New donut chart data for DAG Type
-  const [dagTypeDonutChartOptions, setDagTypeDonutChartOptions] = createSignal({
+  const [dagTypeDonutChartOptions, setDagTypeDonutChartOptions] = createSignal<ApexOptions>({
     chart: {
       type: "donut",
     },
@@ -82,7 +84,7 @@ const Main: Component = () => {
 
   // New donut chart data for Task Outcomes (30 Days)
   const [taskOutcomesDonutChartOptions, setTaskOutcomesDonutChartOptions] =
-    createSignal({
+    createSignal<ApexOptions>({
       chart: {
         type: "donut",
       },
@@ -106,205 +108,214 @@ const Main: Component = () => {
       },
     });
 
-  const [stats, setStats] = createSignal<DashboardStats | undefined>();
-  
-  getDashboardStats()
-    .then((data) => {
-      setStats(data);
+  const statsQuery = createQuery(() => ({
+    queryKey: ["dashboard-stats"],
+    queryFn: getDashboardStats,
+    staleTime: 5 * 60 * 1000,
+  }));
 
-      const series = [
-        data.dag_type_counts["Event Driven"] || 0,
-        data.dag_type_counts["Scheduled"] || 0,
-      ];
+  // reactively update chart options when query data arrives
+  if (statsQuery.isSuccess && statsQuery.data) {
+    const data = statsQuery.data as DashboardStats;
 
-      const seriesTask = [
-        data.task_outcomes["Completed"] || 0,
-        data.task_outcomes["Failed"] || 0,
-      ];
+    const series = [
+      data.dag_type_counts["Event Driven"] || 0,
+      data.dag_type_counts["Scheduled"] || 0,
+    ];
 
-      const seriesTime: string[] = [];
-      const seriesSuccessful = [];
-      const seriesFailed = [];
+    const seriesTask = [
+      data.task_outcomes["Completed"] || 0,
+      data.task_outcomes["Failed"] || 0,
+    ];
 
-      for (let index = 0; index < data.daily_dag_run_counts.length; index++) {
-        const element = data.daily_dag_run_counts[index];
-        seriesFailed.push(element.failed_count);
-        seriesSuccessful.push(element.successful_count);
-        seriesTime.push(element.day.substring(0, 10));
-      }
+    const seriesTime: string[] = [];
+    const seriesSuccessful: number[] = [];
+    const seriesFailed: number[] = [];
 
-      const timeSeriesFinal = [
-        {
-          name: "Successful",
-          data: seriesSuccessful,
-        },
-        {
-          name: "Failed",
-          data: seriesFailed,
-        },
-      ];
+    for (let index = 0; index < data.daily_dag_run_counts.length; index++) {
+      const element = data.daily_dag_run_counts[index];
+      seriesFailed.push(element.failed_count);
+      seriesSuccessful.push(element.successful_count);
+      seriesTime.push(element.day.substring(0, 10));
+    }
 
-      setDagTypeDonutChartOptions((prevOptions) => ({
-        ...prevOptions,
-        series: series,
-      }));
+    const timeSeriesFinal = [
+      {
+        name: "Successful",
+        data: seriesSuccessful,
+      },
+      {
+        name: "Failed",
+        data: seriesFailed,
+      },
+    ];
 
-      setTaskOutcomesDonutChartOptions((prevOptions) => ({
-        ...prevOptions,
-        series: seriesTask,
-      }));
+    setDagTypeDonutChartOptions((prevOptions) => ({
+      ...(prevOptions as any),
+      series: series,
+    }));
 
-      setTimeLine((prevOptions) => ({
-        ...prevOptions,
-        series: timeSeriesFinal,
-        xaxis: {
-          categories: seriesTime,
-          labels: {
-            style: {
-              colors: "#FFFFFF",
-            },
+    setTaskOutcomesDonutChartOptions((prevOptions) => ({
+      ...(prevOptions as any),
+      series: seriesTask,
+    }));
+
+    setTimeLine((prevOptions) => ({
+      ...(prevOptions as any),
+      series: timeSeriesFinal,
+      xaxis: {
+        categories: seriesTime,
+        labels: {
+          style: {
+            colors: "#FFFFFF",
           },
         },
-      }));
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+      },
+    }));
+  }
+
+  const stats = statsQuery.data;
 
   return (
-    <div>
-      <div class="flex flex-col w-full max-w-5xl mx-auto p-6 gap-6">
-        <div class="flex flex-col gap-2">
-          <h1 class="text-3xl font-bold">Kontroler Dashboard</h1>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div
-            class="rounded-lg border bg-card text-card-foreground shadow-sm"
-            data-v0-t="card"
-          >
-            <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
-                DAG Count
-              </h3>
+    <Loadable
+      loading={statsQuery.isLoading}
+      error={statsQuery.error && (statsQuery.error as any).message}
+      onRetry={() => statsQuery.refetch()}
+    >
+      <div>
+        <div class="flex flex-col w-full max-w-5xl mx-auto p-6 gap-6">
+          <div class="flex flex-col gap-2">
+            <h1 class="text-3xl font-bold">Kontroler Dashboard</h1>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
+                  DAG Count
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="text-4xl font-bold">
+                  {stats ? stats.dag_count : 0}
+                </div>
+              </div>
             </div>
-            <div class="p-6">
-              <div class="text-4xl font-bold">
-                {stats() ? stats()?.dag_count : 0}
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
+                  Successful
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="text-4xl font-bold text-green-500">
+                  {stats ? stats.successful_dag_runs : 0}
+                </div>
+              </div>
+            </div>
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
+                  Failed
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="text-4xl font-bold text-red-500">
+                  {stats ? stats.failed_dag_runs : 0}
+                </div>
+              </div>
+            </div>
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
+                  Total DagRuns
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="text-4xl font-bold">
+                  {stats ? stats.total_dag_runs : 0}
+                </div>
               </div>
             </div>
           </div>
-          <div
-            class="rounded-lg border bg-card text-card-foreground shadow-sm"
-            data-v0-t="card"
-          >
-            <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
-                Successful
-              </h3>
-            </div>
-            <div class="p-6">
-              <div class="text-4xl font-bold text-green-500">
-                {stats() ? stats()?.successful_dag_runs : 0}
-              </div>
-            </div>
-          </div>
-          <div
-            class="rounded-lg border bg-card text-card-foreground shadow-sm"
-            data-v0-t="card"
-          >
-            <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
-                Failed
-              </h3>
-            </div>
-            <div class="p-6">
-              <div class="text-4xl font-bold text-red-500">
-                {stats() ? stats()?.failed_dag_runs : 0}
-              </div>
-            </div>
-          </div>
-          <div
-            class="rounded-lg border bg-card text-card-foreground shadow-sm"
-            data-v0-t="card"
-          >
-            <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
-                Total DagRuns
-              </h3>
-            </div>
-            <div class="p-6">
-              <div class="text-4xl font-bold">
-                {stats() ? stats()?.total_dag_runs : 0}
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div
-          class="rounded-lg border bg-card text-card-foreground shadow-sm"
-          data-v0-t="card"
-        >
-          <div class="flex flex-col space-y-1.5 p-6">
-            <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
-              DagRun Outcomes (30 Days)
-            </h3>
-          </div>
-          <div class="p-6">
-            <Chart options={timeLine() as ApexOptions} />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div
             class="rounded-lg border bg-card text-card-foreground shadow-sm"
             data-v0-t="card"
           >
             <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-xl font-semibold leading-none tracking-tight">
-                Current Active DagRuns
+              <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">
+                DagRun Outcomes (30 Days)
               </h3>
             </div>
             <div class="p-6">
-              {/* Apply responsive font size */}
-              <div class="text-8xl font-bold text-fit">
-                {stats() ? stats()?.active_dag_runs : 0}
+              <Chart options={timeLine() as ApexOptions} />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-xl font-semibold leading-none tracking-tight">
+                  Current Active DagRuns
+                </h3>
+              </div>
+              <div class="p-6">
+                {/* Apply responsive font size */}
+                <div class="text-8xl font-bold text-fit">
+                  {stats ? stats.active_dag_runs : 0}
+                </div>
               </div>
             </div>
-          </div>
-          <div
-            class="rounded-lg border bg-card text-card-foreground shadow-sm"
-            data-v0-t="card"
-          >
-            <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-xl font-semibold leading-none tracking-tight">
-                DAG Type
-              </h3>
-            </div>
-            <div class="p-6">
-              <div class="text-4xl font-bold text-red-500">
-                <Chart options={dagTypeDonutChartOptions() as ApexOptions} />
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-xl font-semibold leading-none tracking-tight">
+                  DAG Type
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="text-4xl font-bold text-red-500">
+                  <Chart options={dagTypeDonutChartOptions() as ApexOptions} />
+                </div>
               </div>
             </div>
-          </div>
-          <div
-            class="rounded-lg border bg-card text-card-foreground shadow-sm"
-            data-v0-t="card"
-          >
-            <div class="flex flex-col space-y-1.5 p-6">
-              <h3 class="whitespace-nowrap text-xl font-semibold leading-none tracking-tight">
-                Task Outcomes (30 Days)
-              </h3>
-            </div>
-            <div class="p-6">
-              <div class="text-4xl font-bold text-yellow-500">
-                <Chart
-                  options={taskOutcomesDonutChartOptions() as ApexOptions}
-                />
+            <div
+              class="rounded-lg border bg-card text-card-foreground shadow-sm"
+              data-v0-t="card"
+            >
+              <div class="flex flex-col space-y-1.5 p-6">
+                <h3 class="whitespace-nowrap text-xl font-semibold leading-none tracking-tight">
+                  Task Outcomes (30 Days)
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="text-4xl font-bold text-yellow-500">
+                  <Chart
+                    options={taskOutcomesDonutChartOptions() as ApexOptions}
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </Loadable>
   );
 };
 

@@ -1,9 +1,9 @@
-import { Component, createSignal, Show } from "solid-js";
+import { Component, createSignal } from "solid-js";
 import { getDagPageCount, getDags } from "../api/dags";
 import DagComponent from "../components/dagComponent";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
-import Spinner from "../components/spinner";
 import PaginationComponent from "../components/pagination";
+import Loadable from "../components/loadable";
 
 const Dags: Component = () => {
   const [maxPage, setMaxPage] = createSignal(-1);
@@ -12,7 +12,7 @@ const Dags: Component = () => {
 
   const dags = createQuery(() => ({
     queryKey: ["dags", page().toString()],
-    queryFn:  getDags,
+    queryFn: getDags,
     staleTime: 5 * 60 * 1000, // 5 minutes
   }));
 
@@ -26,15 +26,14 @@ const Dags: Component = () => {
     <div class="p-4">
       <h2 class="text-2xl font-semibold mb-4">Your DAGs</h2>
       <div class="mt-4"></div>
-      <Show when={dags.isError}>
-        <div>Error: {dags.error && dags.error.message}</div>
-      </Show>
-      <Show when={dags.isLoading}>
-        <Spinner />
-      </Show>
-      <Show when={dags.isSuccess}>
+
+      <Loadable
+        loading={dags.isLoading}
+        error={dags.isError && (dags.error as any)?.message}
+        onRetry={() => dags.refetch()}
+      >
         <div>
-          {dags.data ? (
+          {dags.data && dags.data.length > 0 ? (
             dags.data.map((dag) => (
               <DagComponent
                 dag={dag}
@@ -54,10 +53,11 @@ const Dags: Component = () => {
             <p>No DAG found!</p>
           )}
         </div>
-      </Show>
-      <Show when={maxPage() > 1}>
+      </Loadable>
+
+      {maxPage() > 1 && (
         <PaginationComponent setPage={setPage} maxPage={maxPage} />
-      </Show>
+      )}
     </div>
   );
 };

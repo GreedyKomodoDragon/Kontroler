@@ -1,9 +1,9 @@
-import { Component, createSignal, Show } from "solid-js";
+import { Component, createSignal } from "solid-js";
 import { getDagRunPageCount, getDagRuns } from "../api/dags";
 import DagRunComponent from "../components/dagRunComponent";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import PaginationComponent from "../components/pagination";
-import Spinner from "../components/spinner";
+import Loadable from "../components/loadable";
 import { A } from "@solidjs/router";
 
 const DagRuns: Component = () => {
@@ -29,13 +29,12 @@ const DagRuns: Component = () => {
       <div class="my-4 flex">
         <A href="/dags/runs/create" class="ml-auto bg-blue-500 p-2 rounded-md">Create New DagRun</A>
       </div>
-      <Show when={runs.isError}>
-        <div>Error: {runs.error && runs.error.message}</div>
-      </Show>
-      <Show when={runs.isLoading}>
-        <Spinner />
-      </Show>
-      <Show when={runs.isSuccess}>
+
+      <Loadable
+        loading={runs.isLoading}
+        error={runs.isError && (runs.error as any)?.message}
+        onRetry={() => runs.refetch()}
+      >
         <div>
           {runs.data && runs.data.length !== 0 ? (
             runs.data.map((run) => (
@@ -57,10 +56,11 @@ const DagRuns: Component = () => {
             <p>No DAG Runs found!</p>
           )}
         </div>
-      </Show>
-      <Show when={maxPage() > 1}>
+      </Loadable>
+
+      {maxPage() > 1 && (
         <PaginationComponent setPage={setPage} maxPage={maxPage} />
-      </Show>
+      )}
     </div>
   );
 };
