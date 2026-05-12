@@ -1,14 +1,15 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal } from "solid-js";
 import { deleteAccount, getUserPageCount, getUsers } from "../api/admin";
 import { A } from "@solidjs/router";
 import PaginationComponent from "./pagination";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
-import Spinner from "./spinner";
 import { DeleteButton } from "./admin/deleteButton";
 import ConfirmDeletion from "./admin/confirmDeletion";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
 import Identicon from "./navbar/icon";
 import { useError } from "../providers/ErrorProvider";
+import Loadable from "./loadable";
+import SkeletonCard from "./skeletonCard";
 
 export default function ManageUsers() {
   const { handleApiError } = useError();
@@ -94,13 +95,20 @@ export default function ManageUsers() {
           <ErrorSingleAlert msg={errorMsg()} />
         </div>
       )}
-      <Show when={users.isError}>
-        <div>Error: {users.error && users.error.message}</div>
-      </Show>
-      <Show when={users.isLoading}>
-        <Spinner />
-      </Show>
-      <Show when={users.isSuccess}>
+      <Loadable
+        loading={users.isLoading}
+        error={users.isError && (users.error as any)?.message}
+        onRetry={() => users.refetch()}
+        skeleton={
+          <div class="space-y-4 mt-6">
+            {Array.from({ length: 6 }).map(() => (
+              <div class="py-5">
+                <SkeletonCard titleLines={1} bodyLines={1} />
+              </div>
+            ))}
+          </div>
+        }
+      >
         <ul class="mt-12 divide-y">
           {users.data &&
             users.data.map((item, idx) => (
@@ -131,7 +139,7 @@ export default function ManageUsers() {
               </li>
             ))}
         </ul>
-      </Show>
+      </Loadable>
       <Show when={maxPage() > 1}>
         <PaginationComponent setPage={setPage} maxPage={maxPage} />
       </Show>
