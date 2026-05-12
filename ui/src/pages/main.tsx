@@ -6,6 +6,7 @@ import { getDashboardStats } from "../api/dags";
 import { DashboardStats } from "../types/dag";
 import { createQuery } from "@tanstack/solid-query";
 import Loadable from "../components/loadable";
+import SkeletonCard from "../components/skeletonCard";
 
 const Main: Component = () => {
   // Updated bar chart data for DagRun Outcomes (30 Days)
@@ -181,59 +182,20 @@ const Main: Component = () => {
       <div class="flex flex-col gap-2">
         <div class="h-8 bg-gray-700 rounded w-48 animate-pulse"></div>
       </div>
+
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
-            <div class="h-8 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
-            <div class="h-8 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
-            <div class="h-8 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
-            <div class="h-8 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
+        <SkeletonCard titleLines={1} bodyLines={1} />
+        <SkeletonCard titleLines={1} bodyLines={1} />
+        <SkeletonCard titleLines={1} bodyLines={1} />
+        <SkeletonCard titleLines={1} bodyLines={1} />
       </div>
 
-      <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-        <div class="animate-pulse">
-          <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
-          <div class="h-64 bg-gray-700 rounded w-full"></div>
-        </div>
-      </div>
+      <SkeletonCard titleLines={1} bodyLines={1} height="h-64" />
 
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
-            <div class="h-16 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
-            <div class="h-24 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
-        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
-          <div class="animate-pulse">
-            <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
-            <div class="h-24 bg-gray-700 rounded w-full"></div>
-          </div>
-        </div>
+        <SkeletonCard titleLines={1} bodyLines={1} height="h-16" />
+        <SkeletonCard titleLines={1} bodyLines={1} height="h-24" />
+        <SkeletonCard titleLines={1} bodyLines={1} height="h-24" />
       </div>
     </div>
   );

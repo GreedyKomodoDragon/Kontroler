@@ -4,6 +4,7 @@ import DagComponent from "../components/dagComponent";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import PaginationComponent from "../components/pagination";
 import Loadable from "../components/loadable";
+import SkeletonCard from "../components/skeletonCard";
 
 const Dags: Component = () => {
   const [maxPage, setMaxPage] = createSignal(-1);
@@ -31,6 +32,13 @@ const Dags: Component = () => {
         loading={dags.isLoading}
         error={dags.isError && (dags.error as any)?.message}
         onRetry={() => dags.refetch()}
+        skeleton={
+          <div class="space-y-4">
+            {Array.from({ length: 6 }).map(() => (
+              <SkeletonCard titleLines={1} bodyLines={1} />
+            ))}
+          </div>
+        }
       >
         <div>
           {dags.data && dags.data.length > 0 ? (

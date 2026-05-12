@@ -4,6 +4,7 @@ import { createQuery } from "@tanstack/solid-query";
 import PaginationComponent from "../components/pagination";
 import TaskBox from "../components/containers/taskBox";
 import Loadable from "../components/loadable";
+import SkeletonCard from "../components/skeletonCard";
 
 export default function Tasks() {
   const [maxPage, setMaxPage] = createSignal(-1);
@@ -26,7 +27,7 @@ export default function Tasks() {
       <h2 class="text-2xl font-semibold mb-4">Your Tasks</h2>
       <div class="mt-4"></div>
 
-      <Loadable loading={tasks.isLoading} error={tasks.isError && (tasks.error as any)?.message} onRetry={() => tasks.refetch()}>
+      <Loadable loading={tasks.isLoading} error={tasks.isError && (tasks.error as any)?.message} onRetry={() => tasks.refetch()} skeleton={<div class="space-y-4">{Array.from({ length: 8 }).map(() => <SkeletonCard titleLines={1} bodyLines={2} />)}</div>}>
         <div>
           {tasks.data && tasks.data.length > 0 ? (
             tasks.data.map((task) => <TaskBox taskDetails={task} />)

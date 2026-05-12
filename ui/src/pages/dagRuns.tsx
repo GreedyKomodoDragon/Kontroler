@@ -4,6 +4,7 @@ import DagRunComponent from "../components/dagRunComponent";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import PaginationComponent from "../components/pagination";
 import Loadable from "../components/loadable";
+import SkeletonCard from "../components/skeletonCard";
 import { A } from "@solidjs/router";
 
 const DagRuns: Component = () => {
@@ -34,6 +35,13 @@ const DagRuns: Component = () => {
         loading={runs.isLoading}
         error={runs.isError && (runs.error as any)?.message}
         onRetry={() => runs.refetch()}
+        skeleton={
+          <div class="space-y-4">
+            {Array.from({ length: 6 }).map(() => (
+              <SkeletonCard titleLines={1} bodyLines={2} />
+            ))}
+          </div>
+        }
       >
         <div>
           {runs.data && runs.data.length !== 0 ? (
