@@ -176,11 +176,74 @@ const Main: Component = () => {
 
   const stats = statsQuery.data;
 
+  const skeleton = (
+    <div class="flex flex-col w-full max-w-5xl mx-auto p-6 gap-6">
+      <div class="flex flex-col gap-2">
+        <div class="h-8 bg-gray-700 rounded w-48 animate-pulse"></div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
+            <div class="h-8 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
+            <div class="h-8 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
+            <div class="h-8 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-3/4 mb-4"></div>
+            <div class="h-8 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+        <div class="animate-pulse">
+          <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
+          <div class="h-64 bg-gray-700 rounded w-full"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
+            <div class="h-16 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
+            <div class="h-24 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+          <div class="animate-pulse">
+            <div class="h-6 bg-gray-600 rounded w-1/3 mb-4"></div>
+            <div class="h-24 bg-gray-700 rounded w-full"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <Loadable
       loading={statsQuery.isLoading}
       error={statsQuery.error && (statsQuery.error as any).message}
       onRetry={() => statsQuery.refetch()}
+      skeleton={skeleton}
     >
       <div>
         <div class="flex flex-col w-full max-w-5xl mx-auto p-6 gap-6">

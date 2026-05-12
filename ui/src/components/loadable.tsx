@@ -6,11 +6,14 @@ type LoadableProps = {
   loading?: boolean;
   error?: string | null | undefined;
   onRetry?: () => void;
+  skeleton?: JSX.Element;
   children: JSX.Element;
 };
 
 export default function Loadable(props: LoadableProps) {
   if (props.loading) {
+    if (props.skeleton) return <>{props.skeleton}</>;
+
     return (
       <div class="flex items-center justify-center w-full py-12">
         <Spinner />
