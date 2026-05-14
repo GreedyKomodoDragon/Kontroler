@@ -6,7 +6,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/components/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: [new URL('./src/test/mock-jest-dom.js', import.meta.url).pathname],
   },
   resolve: {

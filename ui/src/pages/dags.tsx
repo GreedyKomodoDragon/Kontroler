@@ -7,21 +7,20 @@ import Loadable from "../components/loadable";
 import SkeletonCard from "../components/skeletonCard";
 
 const Dags: Component = () => {
-  const [maxPage, setMaxPage] = createSignal(-1);
   const [page, setPage] = createSignal(1);
   const queryClient = useQueryClient();
+
+  const pageCountQuery = createQuery(() => ({
+    queryKey: ["dag-page-count"],
+    queryFn: getDagPageCount,
+    staleTime: 5 * 60 * 1000,
+  }));
 
   const dags = createQuery(() => ({
     queryKey: ["dags", page().toString()],
     queryFn: getDags,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   }));
-
-  getDagPageCount()
-    .then((count) => {
-      setMaxPage(count);
-    })
-    .catch((error) => console.error(error));
 
   return (
     <div class="p-4">
@@ -46,14 +45,8 @@ const Dags: Component = () => {
               <DagComponent
                 dag={dag}
                 onDelete={() => {
-                  getDagPageCount()
-                    .then((count) => {
-                      setMaxPage(count);
-                      queryClient.invalidateQueries({
-                        queryKey: ["dags"],
-                      });
-                    })
-                    .catch((error) => console.error(error));
+                  queryClient.invalidateQueries({ queryKey: ["dag-page-count"] });
+                  queryClient.invalidateQueries({ queryKey: ["dags"] });
                 }}
               />
             ))
@@ -63,8 +56,8 @@ const Dags: Component = () => {
         </div>
       </Loadable>
 
-      {maxPage() > 1 && (
-        <PaginationComponent setPage={setPage} maxPage={maxPage} />
+      {pageCountQuery.data && pageCountQuery.data > 1 && (
+        <PaginationComponent setPage={setPage} maxPage={() => pageCountQuery.data!} />
       )}
     </div>
   );

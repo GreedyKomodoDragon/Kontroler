@@ -8,21 +8,20 @@ import SkeletonCard from "../components/skeletonCard";
 import { A } from "@solidjs/router";
 
 const DagRuns: Component = () => {
-  const [maxPage, setMaxPage] = createSignal(-1);
   const [page, setPage] = createSignal(1);
   const queryClient = useQueryClient();
+
+  const pageCountQuery = createQuery(() => ({
+    queryKey: ["dag-run-page-count"],
+    queryFn: getDagRunPageCount,
+    staleTime: 5 * 60 * 1000,
+  }));
 
   const runs = createQuery(() => ({
     queryKey: ["dags-runs", page().toString()],
     queryFn: getDagRuns,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   }));
-
-  getDagRunPageCount()
-    .then((count) => {
-      setMaxPage(count);
-    })
-    .catch((error) => console.error(error));
 
   return (
     <div class="p-4">
@@ -46,17 +45,11 @@ const DagRuns: Component = () => {
         <div>
           {runs.data && runs.data.length !== 0 ? (
             runs.data.map((run) => (
-              <DagRunComponent 
-                dagRun={run} 
+              <DagRunComponent
+                dagRun={run}
                 onDelete={() => {
-                  getDagRunPageCount()
-                    .then((count) => {
-                      setMaxPage(count);
-                      queryClient.invalidateQueries({
-                        queryKey: ["dags-runs"],
-                      });
-                    })
-                    .catch((error) => console.error(error));
+                  queryClient.invalidateQueries({ queryKey: ["dag-run-page-count"] });
+                  queryClient.invalidateQueries({ queryKey: ["dags-runs"] });
                 }}
               />
             ))
@@ -66,8 +59,8 @@ const DagRuns: Component = () => {
         </div>
       </Loadable>
 
-      {maxPage() > 1 && (
-        <PaginationComponent setPage={setPage} maxPage={maxPage} />
+      {pageCountQuery.data && pageCountQuery.data > 1 && (
+        <PaginationComponent setPage={setPage} maxPage={() => pageCountQuery.data!} />
       )}
     </div>
   );

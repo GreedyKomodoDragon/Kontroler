@@ -7,20 +7,19 @@ import Loadable from "../components/loadable";
 import SkeletonCard from "../components/skeletonCard";
 
 export default function Tasks() {
-  const [maxPage, setMaxPage] = createSignal(-1);
   const [page, setPage] = createSignal(1);
+
+  const pageCountQuery = createQuery(() => ({
+    queryKey: ["dag-task-page-count"],
+    queryFn: getDagTaskPageCount,
+    staleTime: 5 * 60 * 1000,
+  }));
 
   const tasks = createQuery(() => ({
     queryKey: ["dagTasks", page().toString()],
     queryFn: getDagTasks,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   }));
-
-  getDagTaskPageCount()
-    .then((count) => {
-      setMaxPage(count);
-    })
-    .catch((error) => console.error(error));
 
   return (
     <div class="p-4">
@@ -37,8 +36,8 @@ export default function Tasks() {
         </div>
       </Loadable>
 
-      {maxPage() > 1 && (
-        <PaginationComponent setPage={setPage} maxPage={maxPage} />
+      {pageCountQuery.data && pageCountQuery.data > 1 && (
+        <PaginationComponent setPage={setPage} maxPage={() => pageCountQuery.data!} />
       )}
     </div>
   );

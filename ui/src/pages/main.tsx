@@ -1,6 +1,6 @@
 import type { Component } from "solid-js";
+import { createSignal, createEffect } from "solid-js";
 import Chart from "../components/chart";
-import { createSignal } from "solid-js";
 import { ApexOptions } from "apexcharts";
 import { getDashboardStats } from "../api/dags";
 import { DashboardStats } from "../types/dag";
@@ -9,105 +9,39 @@ import Loadable from "../components/loadable";
 import SkeletonCard from "../components/skeletonCard";
 
 const Main: Component = () => {
-  // Updated bar chart data for DagRun Outcomes (30 Days)
   const [timeLine, setTimeLine] = createSignal<ApexOptions>({
     chart: {
       type: "bar",
       height: 400,
-      toolbar: {
-        show: false, // Disable the toolbar
-      },
+      toolbar: { show: false },
     },
-    series: [
-      {
-        name: "Successful",
-        data: [] as number[],
-      },
-      {
-        name: "Failed",
-        data: [] as number[],
-      },
-    ],
+    series: [{ name: "Successful", data: [] as number[] }, { name: "Failed", data: [] as number[] }],
     colors: ["#00FF00", "#FF0000"],
-    xaxis: {
-      categories: [] as string[],
-      labels: {
-        style: {
-          colors: "#FFFFFF",
-        },
-      },
-    },
-    yaxis: {
-      labels: {
-        style: {
-          colors: "#FFFFFF",
-        },
-      },
-    },
-    tooltip: {
-      theme: "dark",
-      style: {
-        fontSize: "12px",
-        background: "#333333",
-      },
-    },
-    legend: {
-      labels: {
-        colors: "#FFFFFF",
-      },
-    },
+    xaxis: { categories: [] as string[], labels: { style: { colors: "#FFFFFF" } } },
+    yaxis: { labels: { style: { colors: "#FFFFFF" } } },
+    tooltip: { theme: "dark", style: { fontSize: "12px", background: "#333333" } },
+    legend: { labels: { colors: "#FFFFFF" } },
   });
 
-  // New donut chart data for DAG Type
   const [dagTypeDonutChartOptions, setDagTypeDonutChartOptions] = createSignal<ApexOptions>({
-    chart: {
-      type: "donut",
-    },
+    chart: { type: "donut" },
     series: [0, 0],
     labels: ["Event Driven Only", "Scheduled"],
     colors: ["#FFA500", "#1E90FF"],
-    stroke: {
-      colors: ["#000"],
-    },
-    plotOptions: {
-      pie: {
-        donut: {
-          labels: {
-            show: true,
-          },
-        },
-      },
-    },
-    legend: {
-      show: false,
-    },
+    stroke: { colors: ["#000"] },
+    plotOptions: { pie: { donut: { labels: { show: true } } } },
+    legend: { show: false },
   });
 
-  // New donut chart data for Task Outcomes (30 Days)
-  const [taskOutcomesDonutChartOptions, setTaskOutcomesDonutChartOptions] =
-    createSignal<ApexOptions>({
-      chart: {
-        type: "donut",
-      },
-      series: [0, 0], // New data specific to Task Outcomes
-      labels: ["Completed", "Failed"],
-      colors: ["#00FF00", "#FF0000"],
-      stroke: {
-        colors: ["#000"],
-      },
-      plotOptions: {
-        pie: {
-          donut: {
-            labels: {
-              show: true,
-            },
-          },
-        },
-      },
-      legend: {
-        show: false,
-      },
-    });
+  const [taskOutcomesDonutChartOptions, setTaskOutcomesDonutChartOptions] = createSignal<ApexOptions>({
+    chart: { type: "donut" },
+    series: [0, 0],
+    labels: ["Completed", "Failed"],
+    colors: ["#00FF00", "#FF0000"],
+    stroke: { colors: ["#000"] },
+    plotOptions: { pie: { donut: { labels: { show: true } } } },
+    legend: { show: false },
+  });
 
   const statsQuery = createQuery(() => ({
     queryKey: ["dashboard-stats"],
@@ -115,65 +49,31 @@ const Main: Component = () => {
     staleTime: 5 * 60 * 1000,
   }));
 
-  // reactively update chart options when query data arrives
-  if (statsQuery.isSuccess && statsQuery.data) {
+  createEffect(() => {
+    if (!statsQuery.isSuccess || !statsQuery.data) return;
     const data = statsQuery.data as DashboardStats;
 
-    const series = [
-      data.dag_type_counts["Event Driven"] || 0,
-      data.dag_type_counts["Scheduled"] || 0,
-    ];
-
-    const seriesTask = [
-      data.task_outcomes["Completed"] || 0,
-      data.task_outcomes["Failed"] || 0,
-    ];
+    const series = [data.dag_type_counts["Event Driven"] || 0, data.dag_type_counts["Scheduled"] || 0];
+    const seriesTask = [data.task_outcomes["Completed"] || 0, data.task_outcomes["Failed"] || 0];
 
     const seriesTime: string[] = [];
     const seriesSuccessful: number[] = [];
     const seriesFailed: number[] = [];
 
-    for (let index = 0; index < data.daily_dag_run_counts.length; index++) {
-      const element = data.daily_dag_run_counts[index];
+    for (const element of data.daily_dag_run_counts) {
       seriesFailed.push(element.failed_count);
       seriesSuccessful.push(element.successful_count);
       seriesTime.push(element.day.substring(0, 10));
     }
 
-    const timeSeriesFinal = [
-      {
-        name: "Successful",
-        data: seriesSuccessful,
-      },
-      {
-        name: "Failed",
-        data: seriesFailed,
-      },
-    ];
-
-    setDagTypeDonutChartOptions((prevOptions) => ({
-      ...(prevOptions as any),
-      series: series,
+    setDagTypeDonutChartOptions((prev) => ({ ...prev, series }));
+    setTaskOutcomesDonutChartOptions((prev) => ({ ...prev, series: seriesTask }));
+    setTimeLine((prev) => ({
+      ...prev,
+      series: [{ name: "Successful", data: seriesSuccessful }, { name: "Failed", data: seriesFailed }],
+      xaxis: { categories: seriesTime, labels: { style: { colors: "#FFFFFF" } } },
     }));
-
-    setTaskOutcomesDonutChartOptions((prevOptions) => ({
-      ...(prevOptions as any),
-      series: seriesTask,
-    }));
-
-    setTimeLine((prevOptions) => ({
-      ...(prevOptions as any),
-      series: timeSeriesFinal,
-      xaxis: {
-        categories: seriesTime,
-        labels: {
-          style: {
-            colors: "#FFFFFF",
-          },
-        },
-      },
-    }));
-  }
+  });
 
   const stats = statsQuery.data;
 
