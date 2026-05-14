@@ -80,6 +80,9 @@ describe('DagComponent', () => {
     expect(btn).toBeTruthy();
     if (btn) await fireEvent.click(btn);
 
+    // Wait for lazy-loaded component
+    await new Promise(r => setTimeout(r, 0));
+
     // After opening, the DagViz mock renders a select button
     const selectBtn = container.querySelector('[data-testid="select-task"]') as HTMLButtonElement;
     expect(selectBtn).toBeTruthy();

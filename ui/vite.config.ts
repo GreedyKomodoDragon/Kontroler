@@ -29,5 +29,16 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-solid': ['solid-js', '@solidjs/router'],
+          'vendor-query': ['@tanstack/solid-query'],
+          'vendor-ui': ['@kobalte/core'],
+          'vendor-charts': ['apexcharts', 'solid-apexcharts'],
+          'vendor-viz': ['vis-network'],
+        },
+      },
+    },
   },
 });
