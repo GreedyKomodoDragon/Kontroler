@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:unit": "vitest run \"src/components/__tests__\" --reporter verbose"
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.9",
