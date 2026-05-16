@@ -1,7 +1,7 @@
 apiVersion: kontroler.greedykomodo/v1alpha1
 kind: DagRun
 metadata:
-  name: alpine-verify-dag-run
+  name: sample-dsl-verify-dag-run
   namespace: default
 spec:
   dagName: sample-dsl-dag

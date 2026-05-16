@@ -75,7 +75,7 @@ const Main: Component = () => {
     }));
   });
 
-  const stats = statsQuery.data;
+  const getStats = () => statsQuery.data;
 
   const skeleton = (
     <div class="flex flex-col w-full max-w-5xl mx-auto p-6 gap-6">
@@ -124,7 +124,7 @@ const Main: Component = () => {
               </div>
               <div class="p-6">
                 <div class="text-4xl font-bold">
-                  {stats ? stats.dag_count : 0}
+                  {getStats() ? getStats()!.dag_count : 0}
                 </div>
               </div>
             </div>
@@ -139,7 +139,7 @@ const Main: Component = () => {
               </div>
               <div class="p-6">
                 <div class="text-4xl font-bold text-green-500">
-                  {stats ? stats.successful_dag_runs : 0}
+                  {getStats() ? getStats()!.successful_dag_runs : 0}
                 </div>
               </div>
             </div>
@@ -154,7 +154,7 @@ const Main: Component = () => {
               </div>
               <div class="p-6">
                 <div class="text-4xl font-bold text-red-500">
-                  {stats ? stats.failed_dag_runs : 0}
+                  {getStats() ? getStats()!.failed_dag_runs : 0}
                 </div>
               </div>
             </div>
@@ -169,7 +169,7 @@ const Main: Component = () => {
               </div>
               <div class="p-6">
                 <div class="text-4xl font-bold">
-                  {stats ? stats.total_dag_runs : 0}
+                  {getStats() ? getStats()!.total_dag_runs : 0}
                 </div>
               </div>
             </div>
@@ -201,7 +201,7 @@ const Main: Component = () => {
               <div class="p-6">
                 {/* Apply responsive font size */}
                 <div class="text-8xl font-bold text-fit">
-                  {stats ? stats.active_dag_runs : 0}
+                  {getStats() ? getStats()!.active_dag_runs : 0}
                 </div>
               </div>
             </div>

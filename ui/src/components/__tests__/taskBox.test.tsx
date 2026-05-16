@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render as solidRender } from 'solid-js/web';
 import { fireEvent } from '@testing-library/dom';
 

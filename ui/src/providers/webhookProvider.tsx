@@ -55,14 +55,16 @@ export function WebSocketProvider(props: { children: any }) {
 
     socket.onclose = () => {
       console.log(`WebSocket Disconnected for pod ${podUUID}`);
+      // preserve previous streaming state before we clear it
+      const wasStreaming = isStreaming();
       setIsStreaming(false);
       setWs(null);
 
-        // Attempt reconnection if streaming was active
-      if (isStreaming() && reconnectAttempts() < MAX_RECONNECT_ATTEMPTS) {
+      // Attempt reconnection if streaming was active
+      if (wasStreaming && reconnectAttempts() < MAX_RECONNECT_ATTEMPTS) {
+        // compute next attempt count for backoff
+        const attempt = Math.max(1, reconnectAttempts() + 1);
         setReconnectAttempts((prev) => prev + 1);
-        // ensure backoff is at least 1 second on the first retry
-        const attempt = Math.max(1, reconnectAttempts());
         setTimeout(() => connectWebSocket(podUUID), 1000 * attempt);
       }
     };

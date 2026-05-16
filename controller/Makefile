@@ -229,8 +229,8 @@ kind-deploy-cert-manager: ## Deploy cert-manager (waits for webhook to be ready)
 		--version v1.20.2 \
 		--set crds.enabled=true
 	@echo "Waiting for cert-manager components to become ready..."
-	kubectl -n cert-manager wait deployment/cert-manager --for condition=Available --timeout=180s || true
-	kubectl -n cert-manager wait deployment/cert-manager-webhook --for condition=Available --timeout=180s || true
+	kubectl -n cert-manager wait deployment/cert-manager --for condition=Available --timeout=180s
+	kubectl -n cert-manager wait deployment/cert-manager-webhook --for condition=Available --timeout=180s
 
 .PHONY: kind-deploy-minio
 kind-deploy-minio: ## Deploy MinIO for S3 log storage (optional)
@@ -248,7 +248,9 @@ kind-create-secrets: ## Create webhook and DB TLS secrets from repo certs and cr
 		--from-file=tls.crt=../client.crt --from-file=tls.key=../client.key --dry-run=client -o yaml | kubectl apply -f -
 	kubectl create secret generic postgresql-client-tls -n default \
 		--from-file=ca.crt=../ca.crt --from-file=client.crt=../client.crt --from-file=client.key=../client.key --dry-run=client -o yaml | kubectl apply -f -
-	kubectl apply -f ../secrets.yaml || true
+	@if [ -f ../secrets.yaml ]; then \
+		kubectl apply -f ../secrets.yaml; \
+	fi
 
 ##@ Kind Kontroler Deployment
 

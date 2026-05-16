@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, lazy } from "solid-js";
+import { createEffect, createSignal, lazy } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
 import { getTaskDetails, deleteDag, suspendDag } from "../api/dags";
 import ShellScriptViewer from "./code/shellScriptViewer";

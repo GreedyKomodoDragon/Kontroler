@@ -45,6 +45,7 @@ describe('PaginationComponent', () => {
 
     const buttons = container.querySelectorAll('button');
     const pageButton = Array.from(buttons).find(b => b.textContent?.trim() === '2');
+    expect(pageButton).toBeTruthy();
 
     if (pageButton) {
       await fireEvent.click(pageButton);
@@ -54,7 +55,7 @@ describe('PaginationComponent', () => {
     dispose();
   });
 
-  it('updates when maxPage accessor changes', () => {
+  it('renders with given maxPage', () => {
     const container = document.createElement('div');
     container.id = 'vitest-root';
     document.body.appendChild(container);

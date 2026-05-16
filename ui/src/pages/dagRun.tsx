@@ -3,7 +3,7 @@ import { DagRunAll } from "../types/dag";
 import { getDagRunAll, getTaskRunDetails } from "../api/dags";
 import { A, useParams } from "@solidjs/router";
 import DagViz from "../components/dagViz";
-import { createSignal } from "solid-js";
+import { createSignal, createMemo } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
 import Loadable from "../components/loadable";
 import { PodStatusTable } from "../components/tables/podStatusTable";
@@ -11,14 +11,15 @@ import LoadingButton from "../components/inputs/loadingbutton";
 
 const DagRun: Component = () => {
   const params = useParams();
-  const id = parseInt(params.id);
+  const id = createMemo(() => Number.parseInt(params.id));
 
   const [selectedTask, setSelectedTask] = createSignal<number>(-1);
 
   const runQuery = createQuery(() => ({
-    queryKey: ["dagRun", id],
-    queryFn: () => getDagRunAll(id),
+    queryKey: ["dagRun", id()],
+    queryFn: () => getDagRunAll(id()),
     staleTime: 60 * 1000,
+    enabled: () => Number.isFinite(id()),
   }));
 
   const taskDetailsQuery = createQuery(() => ({
