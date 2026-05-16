@@ -1,4 +1,4 @@
-import { Component, JSX, lazy } from "solid-js";
+import { Component, JSX, lazy, Suspense } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 import Header from "./components/header";
 import Sidebar from "./components/sidebar";
@@ -49,7 +49,8 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <WebSocketProvider>
-            <Router>
+            <Suspense fallback={<div class="p-6">Loading...</div>}>
+              <Router>
               {/* Route for login without Layout */}
               <Route path="/login" component={Login} />
               <Route
@@ -170,7 +171,8 @@ function App() {
                   </ProtectedRoute>
                 )}
               />
-            </Router>
+              </Router>
+            </Suspense>
           </WebSocketProvider>
         </AuthProvider>
       </QueryClientProvider>

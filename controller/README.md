@@ -155,6 +155,36 @@ Running local e2e (quick checklist)
 > to update the repository defaults. This keeps runtime behaviour explicit for
 > production deployments.
 
+## Port forwarding (local development)
+
+This repo includes convenience Make targets for port-forwarding the Kontroler server and UI when running against a local Kind cluster.
+
+Preferred foreground (one terminal per process):
+
+- Port-forward the server (blocks):
+
+	make -C controller kind-portforward-server
+
+- Port-forward the UI (blocks):
+
+	make -C controller kind-portforward-ui
+
+These targets run kubectl port-forward in the foreground so you can see logs and control each session independently. Run one command per terminal.
+
+Backgrounded (single command, will wait):
+
+- Start both forwards from one terminal (backgrounds the processes but the make process will wait):
+
+	make -C controller kind-portforward
+
+Notes:
+- Ensure the cluster is bootstrapped (cert-manager installed, Postgres deployed, and the helm release `kontroler` installed) before port-forwarding.
+- To bootstrap a Kind cluster with required services use:
+
+	cd controller && make kind-create && make kind-load-all && make kind-bootstrap
+
+---
+
 ## License
 
 Copyright 2024.

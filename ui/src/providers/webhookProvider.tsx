@@ -58,10 +58,12 @@ export function WebSocketProvider(props: { children: any }) {
       setIsStreaming(false);
       setWs(null);
 
-      // Attempt reconnection if streaming was active
+        // Attempt reconnection if streaming was active
       if (isStreaming() && reconnectAttempts() < MAX_RECONNECT_ATTEMPTS) {
         setReconnectAttempts((prev) => prev + 1);
-        setTimeout(() => connectWebSocket(podUUID), 1000 * reconnectAttempts());
+        // ensure backoff is at least 1 second on the first retry
+        const attempt = Math.max(1, reconnectAttempts());
+        setTimeout(() => connectWebSocket(podUUID), 1000 * attempt);
       }
     };
 

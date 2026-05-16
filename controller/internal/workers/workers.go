@@ -416,12 +416,39 @@ func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.T
 	var duration int64 = 0
 
 	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
-		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+		terminated := pod.Status.ContainerStatuses[0].State.Terminated
+		exitCode = &terminated.ExitCode
 
-		// Use the termination time for final pod status
-		stamp = &pod.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Time
-		startTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
-		duration = int64(stamp.Sub(startTime).Seconds())
+		// Prefer the explicit termination times if present
+		if !terminated.FinishedAt.IsZero() {
+			stamp = &terminated.FinishedAt.Time
+		}
+
+		// Compute duration defensively. Some kubelets may not set StartedAt/FinishedAt
+		// in every failure mode, so avoid using zero-times which lead to huge durations.
+		var durSec int64 = 0
+		if !terminated.StartedAt.IsZero() && !terminated.FinishedAt.IsZero() {
+			durSec = int64(terminated.FinishedAt.Sub(terminated.StartedAt.Time).Seconds())
+		} else if !terminated.StartedAt.IsZero() && terminated.FinishedAt.IsZero() {
+			// If finished is missing, estimate using now
+			durSec = int64(time.Since(terminated.StartedAt.Time).Seconds())
+		} else if terminated.StartedAt.IsZero() && !terminated.FinishedAt.IsZero() {
+			// If started missing, try to fall back to pod.Status.StartTime
+			if pod.Status.StartTime != nil && !pod.Status.StartTime.IsZero() {
+				durSec = int64(terminated.FinishedAt.Sub(pod.Status.StartTime.Time).Seconds())
+			} else {
+				// Unknown start; set to 0 to avoid absurd values
+				durSec = 0
+			}
+		} else {
+			// Both timestamps missing — set duration to 0
+			durSec = 0
+		}
+
+		if durSec < 0 {
+			durSec = 0
+		}
+		duration = durSec
 
 		if err := w.dbManager.AddPodDuration(ctx, taskRunId, duration); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
