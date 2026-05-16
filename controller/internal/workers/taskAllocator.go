@@ -208,6 +208,19 @@ func (t *taskAllocator) addScriptVolume(podSpec *v1.PodSpec, task *db.Task) {
 }
 
 func (t *taskAllocator) addDefaultContainer(podSpec *v1.PodSpec, task *db.Task, envs []v1.EnvVar) {
+	// Defensive: if the task.Command references bash but the image is alpine or sh-only,
+	// replace it with sh so the container can start properly on minimal images.
+	if len(task.Command) > 0 {
+		cmd := task.Command[0]
+		if cmd == "bash" || cmd == "/bin/bash" {
+			// replace with sh while preserving the rest of the args
+			newCmd := make([]string, len(task.Command))
+			copy(newCmd, task.Command)
+			newCmd[0] = "sh"
+			task.Command = newCmd
+		}
+	}
+
 	podSpec.Containers = []v1.Container{
 		{
 			Name:    task.Name,
