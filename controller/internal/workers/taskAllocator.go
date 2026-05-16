@@ -36,7 +36,8 @@ const (
 var (
 	finaliserSlice []string = []string{finalizerLogCollection}
 	// default to sh so scripts run on minimal images like alpine
-	scriptExecCommand = []string{"sh", "-c", "/script/my-script.sh"}
+	// run the script explicitly with /bin/sh to avoid honoring shebangs that reference bash
+	scriptExecCommand = []string{"sh", "-c", "/bin/sh /script/my-script.sh"}
 )
 
 type TaskAllocator interface {
