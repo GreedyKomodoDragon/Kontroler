@@ -1,0 +1,8 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagRun
+metadata:
+  name: test-alpine-fail-run-2
+  namespace: default
+spec:
+  dagName: test-alpine-fail
+  parameters: []
