@@ -26,6 +26,12 @@ export default function ManageUsers() {
   });
 
   createEffect(() => {
+    // Clear any previous timeout before setting a new one
+    if (errorTimeout) {
+      clearTimeout(errorTimeout);
+      errorTimeout = undefined;
+    }
+
     if (errorMsg()) {
       errorTimeout = window.setTimeout(() => {
         setErrorMsg("");
@@ -110,7 +116,7 @@ export default function ManageUsers() {
       )}
       <Loadable
         loading={users.isLoading}
-        error={users.isError && (users.error as any)?.message}
+        error={users.isError ? (users.error as any)?.message : undefined}
         onRetry={() => users.refetch()}
         skeleton={
           <div class="space-y-4 mt-6">
