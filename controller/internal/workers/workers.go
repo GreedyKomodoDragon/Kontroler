@@ -265,7 +265,13 @@ func (w *worker) allocateNextTasks(ctx context.Context, pod *v1.Pod, dagRunId in
 }
 
 func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
-	exitcode := t.getExitCode(pod, taskRunId)
+	// Use computePodDurationAndExit to safely obtain exit code without
+	// dereferencing Terminated when it may be nil.
+	_, _, exitPtr := t.computePodDurationAndExit(pod, nil)
+	var exitcode int32 = -1
+	if exitPtr != nil {
+		exitcode = *exitPtr
+	}
 
 	t.recordFailureMetrics(ctx, pod, taskRunId)
 
