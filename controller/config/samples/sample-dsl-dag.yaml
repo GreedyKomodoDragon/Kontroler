@@ -30,22 +30,24 @@ spec:
       args ["echo 'Setting up environment'"]
       parameters ["environment"]
     }
-    
+
     task deploy {
       image "alpine:latest"
+      command ["sh", "-c"]
       script """
       echo "Deploying application to $ENVIRONMENT"
       echo "Using $REPLICAS replicas"
       """
       parameters ["environment", "replicas"]
     }
-    
+
     task test {
       image "alpine:latest"
+      command ["sh", "-c"]
       script "echo 'Running tests'"
       retry [1, 2, 125]
     }
-    
+
     task cleanup {
       image "alpine:latest"
       command ["sh", "-c"]

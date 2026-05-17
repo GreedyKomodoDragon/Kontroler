@@ -1,10 +1,11 @@
-import { createEffect, createSignal, on } from "solid-js";
+import { createEffect, createSignal, lazy } from "solid-js";
 import { Dag, TaskDetails } from "../types/dag";
 import { getTaskDetails, deleteDag, suspendDag } from "../api/dags";
 import ShellScriptViewer from "./code/shellScriptViewer";
 import JsonToYamlViewer from "./code/JsonToYamlViewer";
-import DagViz from "./dagViz";
 import { DeleteTaskButton } from "./deleteTaskButton";
+
+const DagViz = lazy(() => import("./dagViz"));
 import { useError } from "../providers/ErrorProvider";
 import { SuspendButton } from "./buttons/suspendButton";
 

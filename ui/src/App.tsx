@@ -1,25 +1,26 @@
-import { Component, JSX } from "solid-js";
+import { Component, JSX, lazy, Suspense } from "solid-js";
 import { Router, Route } from "@solidjs/router";
 import Header from "./components/header";
 import Sidebar from "./components/sidebar";
-import Main from "./pages/main";
-import Dags from "./pages/dags";
-import DagRuns from "./pages/dagRuns";
-import DagRun from "./pages/dagRun";
-import Create from "./pages/create";
-import Login from "./pages/login";
 import { AuthProvider } from "./providers/authProvider";
 import { ProtectedRoute } from "./components/protectedRoute";
-import Logout from "./pages/logout";
-import Admin from "./pages/admin";
-import CreateAccountPage from "./pages/createAccount";
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
-import CreateDagRun from "./pages/createDagRun";
-import UserProfile from "./pages/userProfile";
-import Logs from "./pages/logs";
-import Tasks from "./pages/tasks";
 import { WebSocketProvider } from "./providers/webhookProvider";
 import { ErrorProvider } from "./providers/ErrorProvider";
+
+const Main = lazy(() => import("./pages/main"));
+const Dags = lazy(() => import("./pages/dags"));
+const DagRuns = lazy(() => import("./pages/dagRuns"));
+const DagRun = lazy(() => import("./pages/dagRun"));
+const Create = lazy(() => import("./pages/create"));
+const Login = lazy(() => import("./pages/login"));
+const Logout = lazy(() => import("./pages/logout"));
+const Admin = lazy(() => import("./pages/admin"));
+const CreateAccountPage = lazy(() => import("./pages/createAccount"));
+const CreateDagRun = lazy(() => import("./pages/createDagRun"));
+const UserProfile = lazy(() => import("./pages/userProfile"));
+const Logs = lazy(() => import("./pages/logs"));
+const Tasks = lazy(() => import("./pages/tasks"));
 
 // Layout component to wrap content with Header and Sidebar
 const Layout: Component<{ children: JSX.Element }> = (props) => {
@@ -48,7 +49,8 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <WebSocketProvider>
-            <Router>
+            <Suspense fallback={<div class="p-6">Loading...</div>}>
+              <Router>
               {/* Route for login without Layout */}
               <Route path="/login" component={Login} />
               <Route
@@ -169,7 +171,8 @@ function App() {
                   </ProtectedRoute>
                 )}
               />
-            </Router>
+              </Router>
+            </Suspense>
           </WebSocketProvider>
         </AuthProvider>
       </QueryClientProvider>

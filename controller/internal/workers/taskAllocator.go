@@ -34,8 +34,10 @@ const (
 )
 
 var (
-	finaliserSlice    []string = []string{finalizerLogCollection}
-	scriptExecCommand          = []string{"bash", "-c", "/script/my-script.sh"}
+	finaliserSlice []string = []string{finalizerLogCollection}
+	// default to sh so scripts run on minimal images like alpine
+	// run the script explicitly with /bin/sh to avoid honoring shebangs that reference bash
+	scriptExecCommand = []string{"sh", "-c", "/bin/sh /script/my-script.sh"}
 )
 
 type TaskAllocator interface {
@@ -143,7 +145,7 @@ func (t *taskAllocator) createPodSpec(task *db.Task, envs []v1.EnvVar, resources
 				Name:  "script-copier",
 				Image: scriptInjectorImage,
 				Command: []string{
-					"bash", "-c", fmt.Sprintf(initScriptCommand, shellescape.Quote(task.Script)),
+					"sh", "-c", fmt.Sprintf(initScriptCommand, shellescape.Quote(task.Script)),
 				},
 				VolumeMounts: []v1.VolumeMount{
 					{

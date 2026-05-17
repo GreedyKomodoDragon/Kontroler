@@ -1,23 +1,49 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 import { deleteAccount, getUserPageCount, getUsers } from "../api/admin";
 import { A } from "@solidjs/router";
 import PaginationComponent from "./pagination";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
-import Spinner from "./spinner";
 import { DeleteButton } from "./admin/deleteButton";
 import ConfirmDeletion from "./admin/confirmDeletion";
 import ErrorSingleAlert from "./alerts/errorSingleAlert";
 import Identicon from "./navbar/icon";
 import { useError } from "../providers/ErrorProvider";
+import Loadable from "./loadable";
+import SkeletonCard from "./skeletonCard";
 
 export default function ManageUsers() {
   const { handleApiError } = useError();
   const [page, setPage] = createSignal(1);
-  const [maxPage, setMaxPage] = createSignal(1);
   const [show, setShow] = createSignal(false);
   const [selectedName, setSelectedName] = createSignal("");
   const [errorMsg, setErrorMsg] = createSignal("");
   const queryClient = useQueryClient();
+
+  let errorTimeout: number | undefined;
+
+  onCleanup(() => {
+    if (errorTimeout) clearTimeout(errorTimeout);
+  });
+
+  createEffect(() => {
+    // Clear any previous timeout before setting a new one
+    if (errorTimeout) {
+      clearTimeout(errorTimeout);
+      errorTimeout = undefined;
+    }
+
+    if (errorMsg()) {
+      errorTimeout = window.setTimeout(() => {
+        setErrorMsg("");
+      }, 5000);
+    }
+  });
+
+  const pageCountQuery = createQuery(() => ({
+    queryKey: ["user-page-count"],
+    queryFn: getUserPageCount,
+    staleTime: 5 * 60 * 1000,
+  }));
 
   const users = createQuery(() => ({
     queryKey: ["users", page().toString()],
@@ -28,32 +54,26 @@ export default function ManageUsers() {
         handleApiError(error);
       }
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   }));
 
-  getUserPageCount()
-    .then((count) => {
-      setMaxPage(count);
-    })
-    .catch((error) => handleApiError(error));
+  const handleDelete = () => {
+    deleteAccount(selectedName())
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["users"] });
+        queryClient.invalidateQueries({ queryKey: ["user-page-count"] });
+      })
+      .catch(() => {
+        setErrorMsg("failed to delete user account");
+      });
+  };
 
   return (
     <div class="mx-auto px-4">
       <ConfirmDeletion
         onConfirm={() => {
           setShow(false);
-          deleteAccount(selectedName())
-            .then(() => {
-              queryClient.invalidateQueries({
-                queryKey: ["users", page().toString()],
-              });
-            })
-            .catch(() => {
-              setErrorMsg("failed to delete user account");
-              setTimeout(() => {
-                setErrorMsg("");
-              }, 5 * 1000);
-            });
+          handleDelete();
         }}
         onCancel={() => {
           setShow(false);
@@ -94,16 +114,23 @@ export default function ManageUsers() {
           <ErrorSingleAlert msg={errorMsg()} />
         </div>
       )}
-      <Show when={users.isError}>
-        <div>Error: {users.error && users.error.message}</div>
-      </Show>
-      <Show when={users.isLoading}>
-        <Spinner />
-      </Show>
-      <Show when={users.isSuccess}>
+      <Loadable
+        loading={users.isLoading}
+        error={users.isError ? (users.error as any)?.message : undefined}
+        onRetry={() => users.refetch()}
+        skeleton={
+          <div class="space-y-4 mt-6">
+            {Array.from({ length: 6 }).map(() => (
+              <div class="py-5">
+                <SkeletonCard titleLines={1} bodyLines={1} />
+              </div>
+            ))}
+          </div>
+        }
+      >
         <ul class="mt-12 divide-y">
           {users.data &&
-            users.data.map((item, idx) => (
+            users.data.map((item) => (
               <li class="py-5 flex items-start justify-between">
                 <div class="flex gap-3">
                   <Identicon value={item.username} size={50} />
@@ -131,10 +158,10 @@ export default function ManageUsers() {
               </li>
             ))}
         </ul>
-      </Show>
-      <Show when={maxPage() > 1}>
-        <PaginationComponent setPage={setPage} maxPage={maxPage} />
-      </Show>
+      </Loadable>
+      {pageCountQuery.data && pageCountQuery.data > 1 && (
+        <PaginationComponent setPage={setPage} maxPage={() => pageCountQuery.data!} />
+      )}
     </div>
   );
 }

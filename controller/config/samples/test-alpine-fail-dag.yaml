@@ -1,0 +1,24 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: test-alpine-fail
+  namespace: default
+spec:
+  dsl: |
+    schedule ""
+
+    graph {
+      setup -> failtask
+    }
+
+    task setup {
+      image "alpine:latest"
+      command ["sh", "-c"]
+      args ["echo 'setup'"]
+    }
+
+    task failtask {
+      image "alpine:latest"
+      command ["sh", "-c"]
+      args ["exit 1"]
+    }

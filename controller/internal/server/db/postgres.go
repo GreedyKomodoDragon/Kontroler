@@ -266,7 +266,14 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 		}
 
 		if duration.Valid {
-			pod.Duration = &duration.Int64
+			// Sanitize absurd durations that can occur due to bad timestamps being written earlier
+			const maxDurationSec = int64(10 * 365 * 24 * 3600) // 10 years in seconds
+			if duration.Int64 < 0 || duration.Int64 > maxDurationSec {
+				// treat as unknown
+				pod.Duration = nil
+			} else {
+				pod.Duration = &duration.Int64
+			}
 		}
 
 		task.Pods = append(task.Pods, pod)
