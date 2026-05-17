@@ -23,20 +23,21 @@ export default function LoadingButton({ onClick }: LoadingButtonProps) {
       onClick={handleClick}
       disabled={isLoading()}
       title="Refresh DAG state"
-      class={`inline-flex items-center gap-2 px-4 py-2`}
+      aria-busy={isLoading()}
+      aria-disabled={isLoading()}
+      class={`inline-flex items-center gap-2 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-md`}
     >
       <svg
-        class={`inline-block h-12 w-12 text-primary ${
-          isLoading()
-            ? "animate-spin motion-reduce:animate-[spin_10s_linear_infinite]"
-            : ""
+        class={`inline-block h-5 w-5 text-primary ${
+          isLoading() ? "animate-spin motion-reduce:animate-[spin_10s_linear_infinite]" : ""
         }`}
         style={{ "animation-duration": "1.5s" }}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 32 32"
         role="status"
-        aria-label="Loading"
+        aria-hidden={!isLoading()}
+        aria-label={isLoading() ? "Loading" : undefined}
       >
         <path
           fill="none"

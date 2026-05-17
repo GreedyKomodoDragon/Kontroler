@@ -64,7 +64,7 @@ export function validateDagFormObj(dagFormObj: DagFormObj): string[] {
   dagFormObj.tasks.forEach((task) => {
     if (!task.script || task.script === "") {
       if (!task.command || task.command.length === 0) {
-        errors.push(`Task "${task.name}" is missing a command. Must be an array of strings, or provide a script valid`);
+        errors.push(`Task "${task.name}" is missing a command. Must be an array of strings, or provide a script.`);
       }
   
       if (task.args === undefined) {
@@ -77,7 +77,7 @@ export function validateDagFormObj(dagFormObj: DagFormObj): string[] {
     }
 
     if (!task.image) {
-      errors.push(`Task "${task.image}" is missing an image.`);
+      errors.push(`Task "${task.name}" is missing an image.`);
     }
 
     if (task.runAfter) {

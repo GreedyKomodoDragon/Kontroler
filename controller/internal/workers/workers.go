@@ -265,7 +265,13 @@ func (w *worker) allocateNextTasks(ctx context.Context, pod *v1.Pod, dagRunId in
 }
 
 func (t *worker) handleFailedTaskRun(ctx context.Context, pod *v1.Pod, taskRunId int) {
-	exitcode := t.getExitCode(pod, taskRunId)
+	// Use computePodDurationAndExit to safely obtain exit code without
+	// dereferencing Terminated when it may be nil.
+	_, _, exitPtr := t.computePodDurationAndExit(pod, nil)
+	var exitcode int32 = -1
+	if exitPtr != nil {
+		exitcode = *exitPtr
+	}
 
 	t.recordFailureMetrics(ctx, pod, taskRunId)
 
@@ -401,6 +407,58 @@ func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskId int)
 	return dbTask, nil
 }
 
+// computePodDurationAndExit centralizes logic that determines the pod exit code, a
+// best-effort duration (seconds) and the timestamp that should be treated as the
+// "finished" time for the pod event. This keeps the heuristics in one place so
+// other code paths (metrics, DB writes, webhooks) are consistent.
+func (w *worker) computePodDurationAndExit(pod *v1.Pod, eventStamp *time.Time) (duration int64, stamp *time.Time, exitCode *int32) {
+	stamp = eventStamp
+	var dur int64 = 0
+	var exit *int32 = nil
+
+	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
+		terminated := pod.Status.ContainerStatuses[0].State.Terminated
+		exit = &terminated.ExitCode
+
+		// Prefer the explicit termination times if present
+		if !terminated.FinishedAt.IsZero() {
+			stamp = &terminated.FinishedAt.Time
+		}
+
+		// Compute duration defensively. Some kubelets may not set StartedAt/FinishedAt
+		// in every failure mode, so avoid using zero-times which lead to huge durations.
+		var d int64 = 0
+		if !terminated.StartedAt.IsZero() && !terminated.FinishedAt.IsZero() {
+			d = int64(terminated.FinishedAt.Sub(terminated.StartedAt.Time).Seconds())
+		} else if !terminated.StartedAt.IsZero() && terminated.FinishedAt.IsZero() {
+			// If finished missing, estimate using now
+			d = int64(time.Since(terminated.StartedAt.Time).Seconds())
+		} else if terminated.StartedAt.IsZero() && !terminated.FinishedAt.IsZero() {
+			// If started missing, try to fall back to pod.Status.StartTime
+			if pod.Status.StartTime != nil && !pod.Status.StartTime.IsZero() {
+				d = int64(terminated.FinishedAt.Sub(pod.Status.StartTime.Time).Seconds())
+			} else {
+				// Unknown start; set to 0 to avoid absurd values
+				d = 0
+			}
+		} else {
+			// Both timestamps missing — set duration to 0
+			d = 0
+		}
+
+		if d < 0 {
+			d = 0
+		}
+		dur = d
+	} else if pod.Status.Phase == v1.PodFailed {
+		// Handle case where pod failed before container started
+		defaultExitCode := int32(-1)
+		exit = &defaultExitCode
+	}
+
+	return dur, stamp, exit
+}
+
 func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.Time) error {
 	taskRunId, err := w.getTaskRunID(pod)
 	if err != nil {
@@ -412,33 +470,25 @@ func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.T
 		return err
 	}
 
-	var exitCode *int32 = nil
-	var duration int64 = 0
+	// Consolidated computation for duration/exit/timestamp
+	duration, outStamp, exitCode := w.computePodDurationAndExit(pod, stamp)
 
-	if len(pod.Status.ContainerStatuses) > 0 && pod.Status.ContainerStatuses[0].State.Terminated != nil {
-		exitCode = &pod.Status.ContainerStatuses[0].State.Terminated.ExitCode
-
-		// Use the termination time for final pod status
-		stamp = &pod.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Time
-		startTime := pod.Status.ContainerStatuses[0].State.Terminated.StartedAt.Time
-		duration = int64(stamp.Sub(startTime).Seconds())
-
+	// Only add durations when we have a non-zero computed value. Historical bad
+	// values are sanitized on read; this prevents writing absurd values going
+	// forward.
+	if duration > 0 {
 		if err := w.dbManager.AddPodDuration(ctx, taskRunId, duration); err != nil {
 			log.Log.Error(err, "failed to add pod duration", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId)
 		}
-	} else if pod.Status.Phase == v1.PodFailed {
-		// Handle case where pod failed before container started
-		defaultExitCode := int32(-1)
-		exitCode = &defaultExitCode
 	}
 
-	if stamp == nil {
+	if outStamp == nil {
 		now := time.Now()
-		stamp = &now
+		outStamp = &now
 	}
 
 	if err := w.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name,
-		taskRunId, pod.Status.Phase, *stamp, exitCode, pod.Namespace); err != nil {
+		taskRunId, pod.Status.Phase, *outStamp, exitCode, pod.Namespace); err != nil {
 		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
 		return fmt.Errorf("failed to mark pod status: %w", err)
 	}
@@ -447,6 +497,7 @@ func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.T
 	if err != nil {
 		log.Log.Error(err, errMsgWebhookDetails, "runId", dagRunId)
 	} else if webhook.URL != "" {
+		// notify in background
 		go w.webhookNotifier.NotifyPodEvent(
 			pod.Spec.Containers[0].Name,
 			string(pod.Status.Phase),

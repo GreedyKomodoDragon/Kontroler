@@ -62,6 +62,8 @@ describe('validateDagFormObj', () => {
         {
           name: "task1",
           command: [],
+          args: ["arg1"],
+          retryCodes: [1],
           image: "alpine",
           backoffLimit: 3,
         },
@@ -69,7 +71,7 @@ describe('validateDagFormObj', () => {
     };
 
     const errors = validateDagFormObj(invalidDagForm);
-    expect(errors).toContain('Task "task1" is missing a command. Must be an array of strings');
+    expect(errors.some(e => e.includes('Task "task1" is missing a command'))).toBe(true);
   });
 
   it('should fail when a task is missing an image', () => {

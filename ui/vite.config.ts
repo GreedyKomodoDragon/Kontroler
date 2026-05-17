@@ -6,7 +6,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: [new URL('./src/test/mock-jest-dom.js', import.meta.url).pathname],
+  },
+  resolve: {
+    alias: [
+      { find: /@testing-library\/jest-dom(.*)/, replacement: new URL('./src/test/mock-jest-dom.js', import.meta.url).pathname },
+      { find: new URL(process.env.HOME || '', import.meta.url).pathname + '/node_modules/@testing-library/jest-dom/dist/vitest.mjs', replacement: new URL('./src/test/mock-jest-dom.js', import.meta.url).pathname },
+    ],
   },
   base: '/',
   plugins: [
@@ -22,5 +29,16 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-solid': ['solid-js', '@solidjs/router'],
+          'vendor-query': ['@tanstack/solid-query'],
+          'vendor-ui': ['@kobalte/core'],
+          'vendor-charts': ['apexcharts', 'solid-apexcharts'],
+          'vendor-viz': ['vis-network'],
+        },
+      },
+    },
   },
 });

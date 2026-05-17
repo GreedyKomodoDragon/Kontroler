@@ -1,0 +1,12 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagRun
+metadata:
+  name: debug-sample-dsl-dag-run
+  namespace: default
+spec:
+  dagName: sample-dsl-dag
+  parameters:
+    - name: environment
+      value: "staging"
+    - name: replicas
+      value: "1"

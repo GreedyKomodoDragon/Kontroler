@@ -221,11 +221,16 @@ kind-deploy-postgres: ## Deploy PostgreSQL via bitnami helm chart
 		--set tls.enabled=false
 
 .PHONY: kind-deploy-cert-manager
-kind-deploy-cert-manager: ## Deploy cert-manager
+kind-deploy-cert-manager: ## Deploy cert-manager (waits for webhook to be ready)
+	@echo "Installing cert-manager (jetstack/cert-manager)..."
 	helm upgrade --install cert-manager jetstack/cert-manager \
 		--repo https://charts.jetstack.io \
 		--namespace cert-manager --create-namespace \
+		--version v1.20.2 \
 		--set crds.enabled=true
+	@echo "Waiting for cert-manager components to become ready..."
+	kubectl -n cert-manager wait deployment/cert-manager --for condition=Available --timeout=180s
+	kubectl -n cert-manager wait deployment/cert-manager-webhook --for condition=Available --timeout=180s
 
 .PHONY: kind-deploy-minio
 kind-deploy-minio: ## Deploy MinIO for S3 log storage (optional)
@@ -233,6 +238,19 @@ kind-deploy-minio: ## Deploy MinIO for S3 log storage (optional)
 		--set auth.rootUser=minioadmin \
 		--set auth.rootPassword=minioadmin \
 		--set persistence.enabled=false
+
+# Create self-signed / repo-provided secrets used by the helm chart when cert-manager
+# is not being used. This ensures webhook and DB TLS mounts exist during local Kind runs.
+.PHONY: kind-create-secrets
+kind-create-secrets: ## Create webhook and DB TLS secrets from repo certs and create JWT secret
+	@echo "Creating webhook and DB TLS secrets from repo certs (idempotent)..."
+	kubectl create secret generic webhook-server-cert -n default \
+		--from-file=tls.crt=../client.crt --from-file=tls.key=../client.key --dry-run=client -o yaml | kubectl apply -f -
+	kubectl create secret generic postgresql-client-tls -n default \
+		--from-file=ca.crt=../ca.crt --from-file=client.crt=../client.crt --from-file=client.key=../client.key --dry-run=client -o yaml | kubectl apply -f -
+	@if [ -f ../secrets.yaml ]; then \
+		kubectl apply -f ../secrets.yaml; \
+	fi
 
 ##@ Kind Kontroler Deployment
 
@@ -249,11 +267,26 @@ kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
 		--set "db.postgresql.password.key=postgres-password" \
 		--set controller.db.ssl.mode=disable \
 		--set server.db.ssl.mode=disable \
-		--set certManager.enabled=false \
+		--set certManager.enabled=true \
+		--set webhook.enabled=false \
 		--set controller.leaderElectionID="610a3770.greedykomodo"
+	@echo "Waiting for webhook CA bundle to be injected by cert-manager..."
+	@echo "This may take a minute."
+	@bash -c '\
+	OUT=; \
+	for i in $$(seq 1 30); do \
+	  OUT=$$(kubectl get mutatingwebhookconfiguration operator-mutating-webhook-configuration -o jsonpath="{.webhooks[0].clientConfig.caBundle}" 2>/dev/null || true); \
+	  if [ -n "$$OUT" ]; then \
+	    echo "CA bundle injected"; break; \
+	  fi; \
+	  sleep 2; \
+	done; \
+	if [ -z "$$OUT" ]; then \
+	  echo "Warning: CA bundle not injected into MutatingWebhookConfiguration after timeout"; \
+	fi'
 
 .PHONY: kind-bootstrap
-kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-deploy-kontroler ## Full kind cluster setup with all services
+kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-create-secrets kind-deploy-kontroler ## Full kind cluster setup with all services
 	@echo "Kind cluster ready with Kontroler deployed!"
 	@echo "Controller logs: kubectl logs -l app=kontroler-controller -n default -f"
 	@echo "Server logs: kubectl logs -l app=kontroler-server -n default -f"
@@ -261,11 +294,22 @@ kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-deploy-kontro
 ##@ Port Forwarding
 
 .PHONY: kind-portforward
-kind-portforward: ## Port forward to access server UI locally
+kind-portforward: ## Port forward to access server UI locally (backgrounded, will wait)
 	@echo "Port forwarding to server (8080) and UI (3000)..."
 	(kubectl port-forward svc/kontroler-server 8080:8080 & \
 	 kubectl port-forward svc/kontroler-ui 3000:3000 & \
 	 wait)
+
+# Foreground port-forward targets — run these in separate terminals so each blocks
+.PHONY: kind-portforward-server
+kind-portforward-server: ## Port-forward the server service in the foreground (run in its own terminal)
+	@echo "Port forwarding server at http://localhost:8080"
+	kubectl port-forward svc/kontroler-server 8080:8080
+
+.PHONY: kind-portforward-ui
+kind-portforward-ui: ## Port-forward the UI service in the foreground (run in its own terminal)
+	@echo "Port forwarding UI at http://localhost:3000"
+	kubectl port-forward svc/kontroler-ui 3000:3000
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
