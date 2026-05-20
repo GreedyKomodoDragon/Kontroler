@@ -1,6 +1,7 @@
 package dsl_test
 
 import (
+	"strings"
 	"testing"
 
 	v1alpha1 "kontroler-controller/api/v1alpha1"
