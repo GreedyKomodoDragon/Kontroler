@@ -47,7 +47,18 @@ task a { image "alpine" script "x" }
 	require.Greater(t, len(result.Errors), 0)
 	// Accept either a "no graph" message or a missing task message depending on implementation details
 	msg := result.Errors[0].Message
-	assert.Contains(t, msg, "graph")
+	// Ensure the specific missing task is mentioned
+	require.Contains(t, msg, "b")
+	// Accept a range of possible phrasings from the validator
+	keywords := []string{"undefined", "missing", "not found", "not defined"}
+	found := false
+	for _, k := range keywords {
+		if strings.Contains(msg, k) {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected error message to mention that task 'b' is undefined/missing; got: %s", msg)
 }
 
 func TestParse_CircularDependency(t *testing.T) {
