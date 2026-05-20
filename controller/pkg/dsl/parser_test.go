@@ -32,7 +32,13 @@ task c { image "alpine:latest" script "echo c" }
 }
 
 func TestParse_UndefinedTaskReference(t *testing.T) {
-	src := `graph { a -> b }\ntask a { image "alpine" script "x" }`
+	src := `
+graph {
+  a -> b
+}
+
+task a { image "alpine" script "x" }
+`
 	spec, err := dagdsl.ParseDSL(src)
 	require.NoError(t, err)
 
