@@ -3,6 +3,7 @@ package dsl_test
 import (
 	"testing"
 
+	v1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/dagdsl"
 
 	"github.com/stretchr/testify/assert"
@@ -22,20 +23,25 @@ task c { image "alpine:latest" script "echo c" }
 `
 
 	dag, err := dagdsl.ParseDSL(src)
-	if err != nil {
-		t.Fatalf("unexpected parse error: %v", err)
-	}
-	if len(dag.Task) != 3 {
-		t.Fatalf("expected 3 tasks, got %d", len(dag.Task))
-	}
+	require.NoError(t, err)
+	require.NotNil(t, dag)
+
+	// Validate using the package validator to ensure graph references are correct
+	result := dagdsl.ValidateDAGSpec(dag)
+	assert.True(t, result.Valid)
 }
 
 func TestParse_UndefinedTaskReference(t *testing.T) {
 	src := `graph { a -> b }\ntask a { image "alpine" script "x" }`
-	_, err := dagdsl.ParseDSL(src)
-	if err == nil {
-		t.Fatalf("expected error for undefined task 'b', got nil")
-	}
+	spec, err := dagdsl.ParseDSL(src)
+	require.NoError(t, err)
+
+	result := dagdsl.ValidateDAGSpec(spec)
+	assert.False(t, result.Valid)
+	// Expect the graph validation to report missing task 'b'
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0].Message, "tasks referenced in graph but not defined")
+	assert.Contains(t, result.Errors[0].Message, "b")
 }
 
 func TestParse_CircularDependency(t *testing.T) {
@@ -45,8 +51,12 @@ task a { image "alpine" script "a" }
  task b { image "alpine" script "b" }
  task c { image "alpine" script "c" }`
 
-	_, err := dagdsl.ParseDSL(src)
-	// The parser/validator may return either a parse error or a validation error; ensure we get an error
+	spec, err := dagdsl.ParseDSL(src)
+	require.NoError(t, err)
+
+	// Cycle detection lives on the DAG type validation (API-level checks)
+	dag := &v1alpha1.DAG{Spec: *spec}
+	err = dag.ValidateDAG(nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cycle")
+	assert.Contains(t, err.Error(), "cyclic")
 }
