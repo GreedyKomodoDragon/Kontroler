@@ -472,7 +472,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-_ = 
 		}()
 
 		// Start the task watchers and workers
@@ -498,7 +497,6 @@ _ =
 				go func() {
 					defer wg.Done()
 					// Start the worker
-_ = 
 				}()
 				currentIndex++
 			}

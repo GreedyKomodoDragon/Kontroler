@@ -52,41 +52,35 @@ func NewSqliteManager(ctx context.Context, parser *cron.Parser, config *SQLiteCo
 	// Apply the configurable settings if provided
 	if config.JournalMode != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s;", config.JournalMode)); err != nil {
-_ = 
 			return nil, nil, fmt.Errorf("failed to set journal mode: %w", err)
 		}
 	}
 
 	if config.Synchronous != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA synchronous=%s;", config.Synchronous)); err != nil {
-_ = 
 			return nil, nil, fmt.Errorf("failed to set synchronous mode: %w", err)
 		}
 	}
 
 	if config.CacheSize != 0 {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA cache_size=%d;", config.CacheSize)); err != nil {
-_ = 
 			return nil, nil, fmt.Errorf("failed to set cache size: %w", err)
 		}
 	}
 
 	if config.TempStore != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA temp_store=%s;", config.TempStore)); err != nil {
-_ = 
 			return nil, nil, fmt.Errorf("failed to set temp store: %w", err)
 		}
 	}
 
 	// Check the connection to ensure the database is accessible.
 	if err := db.PingContext(ctx); err != nil {
-_ = 
 		return nil, nil, fmt.Errorf("failed to connect to SQLite database: %w", err)
 	}
 
 	migrationManager := NewSQLiteMigrationManager(db)
 	if err := migrations.RegisterMigrations(migrationManager, "sqlite"); err != nil {
-_ = 
 		return nil, nil, fmt.Errorf("failed to register migrations: %w", err)
 	}
 
@@ -1743,13 +1737,10 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	for existingRuns.Next() {
 		var taskID int
 		if err := existingRuns.Scan(&taskID); err != nil {
-_ = 
 			return nil, fmt.Errorf("failed to scan existing task run: %w", err)
 		}
 		existingTaskRuns[taskID] = true
 	}
-_ = 
-
 	// Rest of implementation remains the same, just modify the DFS logic
 	rows, err := tx.QueryContext(ctx, `
         SELECT d.depends_on_task_id, d.task_id
@@ -1768,13 +1759,10 @@ _ =
 	for rows.Next() {
 		var parentTaskID, dependentTaskID int
 		if err := rows.Scan(&parentTaskID, &dependentTaskID); err != nil {
-_ = 
 			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
 		}
 		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
 	}
-_ = 
-
 	var startingTaskID int
 	if err := tx.QueryRowContext(ctx, `
         SELECT task_id FROM Task_Runs WHERE task_run_id = ?;

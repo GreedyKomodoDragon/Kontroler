@@ -555,8 +555,6 @@ func TestPostgresDAGManager_GetID(t *testing.T) {
 	// Test case: Handle error if database query fails
 	t.Run("HandlesQueryError", func(t *testing.T) {
 		// Intentionally close the pool to simulate a database error
-_ = 
-
 		uniqueID, err := dm.GetID(context.Background())
 		assert.Error(t, err)
 		assert.Empty(t, uniqueID)

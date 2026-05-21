@@ -21,7 +21,6 @@ func setupBenchmarkQueue(b *testing.B) (Queue, func()) {
 	}
 
 	cleanup := func() {
-_ = 
 		os.RemoveAll(tmpDir)
 	}
 

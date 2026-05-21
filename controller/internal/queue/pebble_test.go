@@ -22,7 +22,6 @@ func setupTestQueue(t *testing.T) (Queue, string, func()) {
 	}
 
 	cleanup := func() {
-_ = 
 		os.RemoveAll(tmpDir)
 	}
 
