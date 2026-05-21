@@ -493,6 +493,7 @@ func main() {
 
 			for j := 0; j < workerConfig.Count; j++ {
 				worker := wrkers[currentIndex]
+					_ = worker
 
 				wg.Add(1)
 				go func() {
