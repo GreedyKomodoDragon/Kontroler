@@ -22,35 +22,35 @@ func NewAuthSQLiteManager(ctx context.Context, db *sql.DB, config *AuthSQLiteCon
 	// Apply the configurable settings if provided
 	if config.JournalMode != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s;", config.JournalMode)); err != nil {
-_ = 
+			db.Close()
 			return nil, fmt.Errorf("failed to set journal mode: %w", err)
 		}
 	}
 
 	if config.Synchronous != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA synchronous=%s;", config.Synchronous)); err != nil {
-_ = 
+			db.Close()
 			return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
 		}
 	}
 
 	if config.CacheSize != 0 {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA cache_size=%d;", config.CacheSize)); err != nil {
-_ = 
+			db.Close()
 			return nil, fmt.Errorf("failed to set cache size: %w", err)
 		}
 	}
 
 	if config.TempStore != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA temp_store=%s;", config.TempStore)); err != nil {
-_ = 
+			db.Close()
 			return nil, fmt.Errorf("failed to set temp store using value %s: %w", config.TempStore, err)
 		}
 	}
 
 	// Check the connection to ensure the database is accessible.
 	if err := db.PingContext(ctx); err != nil {
-_ = 
+		db.Close()
 		return nil, fmt.Errorf("failed to connect to SQLite database: %w", err)
 	}
 

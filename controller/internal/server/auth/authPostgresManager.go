@@ -219,7 +219,7 @@ func (a *authPostgresManager) GetUsers(ctx context.Context, limit, offset int) (
 		return nil, err
 	}
 
-	defer .Close()
+	defer rows.Close()
 
 	users := []*User{}
 	for rows.Next() {
