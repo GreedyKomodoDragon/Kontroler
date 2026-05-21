@@ -228,7 +228,7 @@ func (a *authSqliteManager) GetUsers(ctx context.Context, limit int, offset int)
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	users := []*User{}
 	for rows.Next() {

@@ -472,7 +472,7 @@ func Test_SQLite_DAGManager_GetID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -495,7 +495,7 @@ func Test_SQLite_DAGManager_IncrementAttempts(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -560,7 +560,7 @@ func Test_SQLite_DAGManager_MarkTaskAsFailed(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -597,7 +597,7 @@ func Test_SQLite_DAGManager_MarkPodStatus(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -636,7 +636,7 @@ func Test_SQLite_DAGManager_DeleteDag(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -664,7 +664,7 @@ func Test_SQLite_DAGManager_FindExistingDAGRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -682,7 +682,7 @@ func Test_SQLite_AddTask(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -700,7 +700,7 @@ func Test_SQLite_GetTaskRefsParameters(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -718,7 +718,7 @@ func Test_SQLite_InsertDag_TaskRef(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -735,7 +735,7 @@ func Test_SQLite_Task_Before_InsertDag_Two(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -812,7 +812,7 @@ func Test_SQLite_Task_Handle_Versions(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -914,7 +914,7 @@ func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1000,7 +1000,7 @@ func Test_SQLite_Complex_Example(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1018,7 +1018,7 @@ func Test_SQLite_DeleteDag_TaskRefs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1035,7 +1035,7 @@ func Test_SQLite_DeleteDag_TaskRefs_Versioning(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1053,7 +1053,7 @@ func Test_SQLite_CreateDAGRun_Sequential(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1070,7 +1070,7 @@ func Test_SQLite_CreateDAGRun_Scripts_Only(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1087,7 +1087,7 @@ func Test_SQLite_Workspace_full(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1104,7 +1104,7 @@ func Test_SQLite_Workspace_non_optional_only(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1121,7 +1121,7 @@ func Test_SQLite_Workspace_disabled(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1138,7 +1138,7 @@ func Test_SQLite__MarkConnectingTasksAsSuspended_Single(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)
@@ -1163,7 +1163,7 @@ func Test_SQLite__MarkConnectingTasksAsSuspended_deduplicate_tasks(t *testing.T)
 	})
 	require.NoError(t, err)
 
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	err = dm.InitaliseDatabase(context.Background())
 	require.NoError(t, err)

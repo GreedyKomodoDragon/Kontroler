@@ -62,7 +62,7 @@ func (s *sqliteManager) GetAllDagMetaData(ctx context.Context, limit int, offset
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	metas := []*DBDAGMetaData{}
 	for rows.Next() {
@@ -117,7 +117,7 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
@@ -152,7 +152,7 @@ func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	metas := []*DBDagRunMeta{}
 	for rows.Next() {
@@ -189,7 +189,7 @@ func (s *sqliteManager) getDagConnections(ctx context.Context, dagId int) (map[i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	connections := map[int][]int{}
 	for rows.Next() {
@@ -256,7 +256,7 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDagR
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
@@ -283,7 +283,7 @@ func (s *sqliteManager) GetDagNames(ctx context.Context, term string, limit int)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	names := []*string{}
 	for rows.Next() {
@@ -322,7 +322,7 @@ func (s *sqliteManager) GetDagParameters(ctx context.Context, dagName string) ([
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	params := []*DBParameter{}
 
@@ -474,7 +474,7 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DBDashboardStat
 			errChan <- fmt.Errorf("failed to execute dagTypeCountsQuery: %w", err)
 			return
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		stats.DAGTypeCounts = make(map[string]int)
 		for rows.Next() {
@@ -506,7 +506,7 @@ func (s *sqliteManager) GetDashboardStats(ctx context.Context) (*DBDashboardStat
 			errChan <- fmt.Errorf("failed to execute dailyDagRunCountsQuery: %w", err)
 			return
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var dayStr string
@@ -582,7 +582,7 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	results := make(map[string]bool)
 
@@ -685,7 +685,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTask
 	if err != nil {
 		return nil, fmt.Errorf("failed to query parameters: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var param DBParameter
@@ -724,7 +724,7 @@ func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, tas
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	task.Pods = []*DBTaskPod{}
 
@@ -765,7 +765,7 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	taskDetails := []*DBDagTaskDetails{}
 	for rows.Next() {

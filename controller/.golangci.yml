@@ -1,75 +1,66 @@
+version: 2
 run:
-  # Set a generous deadline for linting to complete
   deadline: 5m
-  
-  # Allow parallel runners for faster linting, especially on large codebases
   allow-parallel-runners: true
-
-  # Ensure linting issues don't fail the process
-  # This is useful for CI/CD pipelines where linting is a non-blocking step
   issues-exit-code: 0
 
 issues:
-  # Don't skip warning about missing doc comments
-  # Don't exclude the default set of linting rules
   exclude-use-default: false
-
-  # Specify custom rules for excluding issues
   exclude-rules:
-    - path: "api/*" # Ignore long lines in API files
+    - path: "api/*"
       linters:
         - lll
-    - path: "internal/*" # Ignore duplication and long lines in internal files
-      linters:
-        - dupl
-        - lll
-    - path: "internal/server/*" # Ignore duplication and long lines in server internal files
+    - path: "internal/*"
       linters:
         - dupl
         - lll
-    - path: "_test\\.go$"  # Ignore all test files
+    - path: "internal/server/*"
+      linters:
+        - dupl
+        - lll
+    - path: "_test\\.go$"
       linters:
         - dupl
         - errcheck
         - goconst
         - gocyclo
-        - gosimple
+        - revive
         - lll
         - nakedret
-    - path: "test/*" # Example: Ignore specific linters in test files
+        - staticcheck
+        - unused
+        - govet
+        - misspell
+        - prealloc
+        - unparam
+        - unconvert
+    - path: "test/*"
       linters:
         - nakedret
 
 linters:
-  # Disable all linters by default for selective enabling
   disable-all: true
-  
-  # Enable a curated set of linters
   enable:
-    - dupl           # Detect code duplication
-    - errcheck       # Check for unchecked errors
-    - goconst        # Find repeated constants
-    - gocyclo        # Detect high cyclomatic complexity
-    - gofmt          # Enforce `gofmt`-ed code
-    - goimports      # Enforce `goimports` formatting
-    - gosimple       # Simplify code
-    - govet          # Vet code for potential issues
-    - ineffassign    # Detect unused assignments
-    - lll            # Report long lines (default 120 characters)
-    - misspell       # Detect misspellings
-    - nakedret       # Disallow naked returns in functions longer than a specified length
-    - prealloc       # Suggest preallocating slices
-    - staticcheck    # A powerful linter for static analysis
-    - typecheck      # Check for type errors
-    - unconvert      # Remove unnecessary type conversions
-    - unparam        # Detect unused parameters
-    - unused         # Find unused code (functions, variables, etc.)
+    - dupl
+    - errcheck
+    - goconst
+    - gocyclo
+    - revive
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - prealloc
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
 
-  # Optional: Override settings for specific linters
-  settings:
-    lll:
-      line-length: 120 # Set maximum line length to 120 characters
-    gocyclo:
-      min-complexity: 15 # Set threshold for cyclomatic complexity
-    misspell:
-      locale: US # Enforce American English spelling
+settings:
+  lll:
+    line-length: 120
+  gocyclo:
+    min-complexity: 15
+  misspell:
+    locale: US

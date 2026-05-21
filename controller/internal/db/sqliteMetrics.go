@@ -120,7 +120,7 @@ func (m *MetricsSqliteDAGManager) updateContentMetrics(logger logr.Logger) {
 		metrics.RecordErrorMetrics("sqlite", "collect_content_metrics", "dag_counts_error")
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Process each namespace's DAG counts
 	for rows.Next() {
