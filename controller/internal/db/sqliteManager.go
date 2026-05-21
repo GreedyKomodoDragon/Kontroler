@@ -169,7 +169,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// Collect DAG info and schedules
 	namespaces := []*DagInfo{}
 	schedules := []string{}
@@ -899,7 +899,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tasks := make([]Task, 0, len(taskIds))
 	parameters := make([][]string, 0, len(taskIds))
 
@@ -1009,7 +1009,7 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
 	for rows.Next() {
@@ -1035,7 +1035,7 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// Map to store dependency counts for each task
 	dependencyCounts := make(map[int]int)
 	for rows.Next() {
@@ -1095,7 +1095,7 @@ func (s *sqliteDAGManager) fetchTaskParameters(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	// Initialize task parameter slices
 	for i := range tasks {
 		tasks[i].Parameters = []Parameter{}
@@ -1155,7 +1155,7 @@ func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string)
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	parameters := map[string]*Parameter{}
 	for rows.Next() {
 		var parameter Parameter
@@ -1322,7 +1322,7 @@ func (s *sqliteDAGManager) getTaskDeletionData(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	taskDatas := []taskData{}
 	for rows.Next() {
 		var taskID int
@@ -1906,7 +1906,7 @@ func (s *sqliteDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]R
 		if err != nil {
 			return fmt.Errorf("failed to query running pods: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		// Collect pod information
 		for rows.Next() {
 			var pod RunningPodInfo
