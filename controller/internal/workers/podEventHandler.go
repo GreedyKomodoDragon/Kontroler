@@ -84,8 +84,8 @@ func (p *podEventHandler) HandleDelete(obj interface{}) {
 
 func (p *podEventHandler) getQueueIndex(pod *v1.Pod) int {
 	hasher := xxhash.NewWithSeed(0xABC)
-	hasher.Write([]byte(pod.Name))
-	hasher.Write([]byte(pod.Namespace))
+	_, _ = hasher.Write([]byte(pod.Name))
+	_, _ = hasher.Write([]byte(pod.Namespace))
 	index := int(hasher.Sum64() % uint64(len(p.queues)))
 	return index
 }

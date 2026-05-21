@@ -46,7 +46,7 @@ func (r *systemURLVerifier) VerifySSL(inputURL string) error {
 	if err != nil {
 		return fmt.Errorf("failed to establish TLS connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.VerifyHostname(parsedURL.Hostname()); err != nil {
 		return fmt.Errorf("hostname verification failed: %w", err)

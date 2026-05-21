@@ -47,7 +47,7 @@ func (f *fsLogFetcher) RangeFetchLogs(logKey *string, start int64, end int64) (i
 
 	// Seek to the start position
 	if _, err := file.Seek(start, 0); err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, err
 	}
 

@@ -64,7 +64,7 @@ func ServeLogWithRange(c *fiber.Ctx, dagRunId int, podName string, logFetcher Lo
 			})
 		}
 
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		// Set the content-range header and serve the requested range
 		c.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
@@ -87,7 +87,7 @@ func ServeLogWithRange(c *fiber.Ctx, dagRunId int, podName string, logFetcher Lo
 		})
 	}
 
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Stream the full file
 	if _, err := io.Copy(c, reader); err != nil {

@@ -30,12 +30,18 @@ type LogRequest struct {
 }
 
 func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
-	defer c.Close()
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Error().Err(err).Msg("[WebSocket] Error closing websocket")
+		}
+	}()
 
 	podUUID := c.Query("pod")
 	if podUUID == "" {
 		log.Error().Msg("[WebSocket] Error: Missing pod UUID in request")
-		c.WriteMessage(websocket.CloseMessage, []byte("Missing pod UUID"))
+		if err := c.WriteMessage(websocket.CloseMessage, []byte("Missing pod UUID")); err != nil {
+			log.Error().Err(err).Msg("[WebSocket] Error writing close message")
+		}
 		return
 	}
 
@@ -44,7 +50,9 @@ func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
 	namespace, name, err := w.db.GetPodNameAndNamespace(context.Background(), podUUID)
 	if err != nil {
 		log.Error().Err(err).Str("podUUID", podUUID).Msg("[WebSocket] Error getting pod details for UUID")
-		c.WriteMessage(websocket.CloseMessage, []byte("Failed to get logs"))
+		if err := c.WriteMessage(websocket.CloseMessage, []byte("Failed to get logs")); err != nil {
+			log.Error().Err(err).Msg("[WebSocket] Error writing close message")
+		}
 		return
 	}
 
@@ -56,10 +64,16 @@ func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
 	logStream, err := req.Stream(context.TODO())
 	if err != nil {
 		log.Error().Err(err).Str("podUUID", podUUID).Msg("[WebSocket] Error establishing log stream for pod")
-		c.WriteMessage(websocket.CloseMessage, []byte("Failed to get logs"))
+		if err := c.WriteMessage(websocket.CloseMessage, []byte("Failed to get logs")); err != nil {
+			log.Error().Err(err).Msg("[WebSocket] Error writing close message")
+		}
 		return
 	}
-	defer logStream.Close()
+	defer func() {
+		if err := logStream.Close(); err != nil {
+			log.Error().Err(err).Msg("[WebSocket] Error closing log stream")
+		}
+	}()
 
 	for {
 		buf := make([]byte, 1024)
@@ -69,8 +83,7 @@ func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
 			break
 		}
 
-		err = c.WriteMessage(websocket.TextMessage, buf[:n])
-		if err != nil {
+		if err := c.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
 			log.Error().Err(err).Str("podUUID", podUUID).Msg("[WebSocket] Error writing to WebSocket for pod")
 			break
 		}
@@ -79,5 +92,7 @@ func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
 	}
 
 	log.Info().Str("podUUID", podUUID).Msg("[WebSocket] Closing connection for pod")
-	c.WriteMessage(websocket.CloseMessage, []byte("finished"))
+	if err := c.WriteMessage(websocket.CloseMessage, []byte("finished")); err != nil {
+		log.Error().Err(err).Msg("[WebSocket] Error writing close message")
+	}
 }

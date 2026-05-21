@@ -106,8 +106,8 @@ func (e *eventHandler) HandleDelete(obj interface{}) {
 
 func (e *eventHandler) getQueueIndex(event *v1.Event) int {
 	hasher := xxhash.NewWithSeed(0xABC)
-	hasher.Write([]byte(event.InvolvedObject.Name))
-	hasher.Write([]byte(event.InvolvedObject.Namespace))
+	_, _ = hasher.Write([]byte(event.InvolvedObject.Name))
+	_, _ = hasher.Write([]byte(event.InvolvedObject.Namespace))
 	index := int(hasher.Sum64() % uint64(len(e.queues)))
 	return index
 }
