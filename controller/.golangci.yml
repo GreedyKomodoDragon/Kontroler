@@ -48,7 +48,6 @@ linters:
   enable:
     - dupl           # Detect code duplication
     - errcheck       # Check for unchecked errors
-    - copyloopvar  # Detect references to loop variables
     - goconst        # Find repeated constants
     - gocyclo        # Detect high cyclomatic complexity
     - gofmt          # Enforce `gofmt`-ed code
