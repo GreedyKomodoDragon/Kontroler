@@ -141,7 +141,6 @@ func TestQueuePersistence(t *testing.T) {
 	q1, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
 	require.NoError(t, q1.Push(testValue))
-_ = 
 
 	// Create new queue instance and verify value
 	q2, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
