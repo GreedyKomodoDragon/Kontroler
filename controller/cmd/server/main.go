@@ -131,6 +131,9 @@ func main() {
 		log.Fatal().Msg("unsupported DAG manager provided, 'postgresql' or 'sqlite'")
 	}
 
+	// Ensure auth manager resources are cleaned up when main exits
+	defer func() { _ = authManager.Close() }()
+
 	if err := authManager.InitialiseDatabase(ctx); err != nil {
 		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
 	}

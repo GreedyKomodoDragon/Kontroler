@@ -292,3 +292,9 @@ func (a *authPostgresManager) ChangePassword(ctx context.Context, username strin
 
 	return nil
 }
+
+// Close implements AuthManager.Close.
+func (a *authPostgresManager) Close() error {
+	a.pool.Close()
+	return nil
+}

@@ -35,4 +35,6 @@ type AuthManager interface {
 	GetUserPageCount(ctx context.Context, limit int) (int, error)
 	DeleteUser(ctx context.Context, user string) error
 	ChangePassword(ctx context.Context, username string, changeCredentials ChangeCredentials) error
+	// Close releases any resources held by the manager. Implementations should make Close idempotent.
+	Close() error
 }
