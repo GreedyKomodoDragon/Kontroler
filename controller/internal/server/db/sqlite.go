@@ -87,7 +87,7 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun,
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = .Rollback() }()
+	defer func() { _ = tx.Rollback() }()
 
 	var dagId int
 	row := tx.QueryRowContext(ctx, `

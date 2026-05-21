@@ -45,14 +45,14 @@ func (m *postgresMigrationManager) MigrateUp(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer func() { _ = .Rollback() }()
+	defer func() { _ = tx.Rollback() }()
 
 	// Get applied migrations
 	rows, err := tx.Query(ctx, "SELECT version FROM schema_migrations ORDER BY version DESC")
 	if err != nil {
 		return fmt.Errorf("failed to query migrations: %w", err)
 	}
-	defer .Close()
+	defer func() { _ = rows.Close() }()
 
 	applied := make(map[int]bool)
 	for rows.Next() {
