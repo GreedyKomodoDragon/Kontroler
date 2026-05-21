@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestQueue(t *testing.T) (Queue, string, func()) {
+func setupTestQueue(t *testing.T) (Queue, func()) {
 	tmpDir, err := os.MkdirTemp("", "queue-test-*")
 	require.NoError(t, err)
 
@@ -25,14 +25,14 @@ func setupTestQueue(t *testing.T) (Queue, string, func()) {
 		_ = os.RemoveAll(tmpDir)
 	}
 
-	return q, tmpDir, cleanup
+	return q, cleanup
 }
 
 func TestNewPebbleQueue(t *testing.T) {
 	// Test invalid path - use a different directory
 	nonexistentDir, err := os.MkdirTemp("", "queue-test-nonexistent-*")
 	require.NoError(t, err)
-	defer func(){ _ = os.RemoveAll(nonexistentDir) }()
+	defer func() { _ = os.RemoveAll(nonexistentDir) }()
 
 	q1, err := NewPebbleQueue(t.Context(), filepath.Join(nonexistentDir, "subdir"), "test-topic")
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestNewPebbleQueue(t *testing.T) {
 	// Test custom options - use another different directory
 	optsDir, err := os.MkdirTemp("", "queue-test-opts-*")
 	require.NoError(t, err)
-	defer func(){ _ = os.RemoveAll(optsDir) }()
+	defer func() { _ = os.RemoveAll(optsDir) }()
 
 	q2, err := NewPebbleQueue(context.Background(), optsDir, "test-topic-opts")
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestNewPebbleQueue(t *testing.T) {
 }
 
 func TestPushPop(t *testing.T) {
-	q, _, cleanup := setupTestQueue(t)
+	q, cleanup := setupTestQueue(t)
 	defer cleanup()
 
 	testCases := []string{
@@ -93,7 +93,7 @@ func TestPushPop(t *testing.T) {
 }
 
 func TestEmptyQueue(t *testing.T) {
-	q, _, cleanup := setupTestQueue(t)
+	q, cleanup := setupTestQueue(t)
 	defer cleanup()
 
 	// Test pop on empty queue (should block) - use a short timeout
@@ -110,7 +110,7 @@ func TestEmptyQueue(t *testing.T) {
 }
 
 func TestPeek(t *testing.T) {
-	q, _, cleanup := setupTestQueue(t)
+	q, cleanup := setupTestQueue(t)
 	defer cleanup()
 
 	testValue := &PodEvent{
@@ -129,7 +129,7 @@ func TestPeek(t *testing.T) {
 func TestQueuePersistence(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "queue-persist-test-*")
 	require.NoError(t, err)
-	defer func(){ _ = os.RemoveAll(tmpDir) }()
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	testValue := &PodEvent{
 		Pod:   nil,
@@ -152,7 +152,7 @@ func TestQueuePersistence(t *testing.T) {
 }
 
 func TestLargeQueue(t *testing.T) {
-	q, _, cleanup := setupTestQueue(t)
+	q, cleanup := setupTestQueue(t)
 	defer cleanup()
 
 	// Push many items

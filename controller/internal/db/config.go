@@ -74,9 +74,10 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 			panic(err)
 		}
 
-		if sslMode == "require" {
+		switch sslMode {
+		case "require":
 			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = true
-		} else if sslMode == "verify-ca" || sslMode == "verify-full" {
+		case "verify-ca", "verify-full":
 			pgConfig.ConnConfig.TLSConfig.InsecureSkipVerify = false
 		}
 	}

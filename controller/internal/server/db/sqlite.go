@@ -651,7 +651,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTask
 	}
 
 	if podTemplateJSON != nil {
-		taskDetails.PodTemplate = string(*podTemplateJSON)
+		taskDetails.PodTemplate = *podTemplateJSON
 	} else {
 		taskDetails.PodTemplate = ""
 	}
@@ -803,7 +803,7 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 		}
 
 		if podTemplateJSON != nil {
-			taskDetail.PodTemplate = string(*podTemplateJSON)
+			taskDetail.PodTemplate = *podTemplateJSON
 		} else {
 			taskDetail.PodTemplate = ""
 		}

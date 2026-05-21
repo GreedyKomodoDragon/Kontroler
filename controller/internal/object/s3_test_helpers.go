@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
+
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -33,7 +33,7 @@ func (f *fakeS3Client) CreateMultipartUpload(ctx context.Context, params *s3.Cre
 }
 
 func (f *fakeS3Client) UploadPart(ctx context.Context, params *s3.UploadPartInput, opts ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
-	b, _ := ioutil.ReadAll(params.Body)
+	b, _ := io.ReadAll(params.Body)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.uploadCount++
@@ -54,7 +54,7 @@ func (f *fakeS3Client) CompleteMultipartUpload(ctx context.Context, params *s3.C
 }
 
 func (f *fakeS3Client) PutObject(ctx context.Context, params *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	b, _ := ioutil.ReadAll(params.Body)
+	b, _ := io.ReadAll(params.Body)
 	f.mu.Lock()
 	f.putBody = b
 	f.putKey = *params.Key

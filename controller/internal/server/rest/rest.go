@@ -83,7 +83,7 @@ func ValidateCredentials(req auth.CreateAccountReq) error {
 	}
 
 	for _, r := range req.Username {
-		if !(unicode.IsLetter(r) || unicode.IsNumber(r)) {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
 			return fmt.Errorf("username must use only letter or number characters")
 		}
 	}
@@ -97,7 +97,7 @@ func ValidateCredentials(req auth.CreateAccountReq) error {
 		if unicode.IsLetter(r) {
 			hasLetter = true
 		}
-		if !(unicode.IsLetter(r) || unicode.IsNumber(r)) {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
 			return fmt.Errorf("password must use only letter or number characters")
 		}
 	}

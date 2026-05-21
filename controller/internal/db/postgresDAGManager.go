@@ -518,7 +518,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		if err != nil {
 			return nil, err
 		}
-				
+
 		paramMap := make(map[string]Parameter)
 		for rowsParams.Next() {
 			var name string
@@ -1210,7 +1210,6 @@ func (p *postgresDAGManager) DeleteDAG(ctx context.Context, name string, namespa
 		return nil, err
 	}
 
-		
 	taskIds := []interface{}{}
 	placeholders := []string{}
 	i := 0
@@ -1384,7 +1383,8 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
     INSERT INTO Tasks (name, command, args, image, parameters, backoffLimit, isConditional, retryCodes, podTemplate, script, scriptInjectorImage, inline, namespace, version, hash)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12, $13, $14);`,
 		task.Name, task.Spec.Command, task.Spec.Args, task.Spec.Image, task.Spec.Parameters, task.Spec.Backoff.Limit,
-		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script, task.Spec.ScriptInjectorImage, namespace, newVersion, hashValue); err != nil {
+		task.Spec.Conditional.Enabled, task.Spec.Conditional.RetryCodes, jsonValue, task.Spec.Script,
+		task.Spec.ScriptInjectorImage, namespace, newVersion, hashValue); err != nil {
 		return err
 	}
 

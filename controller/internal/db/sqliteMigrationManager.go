@@ -10,7 +10,6 @@ import (
 type sqliteMigrationManager struct {
 	db         *sql.DB
 	migrations []migration
-	initScript string
 }
 
 type migration struct {

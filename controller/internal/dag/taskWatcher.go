@@ -15,7 +15,6 @@ import (
 var (
 	ErrMissingAnnotation = errors.New("missing required annotation")
 	ErrInvalidTaskRunID  = errors.New("invalid task run ID")
-	kontrolerTaskRunID   = "kontroler/task-rid"
 )
 
 // Purpose of TaskWatcher is to listen for pods to finish and record results/trigger the next pods

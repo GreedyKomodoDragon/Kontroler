@@ -37,12 +37,12 @@ func RemoveFinalizer(clientset *kubernetes.Clientset, podName, namespace, finali
 
 	// Check if the finalizer exists, and remove it
 	var finalizers []string
-	for _, f := range pod.ObjectMeta.Finalizers {
+	for _, f := range pod.Finalizers {
 		if f != finalizer {
 			finalizers = append(finalizers, f)
 		}
 	}
-	pod.ObjectMeta.Finalizers = finalizers
+	pod.Finalizers = finalizers
 
 	// Update the Pod to save the changes
 	_, err = clientset.CoreV1().Pods(namespace).Update(context.TODO(), pod, v1.UpdateOptions{})

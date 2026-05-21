@@ -96,10 +96,10 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId
 	defer t.podPool.Put(pod)
 
 	// required metadata
-	pod.ObjectMeta.Labels[labelKontrolerID] = t.id
-	pod.ObjectMeta.Annotations[annotationTaskRID] = strconv.Itoa(taskRunId)
-	pod.ObjectMeta.Annotations[annotationDagRunID] = strconv.Itoa(dagRunId)
-	pod.ObjectMeta.Annotations[annotationTaskID] = strconv.Itoa(task.Id)
+	pod.Labels[labelKontrolerID] = t.id
+	pod.Annotations[annotationTaskRID] = strconv.Itoa(taskRunId)
+	pod.Annotations[annotationDagRunID] = strconv.Itoa(dagRunId)
+	pod.Annotations[annotationTaskID] = strconv.Itoa(task.Id)
 
 	// set podspec
 	pod.Spec = *podSpec

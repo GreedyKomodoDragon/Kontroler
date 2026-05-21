@@ -117,16 +117,11 @@ func ParseDSL(input string) (*v1alpha1.DAGSpec, error) {
 	}
 
 	// Convert to DAGSpec
-	dagSpec, err := convertToDAGSpec(root)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert to DAGSpec: %w", err)
-	}
-
-	return dagSpec, nil
+	return convertToDAGSpec(root), nil
 }
 
 // convertToDAGSpec converts the parsed DSL structure to a v1alpha1.DAGSpec
-func convertToDAGSpec(root *DSLRoot) (*v1alpha1.DAGSpec, error) {
+func convertToDAGSpec(root *DSLRoot) *v1alpha1.DAGSpec {
 	spec := &v1alpha1.DAGSpec{
 		Task: []v1alpha1.TaskSpec{},
 	}
@@ -168,7 +163,7 @@ func convertToDAGSpec(root *DSLRoot) (*v1alpha1.DAGSpec, error) {
 		spec.Task = append(spec.Task, taskSpec)
 	}
 
-	return spec, nil
+	return spec
 }
 
 // convertParameters converts ParametersBlock to DAGParameterSpec

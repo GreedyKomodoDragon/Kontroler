@@ -133,12 +133,13 @@ func (m *MetricsSqliteDAGManager) updateContentMetrics(logger logr.Logger) {
 			continue
 		}
 
-		log.Log.Info("DAG metrics collected", "namespace", namespace, "active", active, "suspended", suspended, "inactive", inactive)
+		log.Log.Info("DAG metrics collected", "namespace", namespace, "active", active,
+			suspendedStatus, suspended, "inactive", inactive)
 
 		dagCounts := map[string]int{
-			"active":    active,
-			"suspended": suspended,
-			"inactive":  inactive,
+			"active":        active,
+			suspendedStatus: suspended,
+			"inactive":      inactive,
 		}
 
 		// Collect DAG run metrics for this namespace

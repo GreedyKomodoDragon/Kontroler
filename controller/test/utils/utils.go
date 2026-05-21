@@ -136,6 +136,6 @@ func GetProjectDir() (string, error) {
 	if err != nil {
 		return wd, err
 	}
-	wd = strings.Replace(wd, "/test/e2e", "", -1)
-	return wd, nil
+
+	return strings.ReplaceAll(wd, "/test/e2e", ""), nil
 }

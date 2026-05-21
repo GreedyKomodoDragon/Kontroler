@@ -374,7 +374,7 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 
 	// Remove the actual finaliser (not an annotation)
 	var finalisers []string
-	for _, f := range pod.ObjectMeta.Finalizers {
+	for _, f := range pod.Finalizers {
 		if f != "kontroler/logcollection" {
 			finalisers = append(finalisers, f)
 		}

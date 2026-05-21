@@ -14,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+var suspendedStatus = "suspended"
+
 // metricsPostgresDAGManager wraps postgresDAGManager with metrics
 type metricsPostgresDAGManager struct {
 	*postgresDAGManager
@@ -132,12 +134,13 @@ func (m *metricsPostgresDAGManager) updateContentMetrics(logger logr.Logger) {
 			continue
 		}
 
-		log.Log.Info("DAG metrics collected", "namespace", namespace, "active", active, "suspended", suspended, "inactive", inactive)
+		log.Log.Info("DAG metrics collected", "namespace", namespace, "active", active,
+			suspendedStatus, suspended, "inactive", inactive)
 
 		dagCounts := map[string]int{
-			"active":    active,
-			"suspended": suspended,
-			"inactive":  inactive,
+			"active":        active,
+			suspendedStatus: suspended,
+			"inactive":      inactive,
 		}
 
 		// Collect DAG run metrics for this namespace
