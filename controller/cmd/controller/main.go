@@ -282,6 +282,9 @@ func main() {
 			os.Exit(1)
 		}
 
+				// ensure the sqlite DB is closed on shutdown
+				defer func() { _ = dbConn.Close() }()
+
 				
 	default:
 		dbType := os.Getenv("DB_TYPE")
