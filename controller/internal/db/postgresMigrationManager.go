@@ -45,7 +45,7 @@ func (m *postgresMigrationManager) MigrateUp(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Get applied migrations
 	rows, err := tx.Query(ctx, "SELECT version FROM schema_migrations ORDER BY version DESC")
@@ -53,7 +53,6 @@ func (m *postgresMigrationManager) MigrateUp(ctx context.Context) error {
 		return fmt.Errorf("failed to query migrations: %w", err)
 	}
 	defer rows.Close()
-
 	applied := make(map[int]bool)
 	for rows.Next() {
 		var version int

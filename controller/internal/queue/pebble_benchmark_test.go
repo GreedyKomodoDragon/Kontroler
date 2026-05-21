@@ -144,7 +144,7 @@ func BenchmarkQueueBatchOperations(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func(){ _ = os.RemoveAll(tmpDir) }()
 
 	q, err := NewPebbleQueue(context.Background(), tmpDir, "bench-topic")
 	if err != nil {

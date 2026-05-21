@@ -170,7 +170,6 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 		return nil, err
 	}
 	defer rows.Close()
-
 	// Collect DAG info and schedules
 	namespaces := []*DagInfo{}
 	schedules := []string{}
@@ -716,8 +715,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		if err != nil {
 			return nil, err
 		}
-		defer rowsParams.Close()
-
+				
 		paramMap := make(map[string]Parameter)
 		for rowsParams.Next() {
 			var name string
@@ -902,7 +900,6 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		return nil, nil, err
 	}
 	defer rows.Close()
-
 	tasks := make([]Task, 0, len(taskIds))
 	parameters := make([][]string, 0, len(taskIds))
 
@@ -1013,7 +1010,6 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 		return nil, err
 	}
 	defer rows.Close()
-
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
 	for rows.Next() {
@@ -1040,7 +1036,6 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 		return nil, err
 	}
 	defer rows.Close()
-
 	// Map to store dependency counts for each task
 	dependencyCounts := make(map[int]int)
 	for rows.Next() {
@@ -1101,7 +1096,6 @@ func (s *sqliteDAGManager) fetchTaskParameters(ctx context.Context, tx *sql.Tx, 
 		return err
 	}
 	defer rows.Close()
-
 	// Initialize task parameter slices
 	for i := range tasks {
 		tasks[i].Parameters = []Parameter{}
@@ -1162,7 +1156,6 @@ func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string)
 	}
 
 	defer rows.Close()
-
 	parameters := map[string]*Parameter{}
 	for rows.Next() {
 		var parameter Parameter
@@ -1330,7 +1323,6 @@ func (s *sqliteDAGManager) getTaskDeletionData(ctx context.Context, tx *sql.Tx, 
 		return nil, err
 	}
 	defer rows.Close()
-
 	taskDatas := []taskData{}
 	for rows.Next() {
 		var taskID int
@@ -1421,8 +1413,7 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 	if err != nil {
 		return nil, err
 	}
-	defer rowsTasks.Close()
-
+		
 	taskIds := []interface{}{}
 	placeholders := []string{}
 	i := 0
@@ -1812,8 +1803,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare statement: %w", err)
 		}
-		defer stmt.Close()
-
+				
 		for _, update := range updates {
 			if _, err := stmt.ExecContext(ctx, update...); err != nil {
 				return nil, fmt.Errorf("failed to insert task run: %w", err)
@@ -1917,7 +1907,6 @@ func (s *sqliteDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]R
 			return fmt.Errorf("failed to query running pods: %w", err)
 		}
 		defer rows.Close()
-
 		// Collect pod information
 		for rows.Next() {
 			var pod RunningPodInfo

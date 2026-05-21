@@ -79,8 +79,7 @@ func BenchmarkGetStartingTasks_Postgres(b *testing.B) {
 	b.ReportAllocs()
 	pool, err := utils.SetupPostgresContainer(context.Background())
 	require.NoError(b, err)
-	defer func() { _ = pool.Close() }()
-
+		
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
 	require.NoError(b, err)

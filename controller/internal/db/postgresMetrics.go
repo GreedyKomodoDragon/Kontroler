@@ -121,7 +121,6 @@ func (m *metricsPostgresDAGManager) updateContentMetrics(logger logr.Logger) {
 		return
 	}
 	defer rows.Close()
-
 	// Process each namespace's DAG counts
 	for rows.Next() {
 		var namespace string

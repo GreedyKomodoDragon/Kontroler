@@ -262,8 +262,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		defer pool.Close()
-
+				
 		dbDAGManager, err = db.NewPostgresDAGManagerWithMetrics(context.Background(), pool, &specParser)
 		if err != nil {
 			setupLog.Error(err, "failed to create postgres DAG manager")
@@ -283,7 +282,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		defer dbConn.Close()
+				
 	default:
 		dbType := os.Getenv("DB_TYPE")
 		setupErr := fmt.Errorf("unsupported DAG manager provided, must be 'postgresql' or 'sqlite' (DB_TYPE=%q)", dbType)

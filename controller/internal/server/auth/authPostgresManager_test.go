@@ -62,8 +62,7 @@ func setupPostgresContainer(t *testing.T) *pgxpool.Pool {
 
 func Test_Postgres_AuthManager(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	// Initialize authManager
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
@@ -73,8 +72,7 @@ func Test_Postgres_AuthManager(t *testing.T) {
 
 func Test_Postgres_CreateAccount(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 
@@ -108,8 +106,7 @@ func Test_Postgres_CreateAccount(t *testing.T) {
 
 func Test_Postgres_Login(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 
@@ -134,8 +131,7 @@ func Test_Postgres_Login(t *testing.T) {
 
 func Test_Postgres_IsValidLogin(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 
@@ -153,8 +149,7 @@ func Test_Postgres_IsValidLogin(t *testing.T) {
 
 func Test_Postgres_RevokeToken(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 
@@ -172,8 +167,7 @@ func Test_Postgres_RevokeToken(t *testing.T) {
 
 func Test_Postgres_TokenExpiration(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 
@@ -216,8 +210,7 @@ func Test_Postgres_TokenExpiration(t *testing.T) {
 
 func Test_Postgres_ChangePassword(t *testing.T) {
 	pool := setupPostgresContainer(t)
-	defer pool.Close()
-
+		
 	authManager, err := auth.NewAuthPostgresManager(context.Background(), pool, "key")
 	require.NoError(t, err)
 

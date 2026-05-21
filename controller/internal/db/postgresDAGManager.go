@@ -308,7 +308,6 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 		return err
 	}
 	defer rows.Close()
-
 	// Create a map to store the dependency IDs
 	depMap := make(map[string]int, len(task.RunAfter))
 	for rows.Next() {
@@ -438,7 +437,6 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 	}
 
 	defer rows.Close()
-
 	// Collect tasks and their parameter names first to avoid N+1 queries
 	tasks := []Task{}
 	paramsForTasks := [][]string{}
@@ -520,8 +518,7 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		if err != nil {
 			return nil, err
 		}
-		defer rowsParams.Close()
-
+				
 		paramMap := make(map[string]Parameter)
 		for rowsParams.Next() {
 			var name string
@@ -681,7 +678,6 @@ func (p *postgresDAGManager) getDependencyCounts(ctx context.Context, tx pgx.Tx,
 		return nil, err
 	}
 	defer rows.Close()
-
 	dependencyCounts := make(map[int]int)
 	for rows.Next() {
 		var taskId, totalDependencies int
@@ -720,7 +716,6 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 		return nil, err
 	}
 	defer rows.Close()
-
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
 	for rows.Next() {
@@ -768,7 +763,6 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 		return nil, nil, err
 	}
 	defer rows.Close()
-
 	// Process the rows
 	tasks := []Task{}
 	parameters := [][]string{}
@@ -848,7 +842,6 @@ func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx,
 		return err
 	}
 	defer rows.Close()
-
 	// Initialize parameter slices
 	for i := range tasks {
 		tasks[i].Parameters = []Parameter{}
@@ -930,7 +923,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm tim
 		return nil, err
 	}
 
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	rows, err := tx.Query(ctx, `
         SELECT dag_id, name, schedule, namespace, workspaceEnabled, webhookUrl, sslVerification
@@ -941,7 +934,6 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm tim
 		return nil, err
 	}
 	defer rows.Close()
-
 	namespaces := []*DagInfo{}
 
 	schedules := []string{}
@@ -1018,7 +1010,6 @@ func (p *postgresDAGManager) GetDagParameters(ctx context.Context, dagName strin
 	}
 
 	defer rows.Close()
-
 	parameters := map[string]*Parameter{}
 	for rows.Next() {
 		var parameter Parameter
@@ -1100,7 +1091,7 @@ func (p *postgresDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID
 		return err
 	}
 
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Get the current status and timestamp from the database
 	var currentStatus v1.PodPhase
@@ -1151,7 +1142,6 @@ func (p *postgresDAGManager) getTaskDeletionData(ctx context.Context, tx pgx.Tx,
 		return nil, err
 	}
 	defer rows.Close()
-
 	taskDatas := []taskData{}
 	for rows.Next() {
 		var taskID int
@@ -1174,7 +1164,7 @@ func (p *postgresDAGManager) DeleteDAG(ctx context.Context, name string, namespa
 	}
 
 	// Rollback transaction if not committed
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	taskData, err := p.getTaskDeletionData(ctx, tx, name, namespace)
 	if err != nil {
@@ -1220,8 +1210,7 @@ func (p *postgresDAGManager) DeleteDAG(ctx context.Context, name string, namespa
 		return nil, err
 	}
 
-	defer rowsTasks.Close()
-
+		
 	taskIds := []interface{}{}
 	placeholders := []string{}
 	i := 0
@@ -1353,7 +1342,7 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 	}
 
 	// Rollback transaction if not committed
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var taskId int
 	var version int
@@ -1429,7 +1418,6 @@ func (p *postgresDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs
 		return nil, err
 	}
 	defer rows.Close()
-
 	// Process results
 	taskMp := make(map[v1alpha1.TaskRef][]string, len(taskRefs))
 	for rows.Next() {
@@ -1456,7 +1444,7 @@ func (p *postgresDAGManager) DeleteTask(ctx context.Context, taskName, namespace
 		return err
 	}
 
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM Tasks
@@ -1555,7 +1543,6 @@ func (p *postgresDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context,
 			return fmt.Errorf("failed to get dependent tasks: %w", err)
 		}
 		defer rows.Close()
-
 		var updates [][]interface{}
 		seen := make(map[int]struct{})
 
@@ -1669,7 +1656,6 @@ func (p *postgresDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([
 			return fmt.Errorf("failed to query running pods: %w", err)
 		}
 		defer rows.Close()
-
 		// Collect pod information
 		for rows.Next() {
 			var pod RunningPodInfo
