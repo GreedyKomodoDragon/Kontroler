@@ -35,14 +35,14 @@ func NewSQLiteReadOnlyManager(ctx context.Context, config *SQLiteReadOnlyConfig)
 	// Optional performance settings for read-only access
 	if config.CacheSize != 0 {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA cache_size=%d;", config.CacheSize)); err != nil {
-			db.Close()
+_ = 
 			return nil, fmt.Errorf("failed to set cache size: %w", err)
 		}
 	}
 
 	// Check the connection to ensure the database is accessible.
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+_ = 
 		return nil, fmt.Errorf("failed to connect to SQLite database at '%s': %w", config.DBPath, err)
 	}
 
@@ -87,7 +87,7 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun,
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	var dagId int
 	row := tx.QueryRowContext(ctx, `

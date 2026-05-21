@@ -22,7 +22,7 @@ func setupTestQueue(t *testing.T) (Queue, string, func()) {
 	}
 
 	cleanup := func() {
-		q.Close()
+_ = 
 		os.RemoveAll(tmpDir)
 	}
 
@@ -37,7 +37,7 @@ func TestNewPebbleQueue(t *testing.T) {
 
 	q1, err := NewPebbleQueue(t.Context(), filepath.Join(nonexistentDir, "subdir"), "test-topic")
 	require.NoError(t, err)
-	defer q1.Close()
+	defer func() { _ = q1.Close() }()
 
 	// Test custom options - use another different directory
 	optsDir, err := os.MkdirTemp("", "queue-test-opts-*")
@@ -46,7 +46,7 @@ func TestNewPebbleQueue(t *testing.T) {
 
 	q2, err := NewPebbleQueue(context.Background(), optsDir, "test-topic-opts")
 	require.NoError(t, err)
-	defer q2.Close()
+	defer func() { _ = q2.Close() }()
 }
 
 func TestPushPop(t *testing.T) {
@@ -141,12 +141,12 @@ func TestQueuePersistence(t *testing.T) {
 	q1, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
 	require.NoError(t, q1.Push(testValue))
-	q1.Close()
+_ = 
 
 	// Create new queue instance and verify value
 	q2, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)
-	defer q2.Close()
+	defer func() { _ = q2.Close() }()
 
 	val, err := q2.PopWithContext(context.Background())
 	require.NoError(t, err)

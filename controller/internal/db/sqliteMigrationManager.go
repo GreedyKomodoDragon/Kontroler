@@ -50,7 +50,7 @@ func (m *sqliteMigrationManager) MigrateUp(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	// Get applied migrations
 	rows, err := tx.QueryContext(ctx, "SELECT version FROM schema_migrations ORDER BY version DESC")

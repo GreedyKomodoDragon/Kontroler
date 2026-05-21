@@ -21,7 +21,7 @@ func setupBenchmarkQueue(b *testing.B) (Queue, func()) {
 	}
 
 	cleanup := func() {
-		q.Close()
+_ = 
 		os.RemoveAll(tmpDir)
 	}
 
@@ -151,7 +151,7 @@ func BenchmarkQueueBatchOperations(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	batchSizes := []int{10, 100, 1000}
 	messages := make([]*PodEvent, 1000)

@@ -262,7 +262,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		defer pool.Close()
+		defer .Close()
 
 		dbDAGManager, err = db.NewPostgresDAGManagerWithMetrics(context.Background(), pool, &specParser)
 		if err != nil {
@@ -283,7 +283,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		defer func() { _ = dbConn.Close() }()
+		defer .Close()
 	default:
 		dbType := os.Getenv("DB_TYPE")
 		setupErr := fmt.Errorf("unsupported DAG manager provided, must be 'postgresql' or 'sqlite' (DB_TYPE=%q)", dbType)
@@ -472,7 +472,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			taskScheduler.Run(ctx)
+_ = 
 		}()
 
 		// Start the task watchers and workers
@@ -498,7 +498,7 @@ func main() {
 				go func() {
 					defer wg.Done()
 					// Start the worker
-					worker.Run(ctx)
+_ = 
 				}()
 				currentIndex++
 			}

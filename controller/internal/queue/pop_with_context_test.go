@@ -10,7 +10,7 @@ import (
 
 func TestMemoryPopWithContextBlocksAndReturns(t *testing.T) {
 	q := NewMemoryQueue(context.Background())
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -44,7 +44,7 @@ func TestMemoryPopWithContextBlocksAndReturns(t *testing.T) {
 
 func TestMemoryPopWithContextTimeout(t *testing.T) {
 	q := NewMemoryQueue(context.Background())
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

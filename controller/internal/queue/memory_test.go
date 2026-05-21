@@ -16,7 +16,7 @@ func setupMemoryTestQueue(t *testing.T) Queue {
 func TestNewMemoryQueue(t *testing.T) {
 	q := NewMemoryQueue(context.Background())
 	require.NotNil(t, q)
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	size, err := q.Size()
 	require.NoError(t, err)
@@ -25,7 +25,7 @@ func TestNewMemoryQueue(t *testing.T) {
 
 func TestMemoryPushPop(t *testing.T) {
 	q := setupMemoryTestQueue(t)
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	testCases := []*PodEvent{
 		{Pod: nil, Event: "test1"},
@@ -65,7 +65,7 @@ func TestMemoryPushPop(t *testing.T) {
 
 func TestMemoryEmptyQueue(t *testing.T) {
 	q := setupMemoryTestQueue(t)
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	// Test pop on empty queue (should block) - use a short timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -82,7 +82,7 @@ func TestMemoryEmptyQueue(t *testing.T) {
 
 func TestMemoryBatchOperations(t *testing.T) {
 	q := setupMemoryTestQueue(t)
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	// Test PushBatch
 	values := []*PodEvent{
@@ -114,7 +114,7 @@ func TestMemoryBatchOperations(t *testing.T) {
 
 func TestMemoryLargeQueue(t *testing.T) {
 	q := setupMemoryTestQueue(t)
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	// Push many items
 	itemCount := 1000
@@ -151,7 +151,7 @@ func TestMemoryLargeQueue(t *testing.T) {
 
 func TestMemoryQueueConcurrency(t *testing.T) {
 	q := setupMemoryTestQueue(t)
-	defer q.Close()
+	defer func() { _ = q.Close() }()
 
 	// Test concurrent pushes and pops
 	itemCount := 100

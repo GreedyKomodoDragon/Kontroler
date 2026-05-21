@@ -171,7 +171,7 @@ func (s *s3LogStore) uploadLogsWithGetter(ctx context.Context, dagrunId int, get
 			cancelStream()
 		}
 	}()
-	defer logStream.Close()
+	defer func() { _ = logStream.Close() }()
 
 	reader := bufio.NewReader(logStream)
 

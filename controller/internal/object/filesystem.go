@@ -119,7 +119,7 @@ func (f *fileSystemLogStore) uploadLogsWithGetter(ctx context.Context, dagrunId 
 	if err != nil {
 		return fmt.Errorf("failed to create log file: %w", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	var logStream io.ReadCloser
 	var lastErr error
@@ -168,7 +168,7 @@ func (f *fileSystemLogStore) uploadLogsWithGetter(ctx context.Context, dagrunId 
 	if logStream == nil {
 		return fmt.Errorf("failed to open log stream: %v", lastErr)
 	}
-	defer logStream.Close()
+	defer func() { _ = logStream.Close() }()
 
 	writer := bufio.NewWriter(logFile)
 	if _, err := io.Copy(writer, logStream); err != nil {

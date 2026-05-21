@@ -52,41 +52,41 @@ func NewSqliteManager(ctx context.Context, parser *cron.Parser, config *SQLiteCo
 	// Apply the configurable settings if provided
 	if config.JournalMode != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s;", config.JournalMode)); err != nil {
-			db.Close()
+_ = 
 			return nil, nil, fmt.Errorf("failed to set journal mode: %w", err)
 		}
 	}
 
 	if config.Synchronous != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA synchronous=%s;", config.Synchronous)); err != nil {
-			db.Close()
+_ = 
 			return nil, nil, fmt.Errorf("failed to set synchronous mode: %w", err)
 		}
 	}
 
 	if config.CacheSize != 0 {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA cache_size=%d;", config.CacheSize)); err != nil {
-			db.Close()
+_ = 
 			return nil, nil, fmt.Errorf("failed to set cache size: %w", err)
 		}
 	}
 
 	if config.TempStore != "" {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA temp_store=%s;", config.TempStore)); err != nil {
-			db.Close()
+_ = 
 			return nil, nil, fmt.Errorf("failed to set temp store: %w", err)
 		}
 	}
 
 	// Check the connection to ensure the database is accessible.
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+_ = 
 		return nil, nil, fmt.Errorf("failed to connect to SQLite database: %w", err)
 	}
 
 	migrationManager := NewSQLiteMigrationManager(db)
 	if err := migrations.RegisterMigrations(migrationManager, "sqlite"); err != nil {
-		db.Close()
+_ = 
 		return nil, nil, fmt.Errorf("failed to register migrations: %w", err)
 	}
 
@@ -165,7 +165,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	rows, err := tx.Query(`
         SELECT dag_id, name, schedule, namespace, workspaceEnabled
@@ -175,7 +175,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	// Collect DAG info and schedules
 	namespaces := []*DagInfo{}
@@ -527,7 +527,7 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 		return 0, err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	// Map the task to the DAG
 	var dagRunID int
@@ -722,7 +722,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = rowsParams.Close() }()
+		defer .Close()
 
 		paramMap := make(map[string]Parameter)
 		for rowsParams.Next() {
@@ -773,7 +773,7 @@ func (s *sqliteDAGManager) IncrementAttempts(ctx context.Context, taskRunId int)
 		return err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	if _, err := tx.Exec(`
 	UPDATE Task_Runs 
@@ -791,7 +791,7 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	var runId int
 	err = tx.QueryRowContext(ctx, `
@@ -907,7 +907,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	tasks := make([]Task, 0, len(taskIds))
 	parameters := make([][]string, 0, len(taskIds))
@@ -1018,7 +1018,7 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
@@ -1045,7 +1045,7 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	// Map to store dependency counts for each task
 	dependencyCounts := make(map[int]int)
@@ -1106,7 +1106,7 @@ func (s *sqliteDAGManager) fetchTaskParameters(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	// Initialize task parameter slices
 	for i := range tasks {
@@ -1141,7 +1141,7 @@ func (s *sqliteDAGManager) MarkDAGRunOutcome(ctx context.Context, dagRunId int, 
 		return err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	if _, err := tx.Exec("UPDATE DAG_Runs SET status = ? WHERE run_id = ?;", outcome, dagRunId); err != nil {
 		return err
@@ -1167,7 +1167,7 @@ func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string)
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	parameters := map[string]*Parameter{}
 	for rows.Next() {
@@ -1252,7 +1252,7 @@ func (s *sqliteDAGManager) MarkTaskAsFailed(ctx context.Context, taskRunId int) 
 		return err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	if _, err := tx.Exec(`
 		UPDATE Task_Runs 
@@ -1284,7 +1284,7 @@ func (s *sqliteDAGManager) MarkPodStatus(ctx context.Context, podUid types.UID, 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	// Check for existing record and retrieve the current status and timestamp
 	var currentTimestamp time.Time
@@ -1335,7 +1335,7 @@ func (s *sqliteDAGManager) getTaskDeletionData(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer .Close()
 
 	taskDatas := []taskData{}
 	for rows.Next() {
@@ -1359,7 +1359,7 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 	}
 
 	// Rollback transaction if not committed
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	taskData, err := s.getTaskDeletionData(ctx, tx, name, namespace)
 	if err != nil {
@@ -1427,7 +1427,7 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rowsTasks.Close() }()
+	defer .Close()
 
 	taskIds := []interface{}{}
 	placeholders := []string{}
@@ -1530,7 +1530,7 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 	}
 
 	// Rollback transaction if not committed
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	var taskId int
 	var version int
@@ -1633,7 +1633,7 @@ func (s *sqliteDAGManager) DeleteTask(ctx context.Context, taskName, namespace s
 		return err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	if _, err := tx.Exec(`
 		DELETE FROM Tasks
@@ -1728,7 +1728,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	// Get existing task runs first to avoid duplicates
 	existingRuns, err := tx.QueryContext(ctx, `
@@ -1743,12 +1743,12 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	for existingRuns.Next() {
 		var taskID int
 		if err := existingRuns.Scan(&taskID); err != nil {
-			existingRuns.Close()
+_ = 
 			return nil, fmt.Errorf("failed to scan existing task run: %w", err)
 		}
 		existingTaskRuns[taskID] = true
 	}
-	existingRuns.Close()
+_ = 
 
 	// Rest of implementation remains the same, just modify the DFS logic
 	rows, err := tx.QueryContext(ctx, `
@@ -1768,12 +1768,12 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	for rows.Next() {
 		var parentTaskID, dependentTaskID int
 		if err := rows.Scan(&parentTaskID, &dependentTaskID); err != nil {
-			rows.Close()
+_ = 
 			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
 		}
 		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
 	}
-	rows.Close()
+_ = 
 
 	var startingTaskID int
 	if err := tx.QueryRowContext(ctx, `
@@ -1824,7 +1824,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare statement: %w", err)
 		}
-		defer func() { _ = stmt.Close() }()
+		defer .Close()
 
 		for _, update := range updates {
 			if _, err := stmt.ExecContext(ctx, update...); err != nil {
@@ -1882,7 +1882,7 @@ func (p *sqliteDAGManager) AddPodDuration(ctx context.Context, taskRunId int, du
 		return err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = .Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE Task_Pods
@@ -1928,7 +1928,7 @@ func (s *sqliteDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]R
 		if err != nil {
 			return fmt.Errorf("failed to query running pods: %w", err)
 		}
-		defer func() { _ = rows.Close() }()
+		defer .Close()
 
 		// Collect pod information
 		for rows.Next() {
