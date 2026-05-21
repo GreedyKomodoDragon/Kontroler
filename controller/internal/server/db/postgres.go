@@ -33,7 +33,7 @@ func (p *postgresManager) GetAllDagMetaData(ctx context.Context, limit int, offs
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	metas := []*DBDAGMetaData{}
 	for rows.Next() {
@@ -92,7 +92,7 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRu
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
@@ -123,7 +123,7 @@ func (p *postgresManager) GetDagRuns(ctx context.Context, limit int, offset int)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	metas := []*DBDagRunMeta{}
 	for rows.Next() {
@@ -164,7 +164,7 @@ func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	connections := map[int][]int{}
 	for rows.Next() {
@@ -214,7 +214,7 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDa
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
@@ -254,7 +254,7 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	task.Pods = []*DBTaskPod{}
 
@@ -332,7 +332,7 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTa
 	if err != nil {
 		return nil, fmt.Errorf("failed to query parameters: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	for rows.Next() {
 		var param DBParameter
@@ -422,7 +422,7 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DBDashboardSt
 		if err != nil {
 			return err
 		}
-		defer func() { _ = rows.Close() }()
+		defer rows.Close()
 
 		stats.DAGTypeCounts = make(map[string]int)
 		for rows.Next() {
@@ -453,7 +453,7 @@ func (p *postgresManager) GetDashboardStats(ctx context.Context) (*DBDashboardSt
 		if err != nil {
 			return fmt.Errorf("failed to execute dailyDagRunCountsQuery: %w", err)
 		}
-		defer func() { _ = rows.Close() }()
+		defer rows.Close()
 
 		for rows.Next() {
 			var dailyCount DBDailyDagRunCount
@@ -524,7 +524,7 @@ func (p *postgresManager) GetDagNames(ctx context.Context, term string, limit in
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	names := []*string{}
 
@@ -555,7 +555,7 @@ func (p *postgresManager) GetDagParameters(ctx context.Context, dagName string) 
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	params := []*DBParameter{}
 
@@ -586,7 +586,7 @@ func (p *postgresManager) GetIsSecrets(ctx context.Context, dagName string, para
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	results := make(map[string]bool)
 
@@ -624,7 +624,7 @@ func (p *postgresManager) GetDagTasks(ctx context.Context, limit int, offset int
 	if err != nil {
 		return nil, fmt.Errorf("failed to query task details in GetDagTasks: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	taskDetails := []*DBDagTaskDetails{}
 	for rows.Next() {
 		var taskDetail DBDagTaskDetails

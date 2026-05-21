@@ -22,7 +22,7 @@ func TestUpsertDAG(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	manager, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -108,7 +108,7 @@ func TestPostgresDAGManager_InsertDAG(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -143,7 +143,7 @@ func TestPostgresDAGManager_CreateDAGRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -186,7 +186,7 @@ func TestPostgresDAGManager_GetStartingTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -240,7 +240,7 @@ func TestPostgresDAGManager_MarkDAGRunOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -292,7 +292,7 @@ func TestPostgresDAGManager_SharedParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -355,7 +355,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -419,7 +419,7 @@ func TestPostgresDAGManager_MarkOutcomeAndGetNextTasks_No_Task_Yet(t *testing.T)
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -487,7 +487,7 @@ func TestPostgresDAGManager_MarkTaskAsStarted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -534,7 +534,7 @@ func TestPostgresDAGManager_GetID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -566,7 +566,7 @@ func TestPostgresDAGManager_IncrementAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -598,7 +598,7 @@ func TestPostgresDAGManager_GetDagParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -616,7 +616,7 @@ func TestPostgresDAGManager_DagExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -633,7 +633,7 @@ func TestPostgresDAGManager_ShouldRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -652,7 +652,7 @@ func TestPostgresDAGManager_MarkTaskAsFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -689,7 +689,7 @@ func TestPostgresDAGManager_MarkPodStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -729,7 +729,7 @@ func TestPostgresDAGManager_DeleteDag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -748,7 +748,7 @@ func TestPostgresDAGManager_DeleteDag_TaskRefs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -765,7 +765,7 @@ func TestPostgresDAGManager_DeleteDag_TaskRefs_Versioning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -783,7 +783,7 @@ func TestPostgresDAGManager_FindExistingDAGRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -801,7 +801,7 @@ func TestPostgresDAGManager_AddTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -819,7 +819,7 @@ func TestPostgresDAGManager_GetTaskRefsParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -837,7 +837,7 @@ func TestPostgresDAGManager_InsertDag_TaskRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -855,7 +855,7 @@ func Test_Postgres_Task_Before_InsertDag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -934,7 +934,7 @@ func Test_Postgres_Complex_Example(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
@@ -953,7 +953,7 @@ func TestPostgresDAGManager_CreateDAGRun_Sequential(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -970,7 +970,7 @@ func TestPostgresDAGManager_CreateDAGRun_Scripts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -987,7 +987,7 @@ func TestPostgresDAGManager_Multi_TaskRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1113,7 +1113,7 @@ func TestPostgresDAGManager_Workspace_full(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1130,7 +1130,7 @@ func TestPostgresDAGManager_Workspace_non_optional_only(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1147,7 +1147,7 @@ func TestPostgresDAGManager_Workspace_disabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1164,7 +1164,7 @@ func TestPostgresDAGManager_MarkConnectingTasksAsSuspended_Single(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1189,7 +1189,7 @@ func TestPostgresDAGManager_MarkConnectingTasksAsSuspended_deduplicate_tasks(t *
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1214,7 +1214,7 @@ func TestPostgresDAGManager_MarkConnectingTasksAsSuspended_overlapping_dependenc
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1231,7 +1231,7 @@ func TestPostgresDAGManager_DeleteDagRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1307,7 +1307,7 @@ func TestPostgresDAGManager_SuspendDagRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1324,7 +1324,7 @@ func TestPostgresDAGManager_SuspendDag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1359,7 +1359,7 @@ func TestPostgresDAGManager_UnsuspendDag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1385,7 +1385,7 @@ func TestPostgresDAGManager_Insert_Suspended_Dag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1402,7 +1402,7 @@ func TestPostgresDAGManager_Suspended_Dag_Cannot_Be_Executed_Via_Scheduler(t *te
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1419,7 +1419,7 @@ func TestPostgresDAGManager_Scheduler_works(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1436,7 +1436,7 @@ func TestPostgresDAGManager_GetTaskRunInfo_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1453,7 +1453,7 @@ func TestPostgresDAGManager_GetTaskRunInfo_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1470,7 +1470,7 @@ func TestPostgresDAGManager_GetTaskRunInfo_MultipleDAGs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)
@@ -1487,7 +1487,7 @@ func TestPostgresDAGManager_GetTaskRunInfo_ContextCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not set up PostgreSQL container: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
+	defer pool.Close()
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 	dm, err := db.NewPostgresDAGManager(context.Background(), pool, &parser)

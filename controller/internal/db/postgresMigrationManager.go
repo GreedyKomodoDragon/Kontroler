@@ -52,7 +52,7 @@ func (m *postgresMigrationManager) MigrateUp(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to query migrations: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	applied := make(map[int]bool)
 	for rows.Next() {

@@ -120,7 +120,7 @@ func (m *metricsPostgresDAGManager) updateContentMetrics(logger logr.Logger) {
 		metrics.RecordErrorMetrics("postgresql", "collect_content_metrics", "dag_counts_error")
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	// Process each namespace's DAG counts
 	for rows.Next() {

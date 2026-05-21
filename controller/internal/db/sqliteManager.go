@@ -169,7 +169,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	// Collect DAG info and schedules
 	namespaces := []*DagInfo{}
@@ -716,7 +716,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = rowsParams.Close() }()
+		defer rowsParams.Close()
 
 		paramMap := make(map[string]Parameter)
 		for rowsParams.Next() {
@@ -901,7 +901,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	tasks := make([]Task, 0, len(taskIds))
 	parameters := make([][]string, 0, len(taskIds))
@@ -1012,7 +1012,7 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
@@ -1039,7 +1039,7 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	// Map to store dependency counts for each task
 	dependencyCounts := make(map[int]int)
@@ -1100,7 +1100,7 @@ func (s *sqliteDAGManager) fetchTaskParameters(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	// Initialize task parameter slices
 	for i := range tasks {
@@ -1161,7 +1161,7 @@ func (s *sqliteDAGManager) GetDagParameters(ctx context.Context, dagName string)
 		return nil, err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	parameters := map[string]*Parameter{}
 	for rows.Next() {
@@ -1329,7 +1329,7 @@ func (s *sqliteDAGManager) getTaskDeletionData(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	taskDatas := []taskData{}
 	for rows.Next() {
@@ -1421,7 +1421,7 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rowsTasks.Close() }()
+	defer rowsTasks.Close()
 
 	taskIds := []interface{}{}
 	placeholders := []string{}
@@ -1812,7 +1812,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare statement: %w", err)
 		}
-		defer func() { _ = stmt.Close() }()
+		defer stmt.Close()
 
 		for _, update := range updates {
 			if _, err := stmt.ExecContext(ctx, update...); err != nil {
@@ -1916,7 +1916,7 @@ func (s *sqliteDAGManager) SuspendDagRun(ctx context.Context, dagRunId int) ([]R
 		if err != nil {
 			return fmt.Errorf("failed to query running pods: %w", err)
 		}
-		defer func() { _ = rows.Close() }()
+		defer rows.Close()
 
 		// Collect pod information
 		for rows.Next() {

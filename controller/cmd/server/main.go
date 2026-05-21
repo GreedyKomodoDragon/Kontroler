@@ -88,7 +88,7 @@ func main() {
 			log.Fatal().Err(err).Msg("failed to create postgres pool")
 		}
 
-		defer func() { _ = pool.Close() }()
+		defer pool.Close()
 
 		dbDAGManager, err = db.NewPostgresManager(ctx, pool)
 		if err != nil {
@@ -131,7 +131,7 @@ func main() {
 		log.Fatal().Msg("unsupported DAG manager provided, 'postgresql' or 'sqlite'")
 	}
 
-	defer func() { _ = authManager.Close() }()
+	defer authManager.Close()
 
 	if err := authManager.InitialiseDatabase(ctx); err != nil {
 		log.Fatal().Err(err).Msg("failed to initialise the database for auth management")
