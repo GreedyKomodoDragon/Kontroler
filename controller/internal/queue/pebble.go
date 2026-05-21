@@ -90,10 +90,10 @@ func (q *PebbleQueue) PushBatch(values []*PodEvent) error {
 		if err != nil {
 			return err
 		}
-		batch.Set([]byte(key), data, nil)
+		_ = batch.Set([]byte(key), data, nil)
 	}
 
-	batch.Set([]byte(q.tailKey), []byte(strconv.FormatUint(tail, 10)), nil)
+	_ = batch.Set([]byte(q.tailKey), []byte(strconv.FormatUint(tail, 10)), nil)
 	if err := batch.Commit(pebble.Sync); err != nil {
 		return err
 	}
@@ -164,10 +164,10 @@ func (q *PebbleQueue) PopBatchWithContext(ctx context.Context, count int) ([]*Po
 			}
 			results = append(results, &event)
 			_ = closer.Close()
-			batch.Delete([]byte(key), nil)
+			_ = batch.Delete([]byte(key), nil)
 		}
 
-		batch.Set([]byte(q.headKey), []byte(strconv.FormatUint(head, 10)), nil)
+		_ = batch.Set([]byte(q.headKey), []byte(strconv.FormatUint(head, 10)), nil)
 		if err := batch.Commit(pebble.Sync); err != nil {
 			q.mutex.Unlock()
 			return results, err
