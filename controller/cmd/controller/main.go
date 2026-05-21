@@ -422,6 +422,7 @@ func main() {
 	}
 
 	taskScheduler := dag.NewDagScheduler(dbDAGManager, dynamicClient)
+	_ = taskScheduler
 
 	if err = (&controller.DAGReconciler{
 		Client:    mgr.GetClient(),
