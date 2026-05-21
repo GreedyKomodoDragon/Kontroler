@@ -365,5 +365,5 @@ func (a *authSqliteManager) RevokeToken(ctx context.Context, tokenString string)
 
 // Close implements AuthManager.Close.
 func (a *authSqliteManager) Close() error {
-	return a._ = db.Close()
+	return a.db.Close()
 }
