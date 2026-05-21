@@ -50,14 +50,12 @@ func NewPebbleQueue(ctx context.Context, dbPath, topic string) (*PebbleQueue, er
 	// Initialize counters
 	head, err := q.getCounter(q.headKey)
 	if err != nil {
-_ = 
 		cancel()
 		return nil, err
 	}
 
 	tail, err := q.getCounter(q.tailKey)
 	if err != nil {
-_ = 
 		cancel()
 		return nil, err
 	}
@@ -65,7 +63,6 @@ _ =
 	if tail < head {
 		tail = head
 		if err := q.updateCounter(q.tailKey, tail); err != nil {
-_ = 
 			cancel()
 			return nil, err
 		}
@@ -161,12 +158,12 @@ func (q *PebbleQueue) PopBatchWithContext(ctx context.Context, count int) ([]*Po
 			}
 			var event PodEvent
 			if err := json.Unmarshal(value, &event); err != nil {
-_ = 
+				_ = closer.Close()
 				q.mutex.Unlock()
 				return results, err
 			}
 			results = append(results, &event)
-_ = 
+			_ = closer.Close()
 			batch.Delete([]byte(key), nil)
 		}
 
