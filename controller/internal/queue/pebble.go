@@ -212,5 +212,5 @@ func (q *PebbleQueue) Size() (uint64, error) {
 
 func (q *PebbleQueue) Close() error {
 	q.cancel()
-	return q.db.Close()
+	return q._ = db.Close()
 }

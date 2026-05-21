@@ -16,12 +16,12 @@ func setupBenchmarkQueue(b *testing.B) (Queue, func()) {
 
 	q, err := NewPebbleQueue(context.Background(), tmpDir, "bench-topic")
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		b.Fatal(err)
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return q, cleanup

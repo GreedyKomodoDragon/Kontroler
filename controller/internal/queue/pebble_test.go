@@ -17,12 +17,12 @@ func setupTestQueue(t *testing.T) (Queue, string, func()) {
 
 	q, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		require.NoError(t, err)
 	}
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return q, tmpDir, cleanup

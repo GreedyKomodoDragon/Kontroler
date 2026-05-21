@@ -59,7 +59,7 @@ func TestNewFileSystemLogStore(t *testing.T) {
 
 			// Clean up
 			if tt.envPath != "" {
-				os.RemoveAll(tt.envPath)
+				_ = os.RemoveAll(tt.envPath)
 			}
 		})
 	}

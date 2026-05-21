@@ -165,7 +165,7 @@ func (s *sqliteManager) GetDagRuns(ctx context.Context, limit int, offset int) (
 }
 
 func (s *sqliteManager) Close() {
-	s.db.Close()
+	s._ = db.Close()
 }
 
 func (s *sqliteManager) getDagConnections(ctx context.Context, dagId int) (map[int][]int, error) {

@@ -276,7 +276,7 @@ func SuspendDag(ctx context.Context, req *DagSuspendForm, client dynamic.Interfa
 	}
 
 	updated := existing.DeepCopy()
-	unstructured.SetNestedField(updated.Object, req.Suspend, "spec", "suspended")
+	_ = unstructured.SetNestedField(updated.Object, req.Suspend, "spec", "suspended")
 
 	_, err = client.Resource(dagsGVR).Namespace(req.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 	if err != nil {
