@@ -141,6 +141,9 @@ func TestQueuePersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, q1.Push(testValue))
 
+	// Close the first queue before reopening the database in the same process.
+	require.NoError(t, q1.Close())
+
 	// Create new queue instance and verify value
 	q2, err := NewPebbleQueue(t.Context(), tmpDir, "test-topic")
 	require.NoError(t, err)

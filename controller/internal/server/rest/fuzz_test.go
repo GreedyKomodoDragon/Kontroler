@@ -45,7 +45,7 @@ func FuzzAPIFuzzing(f *testing.F) {
 		if err != nil {
 			t.Fatalf("Error sending request: %v", err)
 		}
-				
+
 		if resp.StatusCode != http.StatusCreated {
 			if resp.StatusCode == http.StatusBadRequest {
 				var errorResponse map[string]string

@@ -88,7 +88,6 @@ func main() {
 			log.Fatal().Err(err).Msg("failed to create postgres pool")
 		}
 
-				
 		dbDAGManager, err = db.NewPostgresManager(ctx, pool)
 		if err != nil {
 			log.Fatal().Err(err).Msg("failed to create postgres DAG manager")

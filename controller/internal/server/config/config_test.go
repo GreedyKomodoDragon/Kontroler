@@ -13,7 +13,7 @@ func TestParseConfig(t *testing.T) {
 	// Create a temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "config_test")
 	require.NoError(t, err, "Failed to create temp dir")
-	defer func(){ _ = os.RemoveAll(tempDir) }()
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	tests := []struct {
 		name           string
