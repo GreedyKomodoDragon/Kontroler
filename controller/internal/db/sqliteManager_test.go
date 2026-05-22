@@ -972,7 +972,7 @@ func Test_SQLite_Task_Before_InsertDag(t *testing.T) {
 
 	tasksEmpty, err := dm.MarkSuccessAndGetNextTasks(context.Background(), tasRunID)
 	require.NoError(t, err)
-	require.Empty(t, tasksEmpty, "taskIdMarked", tasks[0].Id)
+	require.Empty(t, tasksEmpty, "taskIDMarked", tasks[0].Id)
 
 	taskRun, err := dm.MarkTaskAsStarted(context.Background(), runID, tasks[1].Id)
 	require.NoError(t, err)

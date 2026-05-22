@@ -18,35 +18,39 @@ type WebhookManager interface {
 }
 
 type WebhookNotifier interface {
-	NotifyTaskRun(name string, status string, dagRunId, taskId int, url string, verifySSL bool)
-	NotifyPodEvent(name string, status string, dagRunId, taskId int, url string, verifySSL bool, duration int)
+	NotifyTaskRun(name string, status string, dagRunId, taskID int, url string, verifySSL bool)
+	NotifyPodEvent(name string, status string, dagRunId, taskID int, url string, verifySSL bool, duration int)
 }
 
+// WebhookDataBase is a base struct for webhook data, containing common fields
 type WebhookDataBase struct {
 	// Base struct for webhook data
 	Type string `json:"type"`
 }
 
+// WebhookPayload represents the payload sent to the webhook
 type WebhookPayload struct {
 	URL       string
 	VerifySSL bool
 	Data      any
 }
 
+// TaskHookDetails represents the details of a task run event to be sent to the webhook
 type TaskHookDetails struct {
 	WebhookDataBase
 	Status   string `json:"status"`
 	DagRunId int    `json:"dagRunId"`
 	TaskName string `json:"taskName"`
-	TaskId   int    `json:"taskId"`
+	TaskID   int    `json:"taskId"`
 }
 
+// PodEventDetails represents the details of a pod event to be sent to the webhook
 type PodEventDetails struct {
 	WebhookDataBase
 	Status   string `json:"status"`
 	DagRunId int    `json:"dagRunId"`
 	TaskName string `json:"taskName"`
-	TaskId   int    `json:"taskId"`
+	TaskID   int    `json:"taskId"`
 	Duration int    `json:"duration"`
 }
 
@@ -60,6 +64,7 @@ type webhookNotifier struct {
 	webhookChan chan WebhookPayload
 }
 
+// NewWebhookManager creates a new instance of WebhookManager with the provided channel for receiving webhook payloads
 func NewWebhookManager(channel chan WebhookPayload) WebhookManager {
 	return &webhookManager{
 		webhookChan:  channel,
@@ -68,11 +73,12 @@ func NewWebhookManager(channel chan WebhookPayload) WebhookManager {
 	}
 }
 
+// NewWebhookNotifier creates a new instance of WebhookNotifier with the provided channel for sending webhook payloads
 func NewWebhookNotifier(webhookChan chan WebhookPayload) WebhookNotifier {
 	return &webhookNotifier{webhookChan: webhookChan}
 }
 
-func (w *webhookNotifier) NotifyTaskRun(name string, status string, dagRunId, taskId int, url string, verifySSL bool) {
+func (w *webhookNotifier) NotifyTaskRun(name string, status string, dagRunId, taskID int, url string, verifySSL bool) {
 	w.webhookChan <- WebhookPayload{
 		URL:       url,
 		VerifySSL: verifySSL,
@@ -83,12 +89,13 @@ func (w *webhookNotifier) NotifyTaskRun(name string, status string, dagRunId, ta
 			Status:   status,
 			DagRunId: dagRunId,
 			TaskName: name,
-			TaskId:   taskId,
+			TaskID:   taskID,
 		},
 	}
 }
 
-func (w *webhookNotifier) NotifyPodEvent(name string, status string, dagRunId, taskId int, url string, verifySSL bool, duration int) {
+// NotifyPodEvent sends a webhook notification for a pod event, including the event status, DAG run ID, task name, task ID, and duration of the event
+func (w *webhookNotifier) NotifyPodEvent(name string, status string, dagRunId, taskID int, url string, verifySSL bool, duration int) {
 	w.webhookChan <- WebhookPayload{
 		URL:       url,
 		VerifySSL: verifySSL,
@@ -99,12 +106,13 @@ func (w *webhookNotifier) NotifyPodEvent(name string, status string, dagRunId, t
 			Status:   status,
 			DagRunId: dagRunId,
 			TaskName: name,
-			TaskId:   taskId,
+			TaskID:   taskID,
 			Duration: duration,
 		},
 	}
 }
 
+// SendWebhook sends a POST request to the specified URL with the given payload, and returns an error if the request fails or if the response status code is not 200 OK
 func (w *webhookManager) SendWebhook(url string, payload []byte) error {
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(payload))
 	if err != nil {
@@ -126,6 +134,7 @@ func (w *webhookManager) SendWebhook(url string, payload []byte) error {
 	return nil
 }
 
+// Listen starts the webhook manager to listen for incoming webhook payloads and process them accordingly
 func (w *webhookManager) Listen(ctx context.Context) error {
 	defer func() {
 		closeChannel(w.webhookChan) // Graceful channel closure

@@ -61,18 +61,18 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRu
 
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var dagId int
+	var dagID int
 	row := tx.QueryRow(ctx, `
 	SELECT dag_id
 	FROM DAG_Runs
 	WHERE run_id = $1`, dagRunId)
 
-	if err := row.Scan(&dagId); err != nil {
+	if err := row.Scan(&dagID); err != nil {
 		return nil, err
 	}
 
 	// Get the connections
-	connections, err := p.getDagConnections(ctx, dagId)
+	connections, err := p.getDagConnections(ctx, dagID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRu
 	FROM DAG_Tasks d
 	JOIN tasks t ON d.task_id = t.task_id
 	LEFT JOIN Task_Runs r ON r.task_id = d.dag_task_id AND r.run_id = $1
-	WHERE d.dag_id = $2;`, dagRunId, dagId)
+	WHERE d.dag_id = $2;`, dagRunId, dagID)
 
 	if err != nil {
 		return nil, err
@@ -94,13 +94,13 @@ func (p *postgresManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRu
 	defer rows.Close()
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
-		var taskId int
+		var taskID int
 		task := DBTaskInfo{}
-		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
+		if err := rows.Scan(&taskID, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 
-		taskInfo[taskId] = task
+		taskInfo[taskID] = task
 	}
 
 	return &DBDagRun{
@@ -164,13 +164,13 @@ func (p *postgresManager) getDagConnections(ctx context.Context, dagId int) (map
 	defer rows.Close()
 	connections := map[int][]int{}
 	for rows.Next() {
-		var taskId int
+		var taskID int
 		var taskDeps []int
-		if err := rows.Scan(&taskId, &taskDeps); err != nil {
+		if err := rows.Scan(&taskID, &taskDeps); err != nil {
 			return nil, err
 		}
 
-		connections[taskId] = taskDeps
+		connections[taskID] = taskDeps
 	}
 
 	return connections, nil
@@ -213,13 +213,13 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDa
 	defer rows.Close()
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
-		var taskId int
+		var taskID int
 		task := DBTaskInfo{}
-		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
+		if err := rows.Scan(&taskID, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
 
-		taskInfo[taskId] = task
+		taskInfo[taskID] = task
 	}
 
 	meta.Connections = connections
@@ -228,14 +228,14 @@ func (p *postgresManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDa
 	return meta, nil
 }
 
-func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskId int) (*DBTaskRunDetails, error) {
+func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskID int) (*DBTaskRunDetails, error) {
 	task := &DBTaskRunDetails{}
 
 	if err := p.pool.QueryRow(ctx, `
 	SELECT task_run_id, status, attempts
 	FROM Task_Runs
 	WHERE run_id = $1 AND task_id = $2;
-	`, dagRunId, taskId).Scan(&task.Id, &task.Status, &task.Attempts); err != nil {
+	`, dagRunId, taskID).Scan(&task.Id, &task.Status, &task.Attempts); err != nil {
 		return nil, err
 	}
 
@@ -277,7 +277,7 @@ func (p *postgresManager) GetTaskRunDetails(ctx context.Context, dagRunId, taskI
 
 }
 
-func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTaskDetails, error) {
+func (p *postgresManager) GetTaskDetails(ctx context.Context, taskID int) (*DBTaskDetails, error) {
 	var taskDetails DBTaskDetails
 	var podTemplateJSON sql.NullString
 	var parameters []string
@@ -290,7 +290,7 @@ func (p *postgresManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTa
 		WHERE dat.dag_task_id = $1;
 	`
 
-	if err := p.pool.QueryRow(ctx, queryTask, taskId).Scan(
+	if err := p.pool.QueryRow(ctx, queryTask, taskID).Scan(
 		&taskDetails.ID,
 		&taskDetails.Name,
 		&taskDetails.Command,

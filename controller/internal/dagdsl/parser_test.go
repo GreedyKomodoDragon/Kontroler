@@ -235,9 +235,10 @@ task command_task {
 			runAfter: task.RunAfter,
 		}
 
-		if task.Name == "script_task" {
+		switch task.Name {
+		case "script_task":
 			scriptTask = taskInfo
-		} else if task.Name == "command_task" {
+		case "command_task":
 			commandTask = taskInfo
 		}
 	}
@@ -454,9 +455,10 @@ task singleline_task {
 	// Find tasks by name
 	var multilineTask, singlelineTask *v1alpha1.TaskSpec
 	for i := range dagSpec.Task {
-		if dagSpec.Task[i].Name == "multiline_task" {
+		switch dagSpec.Task[i].Name {
+		case "multiline_task":
 			multilineTask = &dagSpec.Task[i]
-		} else if dagSpec.Task[i].Name == "singleline_task" {
+		case "singleline_task":
 			singlelineTask = &dagSpec.Task[i]
 		}
 	}

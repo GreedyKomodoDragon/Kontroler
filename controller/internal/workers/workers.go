@@ -25,7 +25,7 @@ import (
 
 // Constants for error messages and annotations
 const (
-	kontrolerTaskID      = "kontroler/task-id"
+	kontrolertaskID      = "kontroler/task-id"
 	kontrolerDagRunID    = "kontroler/dagRun-id"
 	errMsgDagRunID       = "failed to get dag run ID"
 	errMsgWebhookDetails = "failed to get webhook details"
@@ -339,12 +339,12 @@ func (t *worker) retryFailedTask(ctx context.Context, pod *v1.Pod, dagRunId, tas
 	// Record retry metric
 	metrics.RecordTaskRetry(namespace, dagName, taskName, fmt.Sprintf("exit_code_%d", exitcode))
 
-	taskId, err := t.getTaskIdFromPod(pod)
+	taskID, err := t.gettaskIDFromPod(pod)
 	if err != nil {
 		return
 	}
 
-	dbTask, err := t.createTaskFromPod(ctx, pod, taskId)
+	dbTask, err := t.createTaskFromPod(ctx, pod, taskID)
 	if err != nil {
 		return
 	}
@@ -363,24 +363,24 @@ func (t *worker) retryFailedTask(ctx context.Context, pod *v1.Pod, dagRunId, tas
 	log.Log.Info("new task allocated allocated with env", "taskUUID", taskUUID)
 }
 
-func (t *worker) getTaskIdFromPod(pod *v1.Pod) (int, error) {
-	taskIdStr, ok := pod.Annotations[kontrolerTaskID]
+func (t *worker) gettaskIDFromPod(pod *v1.Pod) (int, error) {
+	taskIDStr, ok := pod.Annotations[kontrolertaskID]
 	if !ok {
-		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", kontrolerTaskID, "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("missing annotation"), "annotation", kontrolertaskID, "pod", pod.Name)
 		return 0, fmt.Errorf("missing annotation")
 	}
 
-	taskId, err := strconv.Atoi(taskIdStr)
+	taskID, err := strconv.Atoi(taskIDStr)
 	if err != nil {
-		log.Log.Error(fmt.Errorf("failed to convert task id string: %s", taskIdStr), "annotation", kontrolerTaskID, "value", taskIdStr, "pod", pod.Name)
+		log.Log.Error(fmt.Errorf("failed to convert task id string: %s", taskIDStr), "annotation", kontrolertaskID, "value", taskIDStr, "pod", pod.Name)
 		return 0, err
 	}
 
-	return taskId, nil
+	return taskID, nil
 }
 
-func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskId int) (*db.Task, error) {
-	script, injector, err := t.dbManager.GetTaskScriptAndInjectorImage(ctx, taskId)
+func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskID int) (*db.Task, error) {
+	script, injector, err := t.dbManager.GetTaskScriptAndInjectorImage(ctx, taskID)
 	if err != nil {
 		log.Log.Error(err, "GetTaskScriptAndInjectorImage failed", "pod", pod.Name)
 		return nil, err
@@ -388,7 +388,7 @@ func (t *worker) createTaskFromPod(ctx context.Context, pod *v1.Pod, taskId int)
 
 	container := pod.Spec.Containers[0]
 	dbTask := &db.Task{
-		Id:          taskId,
+		Id:          taskID,
 		Name:        container.Name,
 		Args:        container.Args,
 		Command:     container.Command,

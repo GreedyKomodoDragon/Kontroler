@@ -75,7 +75,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	orig := dag.DeepCopy()
 
 	// Check if the DAG is marked for deletion
-	if !dag.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !dag.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, req.NamespacedName)
 	}
 
@@ -128,7 +128,7 @@ func (r *DAGReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	// Store the DAG object in the database
-	if err := r.storeInDatabase(ctx, &dag, req.NamespacedName.Namespace); err != nil {
+	if err := r.storeInDatabase(ctx, &dag, req.Namespace); err != nil {
 		if err.Error() == "applying the same dag" {
 			log.Log.Info("reconcile event", "controller", "dag", "event", "applying the same dag")
 			return ctrl.Result{}, nil

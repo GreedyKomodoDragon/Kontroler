@@ -279,9 +279,9 @@ func (m *metricsPostgresDAGManager) GetStartingTasks(ctx context.Context, dagNam
 	return result, err
 }
 
-func (m *metricsPostgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error) {
+func (m *metricsPostgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskID int) (int, error) {
 	start := time.Now()
-	result, err := m.postgresDAGManager.MarkTaskAsStarted(ctx, runId, taskId)
+	result, err := m.postgresDAGManager.MarkTaskAsStarted(ctx, runId, taskID)
 	m.recordQueryMetrics("insert", "task_runs", start, err)
 	return result, err
 }
@@ -356,9 +356,9 @@ func (m *metricsPostgresDAGManager) FindExistingDAGRun(ctx context.Context, name
 	return result, err
 }
 
-func (m *metricsPostgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+func (m *metricsPostgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskID int) (*string, *string, error) {
 	start := time.Now()
-	script, injectorImage, err := m.postgresDAGManager.GetTaskScriptAndInjectorImage(ctx, taskId)
+	script, injectorImage, err := m.postgresDAGManager.GetTaskScriptAndInjectorImage(ctx, taskID)
 	m.recordQueryMetrics("select", "tasks", start, err)
 	return script, injectorImage, err
 }

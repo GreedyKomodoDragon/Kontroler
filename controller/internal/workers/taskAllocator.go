@@ -26,7 +26,7 @@ const (
 
 	annotationTaskRID  = "kontroler/task-rid"
 	annotationDagRunID = "kontroler/dagRun-id"
-	annotationTaskID   = "kontroler/task-id"
+	annotationtaskID   = "kontroler/task-id"
 
 	finalizerLogCollection = "kontroler/logcollection"
 	initScriptCommand      = `printf %s > /script/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
@@ -99,14 +99,14 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId
 	pod.Labels[labelKontrolerID] = t.id
 	pod.Annotations[annotationTaskRID] = strconv.Itoa(taskRunId)
 	pod.Annotations[annotationDagRunID] = strconv.Itoa(dagRunId)
-	pod.Annotations[annotationTaskID] = strconv.Itoa(task.Id)
+	pod.Annotations[annotationtaskID] = strconv.Itoa(task.Id)
 
 	// set podspec
 	pod.Spec = *podSpec
 
 	// Attempt pod creation with retry on name collision
-	for i := 0; i < 5; i++ {
-		pod.ObjectMeta.Name = utils.GenerateRandomName()
+	for range 5 {
+		pod.Name = utils.GenerateRandomName()
 
 		createdPod, err := t.clientSet.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 		if err != nil {

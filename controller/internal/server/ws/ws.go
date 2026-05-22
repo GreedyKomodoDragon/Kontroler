@@ -12,11 +12,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// WebSocketLogStream is responsible for handling WebSocket connections and streaming logs from Kubernetes pods to clients
 type WebSocketLogStream struct {
 	db        db.DbManager
 	clientSet *kubernetes.Clientset
 }
 
+// NewWebSocketLogStream creates a new instance of WebSocketLogStream with the provided database manager and Kubernetes clientset
 func NewWebSocketLogStream(db db.DbManager, clientSet *kubernetes.Clientset) *WebSocketLogStream {
 	return &WebSocketLogStream{
 		db:        db,
@@ -24,11 +26,13 @@ func NewWebSocketLogStream(db db.DbManager, clientSet *kubernetes.Clientset) *We
 	}
 }
 
+// LogMessage represents a log message to be sent to the client
 type LogRequest struct {
 	Action string `json:"action"`
 	PodUID string `json:"podUID"`
 }
 
+// StreamLogs handles incoming WebSocket connections and streams logs from the specified pod to the client
 func (w *WebSocketLogStream) StreamLogs(c *websocket.Conn) {
 	defer func() {
 		if err := c.Close(); err != nil {

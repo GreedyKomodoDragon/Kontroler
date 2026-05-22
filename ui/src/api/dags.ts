@@ -46,24 +46,24 @@ export async function getDagRunAll(runId: number): Promise<DagRunAll> {
 
 export async function getTaskRunDetails(
   runId: number,
-  taskId: number
+  taskID: number
 ): Promise<TaskRunDetails | undefined> {
   if (runId == -1) {
     return undefined;
   }
 
-  const data = await request(`${getApiUrl()}/api/v1/dag/run/task/${runId}/${taskId}`);
+  const data = await request(`${getApiUrl()}/api/v1/dag/run/task/${runId}/${taskID}`);
   return data;
 }
 
 export async function getTaskDetails(
-  taskId: number
+  taskID: number
 ): Promise<TaskDetails | undefined> {
-  if (taskId == -1) {
+  if (taskID == -1) {
     return undefined;
   }
 
-  const data = await request(`${getApiUrl()}/api/v1/dag/task/${taskId}`);
+  const data = await request(`${getApiUrl()}/api/v1/dag/task/${taskID}`);
   return data;
 }
 

@@ -249,13 +249,13 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 
 	// Insert the task
 	// Must check if it is inline or not
-	var taskId int
+	var taskID int
 
 	inline := task.TaskRef == nil
 	if !inline {
 		err := tx.QueryRow(ctx, `
 		SELECT task_id FROM Tasks
-		WHERE name = $1 AND inline = FALSE and version = $2;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
+		WHERE name = $1 AND inline = FALSE and version = $2;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskID)
 		if err != nil {
 			return fmt.Errorf("failed to get task ref when inserting dag: %w, name: %s, version: %v", err, task.TaskRef.Name, task.TaskRef.Version)
 		}
@@ -266,14 +266,14 @@ func (p *postgresDAGManager) insertTask(ctx context.Context, tx pgx.Tx, dagID in
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13) 
 		RETURNING task_id;`,
 			uuid.NewString(), task.Command, task.Args, task.Image, task.Parameters, task.Backoff.Limit,
-			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
+			task.Conditional.Enabled, task.Conditional.RetryCodes, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskID); err != nil {
 			return fmt.Errorf("failed to insert line task: %w", err)
 		}
 	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
-		VALUES ($1, $2, $3, $4)`, dagID, taskId, task.Name, version); err != nil {
+		VALUES ($1, $2, $3, $4)`, dagID, taskID, task.Name, version); err != nil {
 		return fmt.Errorf("failed to insert dag task: %w", err)
 	}
 
@@ -286,12 +286,12 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 	}
 
 	// Get the task ID first
-	var taskId int
+	var taskID int
 	err := tx.QueryRow(ctx, `
         SELECT dag_task_id
         FROM DAG_Tasks 
         WHERE dag_id = $1 AND name = $2 AND version = $3;`,
-		dagID, task.Name, version).Scan(&taskId)
+		dagID, task.Name, version).Scan(&taskID)
 	if err != nil {
 		return fmt.Errorf("task %s not found for version %d", task.Name, version)
 	}
@@ -329,7 +329,7 @@ func (p *postgresDAGManager) createDependencyConnection(ctx context.Context, tx 
 	// Batch insert all dependencies
 	deps := make([][]interface{}, 0, len(task.RunAfter))
 	for _, depName := range task.RunAfter {
-		deps = append(deps, []interface{}{taskId, depMap[depName]})
+		deps = append(deps, []interface{}{taskID, depMap[depName]})
 	}
 
 	_, err = tx.CopyFrom(
@@ -447,15 +447,15 @@ func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName strin
 		var parameters []string
 		var podTemplateJSON sql.NullString
 		var script sql.NullString
-		var dagId int
+		var dagID int
 		var pvcName sql.NullString
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagId, &script, &pvcName); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &parameters, &podTemplateJSON, &dagID, &script, &pvcName); err != nil {
 			return nil, err
 		}
 
 		// remember the DAG id (same for all rows)
-		dagIDForParams = dagId
+		dagIDForParams = dagID
 
 		// store parameter names; actual Parameter objects will be populated in batch below
 		paramsForTasks = append(paramsForTasks, parameters)
@@ -643,8 +643,8 @@ func (p *postgresDAGManager) getNextRunnableTasks(ctx context.Context, tx pgx.Tx
 func (p *postgresDAGManager) getRunnableTasks(ctx context.Context, tx pgx.Tx, dependencyCounts, metDependencies map[int]int, taskRunId int) ([]int, error) {
 	var runnableTasks []int
 
-	for taskId, totalDeps := range dependencyCounts {
-		metDeps := metDependencies[taskId]
+	for taskID, totalDeps := range dependencyCounts {
+		metDeps := metDependencies[taskID]
 		if totalDeps != metDeps {
 			continue
 		}
@@ -653,10 +653,10 @@ func (p *postgresDAGManager) getRunnableTasks(ctx context.Context, tx pgx.Tx, de
                 SELECT status
                 FROM Task_Runs
                 WHERE task_id = $1 AND run_id = $2;
-            `, taskId, taskRunId).Scan(&taskStatus)
+            `, taskID, taskRunId).Scan(&taskStatus)
 
 		if err == pgx.ErrNoRows {
-			runnableTasks = append(runnableTasks, taskId)
+			runnableTasks = append(runnableTasks, taskID)
 			continue
 		} else if err != nil {
 			return nil, err
@@ -680,11 +680,11 @@ func (p *postgresDAGManager) getDependencyCounts(ctx context.Context, tx pgx.Tx,
 	defer rows.Close()
 	dependencyCounts := make(map[int]int)
 	for rows.Next() {
-		var taskId, totalDependencies int
-		if err := rows.Scan(&taskId, &totalDependencies); err != nil {
+		var taskID, totalDependencies int
+		if err := rows.Scan(&taskID, &totalDependencies); err != nil {
 			return nil, err
 		}
-		dependencyCounts[taskId] = totalDependencies
+		dependencyCounts[taskID] = totalDependencies
 	}
 
 	return dependencyCounts, nil
@@ -719,20 +719,20 @@ func (p *postgresDAGManager) getMetDependencies(ctx context.Context, tx pgx.Tx, 
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
 	for rows.Next() {
-		var taskId, metDeps int
-		if err := rows.Scan(&taskId, &metDeps); err != nil {
+		var taskID, metDeps int
+		if err := rows.Scan(&taskID, &metDeps); err != nil {
 			return nil, err
 		}
 
-		metDependencies[taskId] = metDeps
+		metDependencies[taskID] = metDeps
 	}
 
 	return metDependencies, nil
 }
 
-func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskIds []int, dagrunId int) ([]Task, [][]string, error) {
+func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskIDs []int, dagrunId int) ([]Task, [][]string, error) {
 	// Ensure there are task IDs to query
-	if len(taskIds) == 0 {
+	if len(taskIDs) == 0 {
 		return []Task{}, [][]string{}, nil
 	}
 
@@ -741,7 +741,7 @@ func (p *postgresDAGManager) getTasksByIds(ctx context.Context, tx pgx.Tx, taskI
 	args := []interface{}{
 		dagrunId,
 	}
-	for i, id := range taskIds {
+	for i, id := range taskIDs {
 		placeholders = append(placeholders, fmt.Sprintf("$%d", i+2)) // Create placeholders like $1, $2, ...
 		args = append(args, id)
 	}
@@ -871,14 +871,14 @@ func (p *postgresDAGManager) fetchTaskParameters(ctx context.Context, tx pgx.Tx,
 }
 
 func (p *postgresDAGManager) getDAGIdFromRun(ctx context.Context, tx pgx.Tx, runId int) (int, error) {
-	var dagId int
+	var dagID int
 	err := tx.QueryRow(ctx, `
 		SELECT dag_id
 		FROM dag_runs
 		WHERE run_id = $1
-	`, runId).Scan(&dagId)
+	`, runId).Scan(&dagID)
 
-	return dagId, err
+	return dagID, err
 }
 
 func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
@@ -895,13 +895,13 @@ func (p *postgresDAGManager) IncrementAttempts(ctx context.Context, taskRunId in
 	})
 }
 
-func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskId int) (int, error) {
+func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, taskID int) (int, error) {
 	var taskRunId int
 	if err := p.pool.QueryRow(ctx, `
 	INSERT INTO Task_Runs (run_id, task_id, status, attempts) 
 	VALUES ($1, $2, 'running', 1) 
 	RETURNING task_run_id`,
-		runId, taskId).Scan(&taskRunId); err != nil {
+		runId, taskID).Scan(&taskRunId); err != nil {
 		return 0, err
 	}
 
@@ -938,7 +938,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm tim
 
 	schedules := []string{}
 	for rows.Next() {
-		var dagId int
+		var dagID int
 		var name string
 		var schedule string
 		var namespace string
@@ -946,7 +946,7 @@ func (p *postgresDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm tim
 		var webhookUrl string
 		var sslVerification bool
 
-		if err := rows.Scan(&dagId, &name, &schedule, &namespace, &workEnabled, &webhookUrl, &sslVerification); err != nil {
+		if err := rows.Scan(&dagID, &name, &schedule, &namespace, &workEnabled, &webhookUrl, &sslVerification); err != nil {
 			return nil, err
 		}
 
@@ -1210,16 +1210,16 @@ func (p *postgresDAGManager) DeleteDAG(ctx context.Context, name string, namespa
 		return nil, err
 	}
 
-	taskIds := []interface{}{}
+	taskIDs := []interface{}{}
 	placeholders := []string{}
 	i := 0
 	for rowsTasks.Next() {
-		var taskId int
-		if err := rowsTasks.Scan(&taskId); err != nil {
+		var taskID int
+		if err := rowsTasks.Scan(&taskID); err != nil {
 			return nil, err
 		}
 
-		taskIds = append(taskIds, taskId)
+		taskIDs = append(taskIDs, taskID)
 		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
 		i++
 	}
@@ -1232,13 +1232,13 @@ func (p *postgresDAGManager) DeleteDAG(ctx context.Context, name string, namespa
 		return nil, err
 	}
 
-	if len(taskIds) > 0 {
+	if len(taskIDs) > 0 {
 		// Construct the query
 		query := fmt.Sprintf(`
 		DELETE FROM Tasks
 		WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
 
-		if _, err := tx.Exec(ctx, query, taskIds...); err != nil {
+		if _, err := tx.Exec(ctx, query, taskIDs...); err != nil {
 			return nil, err
 		}
 	}
@@ -1314,7 +1314,7 @@ func (p *postgresDAGManager) GetID(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("failed to query IdTable: %w", err)
 }
 
-func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskID int) (*string, *string, error) {
 	var script *string
 	var injectorImage *string
 
@@ -1326,7 +1326,7 @@ func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, 
 		FROM DAG_Tasks
 		WHERE dag_task_id = $1
 		);
-	`, taskId).Scan(&script, &injectorImage); err != nil {
+	`, taskID).Scan(&script, &injectorImage); err != nil {
 		return nil, nil, err
 	}
 
@@ -1343,7 +1343,7 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 	// Rollback transaction if not committed
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var taskId int
+	var taskID int
 	var version int
 	var hash *string
 
@@ -1351,7 +1351,7 @@ func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask
 	SELECT task_id, version, hash
 	FROM Tasks
 	WHERE name = $1 AND namespace = $2
-	ORDER BY version DESC;`, task.Name, namespace).Scan(&taskId, &version, &hash)
+	ORDER BY version DESC;`, task.Name, namespace).Scan(&taskID, &version, &hash)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}

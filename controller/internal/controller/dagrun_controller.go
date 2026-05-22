@@ -161,13 +161,13 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		pvcName = &name
 	}
 
-	runId, err := r.DbManager.CreateDAGRun(ctx, dagRun.Name, &dagRun.Spec, paramMap, pvcName)
+	runID, err := r.DbManager.CreateDAGRun(ctx, dagRun.Name, &dagRun.Spec, paramMap, pvcName)
 	if err != nil {
 		log.Log.Error(err, "failed to create dag run entry", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
 	}
 
-	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagName, runId)
+	tasks, err := r.DbManager.GetStartingTasks(ctx, dagRun.Spec.DagName, runID)
 	if err != nil {
 		log.Log.Error(err, "failed to get starting tasks for dag", "dag_id", dagRun.Spec.DagName)
 		return ctrl.Result{}, err
@@ -177,7 +177,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Provide task to allocator
 	for _, task := range tasks {
-		taskRunId, err := r.DbManager.MarkTaskAsStarted(ctx, runId, task.Id)
+		taskRunID, err := r.DbManager.MarkTaskAsStarted(ctx, runID, task.Id)
 		if err != nil {
 			log.Log.Error(err, "failed to mark task as started", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
 			continue
@@ -194,7 +194,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 
-		taskID, err := r.TaskAllocator.AllocateTask(ctx, &task, runId, taskRunId, req.NamespacedName.Namespace)
+		taskID, err := r.TaskAllocator.AllocateTask(ctx, &task, runID, taskRunID, req.Namespace)
 		if err != nil {
 			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
 			continue
@@ -205,7 +205,7 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	old := dagRun.DeepCopy()
-	dagRun.Status.DagRunId = runId
+	dagRun.Status.DagRunId = runID
 	if old.Status.DagRunId != dagRun.Status.DagRunId {
 		if err := r.Status().Patch(ctx, &dagRun, client.MergeFrom(old)); err != nil {
 			log.Log.Error(err, "failed to update DagRun status with runID", "dag_id", dagRun.Spec.DagName)
@@ -379,7 +379,7 @@ func deletePodByNameAndNamespace(ctx context.Context, c client.Client, name stri
 			finalisers = append(finalisers, f)
 		}
 	}
-	pod.ObjectMeta.Finalizers = finalisers
+	pod.Finalizers = finalisers
 	old := pod.DeepCopy()
 	if err := c.Patch(ctx, pod, client.MergeFrom(old)); err != nil {
 		return err

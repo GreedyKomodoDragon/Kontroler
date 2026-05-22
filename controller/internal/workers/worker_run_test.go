@@ -10,11 +10,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/stretchr/testify/require"
 	"kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
 	"kontroler-controller/internal/queue"
 	"kontroler-controller/internal/webhook"
+
+	"github.com/stretchr/testify/require"
 )
 
 // fakeDB is a minimal fake implementing db.DBDAGManager methods used by the worker tests.
@@ -40,7 +41,7 @@ func (f *fakeDB) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.Da
 func (f *fakeDB) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]db.Task, error) {
 	return nil, nil
 }
-func (f *fakeDB) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error) {
+func (f *fakeDB) MarkTaskAsStarted(ctx context.Context, runId, taskID int) (int, error) {
 	return 0, nil
 }
 func (f *fakeDB) IncrementAttempts(ctx context.Context, taskRunId int) error { return nil }
@@ -74,7 +75,7 @@ func (f *fakeDB) DeleteDAG(ctx context.Context, name string, namespace string) (
 func (f *fakeDB) FindExistingDAGRun(ctx context.Context, name string) (bool, error) {
 	return false, nil
 }
-func (f *fakeDB) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+func (f *fakeDB) GetTaskScriptAndInjectorImage(ctx context.Context, taskID int) (*string, *string, error) {
 	return nil, nil, nil
 }
 func (f *fakeDB) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {

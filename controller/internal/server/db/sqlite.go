@@ -87,17 +87,17 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun,
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var dagId int
+	var dagID int
 	row := tx.QueryRowContext(ctx, `
 		SELECT dag_id
 		FROM DAG_Runs
 		WHERE run_id = ?`, dagRunId)
 
-	if err := row.Scan(&dagId); err != nil {
+	if err := row.Scan(&dagID); err != nil {
 		return nil, err
 	}
 
-	connections, err := s.getDagConnections(ctx, dagId)
+	connections, err := s.getDagConnections(ctx, dagID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun,
         FROM DAG_Tasks d
         JOIN tasks t ON d.task_id = t.task_id
         LEFT JOIN Task_Runs r ON r.task_id = d.dag_task_id AND r.run_id = ?
-        WHERE d.dag_id = ?`, dagRunId, dagId)
+        WHERE d.dag_id = ?`, dagRunId, dagID)
 
 	if err != nil {
 		return nil, err
@@ -119,12 +119,12 @@ func (s *sqliteManager) GetDagRun(ctx context.Context, dagRunId int) (*DBDagRun,
 
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
-		var taskId int
+		var taskID int
 		task := DBTaskInfo{}
-		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
+		if err := rows.Scan(&taskID, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
-		taskInfo[taskId] = task
+		taskInfo[taskID] = task
 	}
 
 	for key := range connections {
@@ -191,30 +191,30 @@ func (s *sqliteManager) getDagConnections(ctx context.Context, dagId int) (map[i
 
 	connections := map[int][]int{}
 	for rows.Next() {
-		var taskId int
+		var taskID int
 		var depsString string
 
 		// Scan the task_id and dependencies (as a comma-separated string)
-		if err := rows.Scan(&taskId, &depsString); err != nil {
+		if err := rows.Scan(&taskID, &depsString); err != nil {
 			return nil, err
 		}
 
 		// Parse the comma-separated string into an int slice
 		var taskDeps []int
 		if depsString == "" {
-			connections[taskId] = []int{}
+			connections[taskID] = []int{}
 			continue
 		}
 
 		for _, dep := range strings.Split(depsString, ",") {
 			depInt, err := strconv.Atoi(dep)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse dependency '%s' for task %d: %w", dep, taskId, err)
+				return nil, fmt.Errorf("failed to parse dependency '%s' for task %d: %w", dep, taskID, err)
 			}
 			taskDeps = append(taskDeps, depInt)
 		}
 
-		connections[taskId] = taskDeps
+		connections[taskID] = taskDeps
 	}
 
 	if rows.Err() != nil {
@@ -258,12 +258,12 @@ func (s *sqliteManager) GetDagRunAll(ctx context.Context, dagRunId int) (*DBDagR
 
 	taskInfo := map[int]DBTaskInfo{}
 	for rows.Next() {
-		var taskId int
+		var taskID int
 		task := DBTaskInfo{}
-		if err := rows.Scan(&taskId, &task.Name, &task.Status); err != nil {
+		if err := rows.Scan(&taskID, &task.Name, &task.Status); err != nil {
 			return nil, err
 		}
-		taskInfo[taskId] = task
+		taskInfo[taskID] = task
 	}
 
 	meta.Connections = connections
@@ -606,13 +606,13 @@ func (s *sqliteManager) GetIsSecrets(ctx context.Context, dagName string, parame
 	return results, nil
 }
 
-func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTaskDetails, error) {
+func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskID int) (*DBTaskDetails, error) {
 	var taskDetails DBTaskDetails
 	var podTemplateJSON *string
 	var commandJSON string
 	var argsJSON string
 	var retryJSON string
-	var paramsJson string
+	var paramsJSON string
 
 	// Query for the task details from the Tasks table
 	queryTask := `
@@ -622,7 +622,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTask
 			WHERE dat.dag_task_id = ?;
 		`
 
-	if err := s.db.QueryRowContext(ctx, queryTask, taskId).Scan(
+	if err := s.db.QueryRowContext(ctx, queryTask, taskID).Scan(
 		&taskDetails.ID,
 		&taskDetails.Name,
 		&commandJSON,
@@ -633,7 +633,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTask
 		&podTemplateJSON,
 		&retryJSON,
 		&taskDetails.Script,
-		&paramsJson,
+		&paramsJSON,
 	); err != nil {
 		return nil, fmt.Errorf("failed to query task details: %w", err)
 	}
@@ -657,7 +657,7 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTask
 	}
 
 	params := []string{}
-	if err := json.Unmarshal([]byte(paramsJson), &params); err != nil {
+	if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
 		return nil, err
 	}
 
@@ -701,14 +701,14 @@ func (s *sqliteManager) GetTaskDetails(ctx context.Context, taskId int) (*DBTask
 }
 
 // GetTaskRunDetails implements DbManager.
-func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, taskId int) (*DBTaskRunDetails, error) {
+func (s *sqliteManager) GetTaskRunDetails(ctx context.Context, dagRunId int, taskID int) (*DBTaskRunDetails, error) {
 	task := &DBTaskRunDetails{}
 
 	if err := s.db.QueryRowContext(ctx, `
 	SELECT task_run_id, status, attempts
 	FROM Task_Runs
 	WHERE run_id = ? AND task_id = ?;
-	`, dagRunId, taskId).Scan(&task.Id, &task.Status, &task.Attempts); err != nil {
+	`, dagRunId, taskID).Scan(&task.Id, &task.Status, &task.Attempts); err != nil {
 		return nil, err
 	}
 
@@ -772,7 +772,7 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 		var commandJSON string
 		var argsJSON string
 		var retryJSON string
-		var paramsJson string
+		var paramsJSON string
 
 		if err := rows.Scan(
 			&taskDetail.ID,
@@ -785,7 +785,7 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 			&podTemplateJSON,
 			&retryJSON,
 			&taskDetail.Script,
-			&paramsJson,
+			&paramsJSON,
 		); err != nil {
 			return nil, fmt.Errorf("failed to query task details: %w", err)
 		}
@@ -809,7 +809,7 @@ func (s *sqliteManager) GetDagTasks(ctx context.Context, limit int, offset int) 
 		}
 
 		params := []string{}
-		if err := json.Unmarshal([]byte(paramsJson), &params); err != nil {
+		if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
 			return nil, err
 		}
 

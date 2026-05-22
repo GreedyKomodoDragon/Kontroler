@@ -205,18 +205,18 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(dagRun)
 	})
 
-	dagRouter.Get("/run/task/:runId/:taskId", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
+	dagRouter.Get("/run/task/:runId/:taskID", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
 		runId, err := strconv.Atoi(c.Params("runId"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		taskId, err := strconv.Atoi(c.Params("taskId"))
+		taskID, err := strconv.Atoi(c.Params("taskID"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		taskDetails, err := dbManager.GetTaskRunDetails(c.Context(), runId, taskId)
+		taskDetails, err := dbManager.GetTaskRunDetails(c.Context(), runId, taskID)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting GetTaskDetails")
 			return c.SendStatus(fiber.StatusInternalServerError)
@@ -225,13 +225,13 @@ func addDags(router fiber.Router, dbManager db.DbManager, kubClient dynamic.Inte
 		return c.Status(fiber.StatusOK).JSON(taskDetails)
 	})
 
-	dagRouter.Get("/task/:taskId", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
-		taskId, err := strconv.Atoi(c.Params("taskId"))
+	dagRouter.Get("/task/:taskID", roleMiddleware("viewer"), func(c *fiber.Ctx) error {
+		taskID, err := strconv.Atoi(c.Params("taskID"))
 		if err != nil {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
 
-		taskDetails, err := dbManager.GetTaskDetails(c.Context(), taskId)
+		taskDetails, err := dbManager.GetTaskDetails(c.Context(), taskID)
 		if err != nil {
 			log.Error().Err(err).Msg("Error getting GetTaskDetails")
 			return c.SendStatus(fiber.StatusInternalServerError)

@@ -61,7 +61,7 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.Get(ctx, req.NamespacedName, &task); err != nil {
 		// Handle the case where the DAG object was deleted before reconciliation
 		if errors.IsNotFound(err) {
-			return ctrl.Result{}, r.handleDeletion(ctx, req.Name, req.NamespacedName.Namespace)
+			return ctrl.Result{}, r.handleDeletion(ctx, req.Name, req.Namespace)
 		}
 
 		// Return error if unable to fetch DAG object
@@ -69,17 +69,17 @@ func (r *DagTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Check if the Task is marked for deletion
-	if !task.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !task.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&task, "dagTask.finalizer.kontroler.greedykomodo") {
-			log.Log.Info("cannot delete as task is being used in a DAG", "controller", "dagTask", "taskName", task.Name, "namespace", req.NamespacedName.Namespace)
+			log.Log.Info("cannot delete as task is being used in a DAG", "controller", "dagTask", "taskName", task.Name, "namespace", req.Namespace)
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, r.handleDeletion(ctx, task.Name, req.NamespacedName.Namespace)
+		return ctrl.Result{}, r.handleDeletion(ctx, task.Name, req.Namespace)
 	}
 
 	// Store the DAG object in the database
-	if err := r.DbManager.AddTask(ctx, &task, req.NamespacedName.Namespace); err != nil {
+	if err := r.DbManager.AddTask(ctx, &task, req.Namespace); err != nil {
 		if err.Error() == "applying the same task" {
 			log.Log.Info("reconcile event", "controller", "dagTask", "event", "applying the same task")
 			return ctrl.Result{}, nil

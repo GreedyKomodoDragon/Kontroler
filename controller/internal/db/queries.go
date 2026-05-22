@@ -34,12 +34,12 @@ const (
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
 		VALUES ($1, $2, $3, $4)`
 
-	QueryGetTaskID = `
+	QueryGettaskID = `
 		SELECT dag_task_id
 		FROM DAG_Tasks 
 		WHERE dag_id = $1 AND name = $2 AND version = $3;`
 
-	QueryGetDependencyTaskID = `
+	QueryGetDependencytaskID = `
 		SELECT dag_task_id
 		FROM DAG_Tasks 
 		WHERE dag_id = $1 AND name = $2

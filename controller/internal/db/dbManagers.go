@@ -52,7 +52,7 @@ type DBDAGManager interface {
 	// Get all the tasks in the DAG that do not have any dependencies
 	GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error)
 	// Add an update to show the task has been started
-	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
+	MarkTaskAsStarted(ctx context.Context, runId, taskID int) (int, error)
 	// Mark the outcome of the taskRun
 	IncrementAttempts(ctx context.Context, taskRunId int) error
 	// Within the same transaction, and get next task(s) in the DAG
@@ -67,7 +67,7 @@ type DBDAGManager interface {
 	// Deletes the dag in database, and returns all the dagTasks no longer used
 	DeleteDAG(ctx context.Context, name string, namespace string) ([]string, error)
 	FindExistingDAGRun(ctx context.Context, name string) (bool, error)
-	GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error)
+	GetTaskScriptAndInjectorImage(ctx context.Context, taskID int) (*string, *string, error)
 	AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error
 	DeleteTask(ctx context.Context, taskName string, namespace string) error
 	GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error)

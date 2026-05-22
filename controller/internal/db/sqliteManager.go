@@ -175,11 +175,11 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 	schedules := []string{}
 	dagIds := []int{}
 	for rows.Next() {
-		var dagId int
+		var dagID int
 		var name, schedule, namespace string
 		var workEnabled sql.NullBool
 
-		if err := rows.Scan(&dagId, &name, &schedule, &namespace, &workEnabled); err != nil {
+		if err := rows.Scan(&dagID, &name, &schedule, &namespace, &workEnabled); err != nil {
 			return nil, err
 		}
 
@@ -189,7 +189,7 @@ func (s *sqliteDAGManager) GetDAGsToStartAndUpdate(ctx context.Context, tm time.
 			WorkspaceEnabled: workEnabled.Valid && workEnabled.Bool,
 		})
 		schedules = append(schedules, schedule)
-		dagIds = append(dagIds, dagId)
+		dagIds = append(dagIds, dagID)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -411,12 +411,12 @@ func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int
 		return err
 	}
 
-	var taskId int
+	var taskID int
 	inline := task.TaskRef == nil
 	if !inline {
 		err := tx.QueryRowContext(ctx, `
 		SELECT task_id FROM Tasks
-		WHERE name = ? AND inline = FALSE and version = ?;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskId)
+		WHERE name = ? AND inline = FALSE and version = ?;`, task.TaskRef.Name, task.TaskRef.Version).Scan(&taskID)
 		if err != nil {
 			return err
 		}
@@ -430,14 +430,14 @@ func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?) 
 		RETURNING task_id;`,
 			newUUID.String(), commandJson, argsJson, task.Image, paramsJson, task.Backoff.Limit,
-			task.Conditional.Enabled, retryCodesJson, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskId); err != nil {
+			task.Conditional.Enabled, retryCodesJson, jsonValue, task.Script, task.ScriptInjectorImage, namespace, version).Scan(&taskID); err != nil {
 			return err
 		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO DAG_Tasks (dag_id, task_id, name, version)
-		VALUES (?, ?, ?, ?);`, dagID, taskId, task.Name, version); err != nil {
+		VALUES (?, ?, ?, ?);`, dagID, taskID, task.Name, version); err != nil {
 		return err
 	}
 
@@ -446,13 +446,13 @@ func (s *sqliteDAGManager) insertTask(ctx context.Context, tx *sql.Tx, dagID int
 
 func (s *sqliteDAGManager) createDependencyConnection(ctx context.Context, tx *sql.Tx, dagID int, task *v1alpha1.TaskSpec, version int) error {
 	for _, dependency := range task.RunAfter {
-		var taskId, depId int
+		var taskID, depId int
 
 		err := tx.QueryRowContext(ctx, `
 		SELECT dag_task_id
 		FROM DAG_Tasks 
 		WHERE dag_id = ? AND name = ? AND version = ?;
-		`, dagID, task.Name, version).Scan(&taskId)
+		`, dagID, task.Name, version).Scan(&taskID)
 		if err != nil {
 			return fmt.Errorf("task: %s not found for version %d", task.Name, version)
 		}
@@ -473,7 +473,7 @@ func (s *sqliteDAGManager) createDependencyConnection(ctx context.Context, tx *s
 
 		if _, err := tx.ExecContext(ctx, `
 		INSERT INTO Dependencies (task_id, depends_on_task_id) 
-		VALUES (?, ?);`, taskId, depId); err != nil {
+		VALUES (?, ?);`, taskID, depId); err != nil {
 			return err
 		}
 	}
@@ -622,7 +622,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 	for rows.Next() {
 		task := Task{}
 		var podTemplateJSON *string
-		var dagId int
+		var dagID int
 
 		// Needed as stored as TEXT and not []TEXT
 		var commandJSON string
@@ -630,7 +630,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		var paramJSON string
 		var pvcName sql.NullString
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramJSON, &podTemplateJSON, &dagId, &task.Script, &pvcName); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramJSON, &podTemplateJSON, &dagID, &task.Script, &pvcName); err != nil {
 			return nil, err
 		}
 
@@ -648,7 +648,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		}
 
 		// remember dag id
-		dagIDForParams = dagId
+		dagIDForParams = dagID
 
 		var podTemplate *v1alpha1.PodTemplateSpec
 		if podTemplateJSON != nil {
@@ -715,7 +715,7 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 		if err != nil {
 			return nil, err
 		}
-				
+
 		paramMap := make(map[string]Parameter)
 		for rowsParams.Next() {
 			var name string
@@ -745,14 +745,14 @@ func (s *sqliteDAGManager) GetStartingTasks(ctx context.Context, dagName string,
 	return tasks, nil
 }
 
-func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error) {
+func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskID int) (int, error) {
 	var taskRunId int
 
 	if err := s.db.QueryRowContext(ctx, `
 	INSERT INTO Task_Runs (run_id, task_id, status, attempts) 
 	VALUES (?, ?, 'running', 1) 
 	RETURNING task_run_id`,
-		runId, taskId).Scan(&taskRunId); err != nil {
+		runId, taskID).Scan(&taskRunId); err != nil {
 		return 0, err
 	}
 
@@ -847,14 +847,14 @@ func (s *sqliteDAGManager) MarkSuccessAndGetNextTasks(ctx context.Context, taskR
 }
 
 func (s *sqliteDAGManager) getDAGIdFromRun(ctx context.Context, tx *sql.Tx, runId int) (int, error) {
-	var dagId int
+	var dagID int
 	err := tx.QueryRowContext(ctx, `
 		SELECT dag_id
 		FROM dag_runs
 		WHERE run_id = ?
-	`, runId).Scan(&dagId)
+	`, runId).Scan(&dagID)
 
-	return dagId, err
+	return dagID, err
 }
 
 func (s *sqliteDAGManager) getNextRunnableTasks(ctx context.Context, tx *sql.Tx, taskRunId, runId int, dagId int) ([]Task, [][]string, error) {
@@ -876,12 +876,12 @@ func (s *sqliteDAGManager) getNextRunnableTasks(ctx context.Context, tx *sql.Tx,
 	return s.getTasksByIds(ctx, tx, runnableTasks, runId)
 }
 
-func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskIds []int, runId int) ([]Task, [][]string, error) {
-	params := make([]string, 0, len(taskIds))
-	args := make([]interface{}, 0, len(taskIds)+1)
+func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskIDs []int, runId int) ([]Task, [][]string, error) {
+	params := make([]string, 0, len(taskIDs))
+	args := make([]interface{}, 0, len(taskIDs)+1)
 	args = append(args, runId)
 
-	for _, id := range taskIds {
+	for _, id := range taskIDs {
 		params = append(params, "?")
 		args = append(args, id)
 	}
@@ -900,18 +900,18 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		return nil, nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	tasks := make([]Task, 0, len(taskIds))
-	parameters := make([][]string, 0, len(taskIds))
+	tasks := make([]Task, 0, len(taskIDs))
+	parameters := make([][]string, 0, len(taskIDs))
 
 	for rows.Next() {
 		var task Task
 		var commandJSON string
 		var argsJSON string
-		var paramsJson string
+		var paramsJSON string
 		var podTemplateJSON *string
 		var pvcName sql.NullString
 
-		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJson, &task.ScriptInjectorImage, &task.Script, &podTemplateJSON, &pvcName); err != nil {
+		if err := rows.Scan(&task.Id, &task.Name, &task.Image, &commandJSON, &argsJSON, &paramsJSON, &task.ScriptInjectorImage, &task.Script, &podTemplateJSON, &pvcName); err != nil {
 			return nil, nil, err
 		}
 
@@ -924,7 +924,7 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 		}
 
 		params := []string{}
-		if err := json.Unmarshal([]byte(paramsJson), &params); err != nil {
+		if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
 			return nil, nil, err
 		}
 
@@ -961,8 +961,8 @@ func (s *sqliteDAGManager) getTasksByIds(ctx context.Context, tx *sql.Tx, taskId
 func (s *sqliteDAGManager) getRunnableTasks(ctx context.Context, tx *sql.Tx, dependencyCounts, metDependencies map[int]int, taskRunId int) ([]int, error) {
 	var runnableTasks []int
 
-	for taskId, totalDeps := range dependencyCounts {
-		metDeps := metDependencies[taskId]
+	for taskID, totalDeps := range dependencyCounts {
+		metDeps := metDependencies[taskID]
 		if totalDeps != metDeps {
 			continue
 		}
@@ -971,10 +971,10 @@ func (s *sqliteDAGManager) getRunnableTasks(ctx context.Context, tx *sql.Tx, dep
                 SELECT status
                 FROM Task_Runs
                 WHERE task_id = ? AND run_id = ?;
-            `, taskId, taskRunId).Scan(&taskStatus)
+            `, taskID, taskRunId).Scan(&taskStatus)
 
 		if err == sql.ErrNoRows {
-			runnableTasks = append(runnableTasks, taskId)
+			runnableTasks = append(runnableTasks, taskID)
 			continue
 		} else if err != nil {
 			return nil, err
@@ -1013,11 +1013,11 @@ func (s *sqliteDAGManager) getMetDependencies(ctx context.Context, tx *sql.Tx, d
 	// Map to store met dependency counts for each task
 	metDependencies := make(map[int]int)
 	for rows.Next() {
-		var taskId, metDeps int
-		if err := rows.Scan(&taskId, &metDeps); err != nil {
+		var taskID, metDeps int
+		if err := rows.Scan(&taskID, &metDeps); err != nil {
 			return nil, err
 		}
-		metDependencies[taskId] = metDeps
+		metDependencies[taskID] = metDeps
 	}
 
 	return metDependencies, nil
@@ -1039,11 +1039,11 @@ func (s *sqliteDAGManager) getDependencyCounts(ctx context.Context, tx *sql.Tx, 
 	// Map to store dependency counts for each task
 	dependencyCounts := make(map[int]int)
 	for rows.Next() {
-		var taskId, totalDependencies int
-		if err := rows.Scan(&taskId, &totalDependencies); err != nil {
+		var taskID, totalDependencies int
+		if err := rows.Scan(&taskID, &totalDependencies); err != nil {
 			return nil, err
 		}
-		dependencyCounts[taskId] = totalDependencies
+		dependencyCounts[taskID] = totalDependencies
 	}
 
 	return dependencyCounts, nil
@@ -1413,17 +1413,17 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 	if err != nil {
 		return nil, err
 	}
-		
-	taskIds := []interface{}{}
+
+	taskIDs := []interface{}{}
 	placeholders := []string{}
 	i := 0
 	for rowsTasks.Next() {
-		var taskId int
-		if err := rowsTasks.Scan(&taskId); err != nil {
+		var taskID int
+		if err := rowsTasks.Scan(&taskID); err != nil {
 			return nil, err
 		}
 
-		taskIds = append(taskIds, taskId)
+		taskIDs = append(taskIDs, taskID)
 		placeholders = append(placeholders, "?")
 		i++
 	}
@@ -1455,11 +1455,11 @@ func (s *sqliteDAGManager) DeleteDAG(ctx context.Context, name string, namespace
 	}
 
 	// Optionally delete tasks that are no longer in use
-	if len(taskIds) > 0 {
+	if len(taskIDs) > 0 {
 		query := fmt.Sprintf(`
 			DELETE FROM Tasks
 			WHERE task_id IN (%s);`, strings.Join(placeholders, ","))
-		if _, err := tx.ExecContext(ctx, query, taskIds...); err != nil {
+		if _, err := tx.ExecContext(ctx, query, taskIDs...); err != nil {
 			return nil, err
 		}
 	}
@@ -1488,7 +1488,7 @@ func (s *sqliteDAGManager) FindExistingDAGRun(ctx context.Context, name string) 
 	return exists, nil
 }
 
-func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
+func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, taskID int) (*string, *string, error) {
 	var script *string
 	var injectorImage *string
 
@@ -1500,7 +1500,7 @@ func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, ta
 		FROM DAG_Tasks
 		WHERE dag_task_id = ?
 		);
-	`, taskId).Scan(&script, &injectorImage); err != nil {
+	`, taskID).Scan(&script, &injectorImage); err != nil {
 		return nil, nil, err
 	}
 
@@ -1517,7 +1517,7 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 	// Rollback transaction if not committed
 	defer func() { _ = tx.Rollback() }()
 
-	var taskId int
+	var taskID int
 	var version int
 	var hash *string
 
@@ -1525,7 +1525,7 @@ func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, 
 	SELECT task_id, version, hash
 	FROM Tasks
 	WHERE name = ? AND namespace = ?
-	ORDER BY version DESC;`, task.Name, namespace).Scan(&taskId, &version, &hash)
+	ORDER BY version DESC;`, task.Name, namespace).Scan(&taskID, &version, &hash)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
@@ -1595,14 +1595,14 @@ func (s *sqliteDAGManager) GetTaskRefsParameters(ctx context.Context, taskRefs [
     `
 
 	for _, val := range taskRefs {
-		var paramsJson string
-		if err := s.db.QueryRowContext(ctx, querySql, val.Name, val.Version).Scan(&paramsJson); err != nil {
+		var paramsJSON string
+		if err := s.db.QueryRowContext(ctx, querySql, val.Name, val.Version).Scan(&paramsJSON); err != nil {
 			return nil, err
 		}
 
 		var parameters []string
 
-		if err := json.Unmarshal([]byte(paramsJson), &parameters); err != nil {
+		if err := json.Unmarshal([]byte(paramsJSON), &parameters); err != nil {
 			return nil, err
 		}
 
@@ -1748,36 +1748,36 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 	// Store dependencies in a map for fast lookups
 	dependencies := make(map[int][]int)
 	for rows.Next() {
-		var parentTaskID, dependentTaskID int
-		if err := rows.Scan(&parentTaskID, &dependentTaskID); err != nil {
+		var parenttaskID, dependenttaskID int
+		if err := rows.Scan(&parenttaskID, &dependenttaskID); err != nil {
 			return nil, fmt.Errorf("failed to scan dependency row: %w", err)
 		}
-		dependencies[parentTaskID] = append(dependencies[parentTaskID], dependentTaskID)
+		dependencies[parenttaskID] = append(dependencies[parenttaskID], dependenttaskID)
 	}
-	var startingTaskID int
+	var startingtaskID int
 	if err := tx.QueryRowContext(ctx, `
         SELECT task_id FROM Task_Runs WHERE task_run_id = ?;
-    `, taskRunId).Scan(&startingTaskID); err != nil {
+    `, taskRunId).Scan(&startingtaskID); err != nil {
 		return nil, fmt.Errorf("failed to get task id: %w", err)
 	}
 
 	// DFS using stack
-	stack := []int{startingTaskID}
+	stack := []int{startingtaskID}
 	seen := make(map[int]bool)
 	uniqueUpdates := make(map[int]struct{})
 	var updates [][]interface{}
-	taskIdsSuspended := []int{}
+	taskIDsSuspended := []int{}
 
 	for len(stack) > 0 {
-		currentTaskID := stack[len(stack)-1]
+		currenttaskID := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		if seen[currentTaskID] {
+		if seen[currenttaskID] {
 			continue
 		}
-		seen[currentTaskID] = true
+		seen[currenttaskID] = true
 
-		if dependentTasks, exists := dependencies[currentTaskID]; exists {
+		if dependentTasks, exists := dependencies[currenttaskID]; exists {
 			for _, taskID := range dependentTasks {
 				// Skip if task already has a status
 				if existingTaskRuns[taskID] {
@@ -1786,7 +1786,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 
 				if _, exists := uniqueUpdates[taskID]; !exists {
 					uniqueUpdates[taskID] = struct{}{}
-					taskIdsSuspended = append(taskIdsSuspended, taskID)
+					taskIDsSuspended = append(taskIDsSuspended, taskID)
 					updates = append(updates, []interface{}{dagRunId, taskID, "suspended", 0})
 					stack = append(stack, taskID)
 				}
@@ -1803,7 +1803,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare statement: %w", err)
 		}
-				
+
 		for _, update := range updates {
 			if _, err := stmt.ExecContext(ctx, update...); err != nil {
 				return nil, fmt.Errorf("failed to insert task run: %w", err)
@@ -1821,7 +1821,7 @@ func (s *sqliteDAGManager) MarkConnectingTasksAsSuspended(ctx context.Context, d
 
 	// get task names
 	taskNames := []string{}
-	for _, taskID := range taskIdsSuspended {
+	for _, taskID := range taskIDsSuspended {
 		var taskName string
 		if err := tx.QueryRowContext(ctx, `
             SELECT name
