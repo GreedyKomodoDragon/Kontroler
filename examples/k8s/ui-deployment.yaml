@@ -18,7 +18,7 @@ metadata:
   namespace: kontroler
 data:
   # These values are read by the browser, not by another pod. The defaults work
-  # with `kubectl port-forward svc/kontroler-server 8080:8080`.
+  # with `kubectl port-forward -n kontroler svc/kontroler-server 8080:8080`.
   API_URL: http://localhost:8080
   WS_URL: ws://localhost:8080
 ---
@@ -42,10 +42,20 @@ spec:
         app.kubernetes.io/part-of: kontroler
     spec:
       serviceAccountName: kontroler-ui
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: kontroler-ui
           image: greedykomodo/kontroler-ui:0.0.1
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: API_URL
               valueFrom:
@@ -60,6 +70,12 @@ spec:
           ports:
             - name: http
               containerPort: 3000
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

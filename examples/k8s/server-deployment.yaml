@@ -36,7 +36,8 @@ data:
   DB_TYPE: postgresql
   DB_NAME: kontroler
   DB_USER: postgres
-  DB_ENDPOINT: postgres-postgresql.default.svc.cluster.local:5432
+  # Replace with your PostgreSQL service endpoint.
+  DB_ENDPOINT: your-postgres-service.your-namespace.svc.cluster.local:5432
   UI_ADDRESS: http://kontroler-ui.kontroler.svc.cluster.local:3000
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -87,10 +88,20 @@ spec:
         app.kubernetes.io/part-of: kontroler
     spec:
       serviceAccountName: kontroler-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: kontroler-server
           image: greedykomodo/kontroler-server:0.0.1
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           args:
             - --configpath=/etc/kontroler/config/config.yaml
           env:
@@ -138,6 +149,8 @@ spec:
             - name: config
               mountPath: /etc/kontroler/config
               readOnly: true
+            - name: logs
+              mountPath: /logs
       volumes:
         - name: config
           configMap:
@@ -145,6 +158,8 @@ spec:
             items:
               - key: config.yaml
                 path: config.yaml
+        - name: logs
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
