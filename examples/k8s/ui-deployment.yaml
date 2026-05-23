@@ -1,0 +1,79 @@
+# Example non-Helm Kontroler UI deployment.
+# Apply server-deployment.yaml first, or update API_URL/WS_URL for your server route.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kontroler
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kontroler-ui
+  namespace: kontroler
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kontroler-ui-env
+  namespace: kontroler
+data:
+  # These values are read by the browser, not by another pod. The defaults work
+  # with `kubectl port-forward svc/kontroler-server 8080:8080`.
+  API_URL: http://localhost:8080
+  WS_URL: ws://localhost:8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kontroler-ui
+  namespace: kontroler
+  labels:
+    app.kubernetes.io/name: kontroler-ui
+    app.kubernetes.io/part-of: kontroler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kontroler-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kontroler-ui
+        app.kubernetes.io/part-of: kontroler
+    spec:
+      serviceAccountName: kontroler-ui
+      containers:
+        - name: kontroler-ui
+          image: greedykomodo/kontroler-ui:0.0.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-ui-env
+                  key: API_URL
+            - name: WS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-ui-env
+                  key: WS_URL
+          ports:
+            - name: http
+              containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kontroler-ui
+  namespace: kontroler
+  labels:
+    app.kubernetes.io/name: kontroler-ui
+    app.kubernetes.io/part-of: kontroler
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kontroler-ui
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

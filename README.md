@@ -508,7 +508,10 @@ export IMAGE_TAG_BASE=YOUR_NAMESPACE/kontroler-server
 make docker-build docker-push
 ```
 
-Currently there is no Helm chart to handle this so for now you will need to create your own, this is coming soon!
+The unified Helm chart in `helm/kontroler` can deploy the server. If you want
+plain Kubernetes YAML instead, start from
+`examples/k8s/server-deployment.yaml` and replace the image tag, database
+settings, and `JWT_KEY` secret before applying it.
 
 To help we can provide the role need to run the server at the cluster level:
 
@@ -565,7 +568,9 @@ export IMAGE_TAG_BASE=YOUR_NAMESPACE/kontroler-ui
 make docker-build docker-push
 ```
 
-Currently there is no Helm chart to handle this so for now you will need to create your own, this is coming soon!
+The unified Helm chart in `helm/kontroler` can deploy the UI. If you want plain
+Kubernetes YAML instead, start from `examples/k8s/ui-deployment.yaml` and update
+`API_URL` / `WS_URL` if your server is exposed outside the example namespace.
 
 # Contributing
 

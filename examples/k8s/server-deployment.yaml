@@ -1,0 +1,167 @@
+# Example non-Helm Kontroler Server deployment.
+# Replace placeholder image tags, database values, and secrets before applying.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kontroler
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kontroler-server
+  namespace: kontroler
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kontroler-server-secrets
+  namespace: kontroler
+type: Opaque
+stringData:
+  DB_PASSWORD: replace-me
+  JWT_KEY: replace-with-a-long-random-value
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kontroler-server-config
+  namespace: kontroler
+data:
+  config.yaml: |
+    kubeConfigPath: ""
+    logStorage:
+      storeType: filesystem
+      fileSystem:
+        baseDir: /logs
+  DB_TYPE: postgresql
+  DB_NAME: kontroler
+  DB_USER: postgres
+  DB_ENDPOINT: postgres-postgresql.default.svc.cluster.local:5432
+  UI_ADDRESS: http://kontroler-ui.kontroler.svc.cluster.local:3000
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kontroler-server-dag-access
+rules:
+  - apiGroups: ["kontroler.greedykomodo"]
+    resources: ["dags"]
+    verbs: ["create", "get", "list", "delete", "update"]
+  - apiGroups: ["kontroler.greedykomodo"]
+    resources: ["dagruns"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kontroler-server-dag-access
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kontroler-server-dag-access
+subjects:
+  - kind: ServiceAccount
+    name: kontroler-server
+    namespace: kontroler
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kontroler-server
+  namespace: kontroler
+  labels:
+    app.kubernetes.io/name: kontroler-server
+    app.kubernetes.io/part-of: kontroler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kontroler-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kontroler-server
+        app.kubernetes.io/part-of: kontroler
+    spec:
+      serviceAccountName: kontroler-server
+      containers:
+        - name: kontroler-server
+          image: greedykomodo/kontroler-server:0.0.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --configpath=/etc/kontroler/config/config.yaml
+          env:
+            - name: DB_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-server-config
+                  key: DB_TYPE
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-server-config
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-server-config
+                  key: DB_USER
+            - name: DB_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-server-config
+                  key: DB_ENDPOINT
+            - name: UI_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: kontroler-server-config
+                  key: UI_ADDRESS
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kontroler-server-secrets
+                  key: DB_PASSWORD
+            - name: JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kontroler-server-secrets
+                  key: JWT_KEY
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 2112
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kontroler/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: kontroler-server-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kontroler-server
+  namespace: kontroler
+  labels:
+    app.kubernetes.io/name: kontroler-server
+    app.kubernetes.io/part-of: kontroler
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kontroler-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: metrics
+      port: 2112
+      targetPort: metrics
