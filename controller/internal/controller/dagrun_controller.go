@@ -175,14 +175,8 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	log.Log.Info("GetStartingTasks", "dag_id", dagRun.Spec.DagName, "tasks_len", len(tasks))
 
-	// Provide task to allocator
+	// Enqueue starting tasks as pending Task_Runs so workers will claim them
 	for _, task := range tasks {
-		taskRunId, err := r.DbManager.MarkTaskAsStarted(ctx, runId, task.Id)
-		if err != nil {
-			log.Log.Error(err, "failed to mark task as started", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
-			continue
-		}
-
 		// Update defaults with values from DagRun
 		for i := 0; i < len(task.Parameters); i++ {
 			if param, ok := paramMap[task.Parameters[i].Name]; ok {
@@ -194,14 +188,14 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 
-		taskID, err := r.TaskAllocator.AllocateTask(ctx, &task, runId, taskRunId, req.NamespacedName.Namespace)
+		taskRunId, err := r.DbManager.AddPendingTaskRun(ctx, runId, task.Id)
 		if err != nil {
-			log.Log.Error(err, "failed to allocate task to job", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
-			continue
+			log.Log.Error(err, "failed to add pending task run", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
+			// Treat enqueue failure as a reconcile failure so the controller will retry
+			return ctrl.Result{}, fmt.Errorf("failed to add pending task run for dag %s task %d: %w", dagRun.Spec.DagName, task.Id, err)
 		}
 
-		log.Log.Info("allocated task", "dag_id", dagRun.Spec.DagName, "task_id", task.Id, "kube_task_Id", taskID)
-
+		log.Log.Info("enqueued pending task", "dag_id", dagRun.Spec.DagName, "task_id", task.Id, "taskRunId", taskRunId)
 	}
 
 	old := dagRun.DeepCopy()
