@@ -444,3 +444,52 @@ func (m *MetricsSqliteDAGManager) GetTaskRunInfo(ctx context.Context, taskRunId 
 	m.recordQueryMetrics("select", "task_runs", start, err)
 	return dagName, taskName, namespace, err
 }
+
+func (m *MetricsSqliteDAGManager) SaveRetryEnv(ctx context.Context, taskRunId int, envJSON string) error {
+	start := time.Now()
+	err := m.sqliteDAGManager.SaveRetryEnv(ctx, taskRunId, envJSON)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return err
+}
+
+func (m *MetricsSqliteDAGManager) ClaimTaskByID(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) (TaskClaim, error) {
+	start := time.Now()
+	result, err := m.sqliteDAGManager.ClaimTaskByID(ctx, taskRunId, workerId, leaseTTL)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return result, err
+}
+
+func (m *MetricsSqliteDAGManager) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) {
+	start := time.Now()
+	result, err := m.sqliteDAGManager.GetTaskRunStatus(ctx, taskRunId)
+	m.recordQueryMetrics("select", "task_runs", start, err)
+	return result, err
+}
+
+func (m *MetricsSqliteDAGManager) ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]TaskClaim, error) {
+	start := time.Now()
+	result, err := m.sqliteDAGManager.ClaimTasks(ctx, limit, workerId, leaseTTL)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return result, err
+}
+
+func (m *MetricsSqliteDAGManager) RenewLease(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) error {
+	start := time.Now()
+	err := m.sqliteDAGManager.RenewLease(ctx, taskRunId, workerId, leaseTTL)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return err
+}
+
+func (m *MetricsSqliteDAGManager) FinalizeClaimToRunning(ctx context.Context, taskRunId int, workerId string, podUID string) error {
+	start := time.Now()
+	err := m.sqliteDAGManager.FinalizeClaimToRunning(ctx, taskRunId, workerId, podUID)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return err
+}
+
+func (m *MetricsSqliteDAGManager) RecoverExpiredLeases(ctx context.Context) (int, error) {
+	start := time.Now()
+	result, err := m.sqliteDAGManager.RecoverExpiredLeases(ctx)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return result, err
+}

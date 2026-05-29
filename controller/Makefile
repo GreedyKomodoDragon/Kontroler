@@ -219,6 +219,10 @@ kind-deploy-postgres: ## Deploy PostgreSQL via bitnami helm chart
 		--set auth.postgresPassword=postgres \
 		--set primary.persistence.enabled=false \
 		--set tls.enabled=false
+	@echo "Waiting for Postgres deployment to become ready..."
+	# bitnami chart creates a statefulset named postgres-postgresql by default
+	kubectl -n default wait statefulset/postgres-postgresql --for condition=Ready --timeout=180s || \
+		echo "Warning: Postgres statefulset did not become ready within timeout"
 
 .PHONY: kind-deploy-cert-manager
 kind-deploy-cert-manager: ## Deploy cert-manager (waits for webhook to be ready)
@@ -251,8 +255,34 @@ kind-create-secrets: ## Create webhook and DB TLS secrets from repo certs and cr
 	@if [ -f ../secrets.yaml ]; then \
 		kubectl apply -f ../secrets.yaml; \
 	fi
+	# Create sample PVC and secrets used by sample DAGs (idempotent)
+	@echo "Creating sample PVC and secrets for sample DAGs (idempotent)..."
+	bash scripts/create-sample-resources.sh || true
 
 ##@ Kind Kontroler Deployment
+
+# Ad-hoc helpers for testing on kind
+.PHONY: kind-create-db
+kind-create-db: ## Create 'kontroler' database in the kind Postgres instance
+	@echo "Creating 'kontroler' database in Postgres..."
+	bash scripts/kind-create-db.sh
+
+.PHONY: kind-apply-sample-dag
+kind-apply-sample-dag: ## Apply sample DAG to the cluster
+	bash scripts/kind-apply-sample-dag.sh
+
+.PHONY: kind-apply-sample-dagrun
+kind-apply-sample-dagrun: ## Apply sample DagRun to the cluster
+	bash scripts/kind-apply-sample-dagrun.sh
+
+.PHONY: kind-check-run
+kind-check-run: ## Query DB for Task_Runs and show controller logs
+	bash scripts/kind-check-run.sh
+
+.PHONY: kind-tail-logs
+kind-tail-logs: ## Tail controller logs
+	kubectl -n default logs -l app.kubernetes.io/name=kontroler-controller -f
+
 
 .PHONY: kind-deploy-kontroler
 kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
@@ -284,9 +314,15 @@ kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
 	if [ -z "$$OUT" ]; then \
 	  echo "Warning: CA bundle not injected into MutatingWebhookConfiguration after timeout"; \
 	fi'
+	@echo "Waiting for Kontroler deployments to become ready..."
+	kubectl -n default wait deployment/kontroler-manager --for condition=Available --timeout=180s || \
+		echo "Warning: kontroler-manager deployment did not become ready within timeout"
+	# Server deployment name comes from .Values.server.name (defaults to kontroler-server)
+	kubectl -n default wait deployment/kontroler-server --for condition=Available --timeout=180s || \
+		echo "Warning: kontroler-server deployment did not become ready within timeout"
 
 .PHONY: kind-bootstrap
-kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-create-secrets kind-deploy-kontroler ## Full kind cluster setup with all services
+kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-create-secrets kind-create-db kind-deploy-kontroler ## Full kind cluster setup with all services
 	@echo "Kind cluster ready with Kontroler deployed!"
 	@echo "Controller logs: kubectl logs -l app=kontroler-controller -n default -f"
 	@echo "Server logs: kubectl logs -l app=kontroler-server -n default -f"
