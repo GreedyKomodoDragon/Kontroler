@@ -767,6 +767,115 @@ func (s *sqliteDAGManager) MarkTaskAsStarted(ctx context.Context, runId, taskId 
 	return taskRunId, nil
 }
 
+// ClaimTasks atomically claims up to `limit` pending Task_Runs (best-effort for SQLite).
+func (s *sqliteDAGManager) ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]TaskClaim, error) {
+	// Start a transaction to avoid races (SQLite fallback: no SKIP LOCKED)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	rows, err := tx.QueryContext(ctx, `
+	SELECT task_run_id, task_id, run_id
+	FROM Task_Runs
+	WHERE status = 'pending' AND (scheduled_start IS NULL OR scheduled_start <= datetime('now'))
+	LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int
+	var claims []TaskClaim
+	for rows.Next() {
+		var c TaskClaim
+		if err := rows.Scan(&c.TaskRunID, &c.TaskID, &c.RunID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, c.TaskRunID)
+		claims = append(claims, c)
+	}
+
+	if len(ids) == 0 {
+		return []TaskClaim{}, tx.Commit()
+	}
+
+	// Build placeholders for update
+	placeholders := make([]string, 0, len(ids))
+	args := make([]interface{}, 0, len(ids)+3)
+	for i, id := range ids {
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+		_ = i
+	}
+	// Append workerId and lease expiry
+	leaseAt := time.Now().Add(leaseTTL).Format("2006-01-02 15:04:05")
+	// Construct update query
+	query := fmt.Sprintf(`UPDATE Task_Runs SET claimed_by = ?, claimed_at = datetime('now'), lease_expires_at = ? WHERE task_run_id IN (%s);`, strings.Join(placeholders, ","))
+	updateArgs := make([]interface{}, 0, 2+len(args))
+	updateArgs = append(updateArgs, workerId, leaseAt)
+	updateArgs = append(updateArgs, args...)
+
+	if _, err := tx.ExecContext(ctx, query, updateArgs...); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+func (s *sqliteDAGManager) RenewLease(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) error {
+	// SQLite: update lease_expires_at only if claimed_by matches
+	leaseAt := time.Now().Add(leaseTTL).Format("2006-01-02 15:04:05")
+	res, err := s.db.ExecContext(ctx, `UPDATE Task_Runs SET lease_expires_at = ? WHERE task_run_id = ? AND claimed_by = ?;`, leaseAt, taskRunId, workerId)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("failed to renew lease: not owner or task not claimed")
+	}
+	return nil
+}
+
+func (s *sqliteDAGManager) FinalizeClaimToRunning(ctx context.Context, taskRunId int, workerId string, podUID string) error {
+	// Transition a claimed task into running state only if owned by workerId
+	res, err := s.db.ExecContext(ctx, `UPDATE Task_Runs SET status = 'running', claimed_by = NULL, claimed_at = NULL, lease_expires_at = NULL WHERE task_run_id = ? AND claimed_by = ?;`, taskRunId, workerId)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("failed to finalize claim: not owner or task not claimed")
+	}
+	return nil
+}
+
+func (s *sqliteDAGManager) RecoverExpiredLeases(ctx context.Context) (int, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE Task_Runs SET claimed_by = NULL, claimed_at = NULL, lease_expires_at = NULL WHERE lease_expires_at <= datetime('now') AND status = 'pending';`)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(rows), nil
+}
+
 func (s *sqliteDAGManager) IncrementAttempts(ctx context.Context, taskRunId int) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1520,6 +1629,110 @@ func (s *sqliteDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, ta
 	}
 
 	return script, injectorImage, nil
+}
+
+func (s *sqliteDAGManager) AddPendingTaskRun(ctx context.Context, runId int, dagTaskId int) (int, error) {
+	var taskRunId int
+	err := s.db.QueryRowContext(ctx, `INSERT INTO Task_Runs (run_id, task_id, status, attempts) VALUES (?, ?, 'pending', 0) RETURNING task_run_id`, runId, dagTaskId).Scan(&taskRunId)
+	if err != nil {
+		return 0, err
+	}
+	return taskRunId, nil
+}
+
+func (s *sqliteDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTaskId int) (Task, string, string, error) {
+	var task Task
+	var podTemplateJSON *string
+	var script sql.NullString
+	var pvcName sql.NullString
+	var namespace string
+	var retryEnv sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+	SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate, d.namespace, dr.pvcName, tr.retry_env
+	FROM Tasks t
+	JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+	JOIN DAG_Runs dr ON dat.dag_id = dr.dag_id
+	JOIN DAGs d ON dr.dag_id = d.dag_id
+	LEFT JOIN Task_Runs tr ON tr.run_id = dr.run_id AND tr.task_id = dat.dag_task_id
+	WHERE dr.run_id = ? AND dat.dag_task_id = ?
+	LIMIT 1;
+	`, runId, dagTaskId).Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &task.Parameters, &task.ScriptInjectorImage, &script, &podTemplateJSON, &namespace, &pvcName, &retryEnv)
+
+	if err != nil {
+		return Task{}, "", "", err
+	}
+
+	if script.Valid {
+		task.Script = script.String
+	}
+
+	if podTemplateJSON != nil {
+		var podTemplate v1alpha1.PodTemplateSpec
+		if err := json.Unmarshal([]byte(*podTemplateJSON), &podTemplate); err != nil {
+			return Task{}, "", "", err
+		}
+		task.PodTemplate = &podTemplate
+	} else {
+		task.PodTemplate = &v1alpha1.PodTemplateSpec{}
+	}
+
+	if pvcName.Valid {
+		task.PodTemplate.Volumes = append(task.PodTemplate.Volumes, v1alpha1.Volume{
+			Name:                  "workspace",
+			PersistentVolumeClaim: &v1alpha1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName.String},
+		})
+
+		task.PodTemplate.VolumeMounts = append(task.PodTemplate.VolumeMounts, v1alpha1.VolumeMount{
+			Name:      "workspace",
+			MountPath: "/workspace",
+		})
+	}
+
+	if task.Parameters == nil {
+		task.Parameters = []Parameter{}
+	}
+
+	var retry string
+	if retryEnv.Valid {
+		retry = retryEnv.String
+	}
+
+	return task, namespace, retry, nil
+}
+
+func (s *sqliteDAGManager) SaveRetryEnv(ctx context.Context, taskRunId int, envJSON string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE Task_Runs SET retry_env = ? WHERE task_run_id = ?`, envJSON, taskRunId)
+	return err
+}
+
+func (s *sqliteDAGManager) ClaimTaskByID(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) (TaskClaim, error) {
+	leaseAt := time.Now().Add(leaseTTL).Format("2006-01-02 15:04:05")
+	res, err := s.db.ExecContext(ctx, `UPDATE Task_Runs SET claimed_by = ?, claimed_at = datetime('now'), lease_expires_at = ? WHERE task_run_id = ? AND status = 'pending' AND (claimed_by IS NULL OR lease_expires_at <= datetime('now'))`, workerId, leaseAt, taskRunId)
+	if err != nil {
+		return TaskClaim{}, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return TaskClaim{}, err
+	}
+	if rows == 0 {
+		return TaskClaim{}, fmt.Errorf("failed to claim task")
+	}
+	// fetch task_id and run_id
+	var c TaskClaim
+	if err := s.db.QueryRowContext(ctx, `SELECT task_run_id, task_id, run_id FROM Task_Runs WHERE task_run_id = ?`, taskRunId).Scan(&c.TaskRunID, &c.TaskID, &c.RunID); err != nil {
+		return TaskClaim{}, err
+	}
+	return c, nil
+}
+
+func (s *sqliteDAGManager) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) {
+	var status string
+	if err := s.db.QueryRowContext(ctx, `SELECT status FROM Task_Runs WHERE task_run_id = ?`, taskRunId).Scan(&status); err != nil {
+		return "", err
+	}
+	return status, nil
 }
 
 func (s *sqliteDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {

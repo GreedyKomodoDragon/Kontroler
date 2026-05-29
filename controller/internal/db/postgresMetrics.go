@@ -444,3 +444,53 @@ func (m *metricsPostgresDAGManager) GetTaskRunInfo(ctx context.Context, taskRunI
 	m.recordQueryMetrics("select", "task_runs", start, err)
 	return dagName, taskName, namespace, err
 }
+
+// ClaimTasks with metrics
+func (m *metricsPostgresDAGManager) ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]TaskClaim, error) {
+	start := time.Now()
+	result, err := m.postgresDAGManager.ClaimTasks(ctx, limit, workerId, leaseTTL)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return result, err
+}
+
+func (m *metricsPostgresDAGManager) RenewLease(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) error {
+	start := time.Now()
+	err := m.postgresDAGManager.RenewLease(ctx, taskRunId, workerId, leaseTTL)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return err
+}
+
+func (m *metricsPostgresDAGManager) FinalizeClaimToRunning(ctx context.Context, taskRunId int, workerId string, podUID string) error {
+	start := time.Now()
+	err := m.postgresDAGManager.FinalizeClaimToRunning(ctx, taskRunId, workerId, podUID)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return err
+}
+
+func (m *metricsPostgresDAGManager) RecoverExpiredLeases(ctx context.Context) (int, error) {
+	start := time.Now()
+	result, err := m.postgresDAGManager.RecoverExpiredLeases(ctx)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return result, err
+}
+
+func (m *metricsPostgresDAGManager) SaveRetryEnv(ctx context.Context, taskRunId int, envJSON string) error {
+	start := time.Now()
+	err := m.postgresDAGManager.SaveRetryEnv(ctx, taskRunId, envJSON)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return err
+}
+
+func (m *metricsPostgresDAGManager) ClaimTaskByID(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) (TaskClaim, error) {
+	start := time.Now()
+	result, err := m.postgresDAGManager.ClaimTaskByID(ctx, taskRunId, workerId, leaseTTL)
+	m.recordQueryMetrics("update", "task_runs", start, err)
+	return result, err
+}
+
+func (m *metricsPostgresDAGManager) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) {
+	start := time.Now()
+	result, err := m.postgresDAGManager.GetTaskRunStatus(ctx, taskRunId)
+	m.recordQueryMetrics("select", "task_runs", start, err)
+	return result, err
+}

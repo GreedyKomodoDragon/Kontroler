@@ -475,6 +475,15 @@ func main() {
 			taskScheduler.Run(ctx)
 		}()
 
+		// start orphan reconciler
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := controller.RunOrphanReconciler(ctx, clientset, dbDAGManager, 60*time.Second); err != nil {
+				setupLog.Error(err, "orphan reconciler stopped with error")
+			}
+		}()
+
 		// Start the task watchers and workers
 		currentIndex := 0
 		for i, workerConfig := range configController.Workers.Workers {

@@ -81,4 +81,33 @@ type DBDAGManager interface {
 	DagrunExists(ctx context.Context, dagrunId int) (bool, error)
 	// GetTaskRunInfo gets the DAG name, task name, and namespace for a task run ID - used for metrics
 	GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error)
+
+	// Claiming and lease primitives for distributed workers
+	// TaskClaim represents a claimed task run returned from ClaimTasks
+	ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]TaskClaim, error)
+	RenewLease(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) error
+	FinalizeClaimToRunning(ctx context.Context, taskRunId int, workerId string, podUID string) error
+	RecoverExpiredLeases(ctx context.Context) (int, error)
+
+	// Insert a Task_Runs row with status 'pending' for the given run and dag task id
+	AddPendingTaskRun(ctx context.Context, runId int, dagTaskId int) (int, error)
+
+	// GetTaskForRun returns task details for a given run and dag_task_id, the namespace and any retry env JSON
+	GetTaskForRun(ctx context.Context, runId int, dagTaskId int) (Task, string, string, error)
+
+	// Claim a specific task_run_id immediately
+	ClaimTaskByID(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) (TaskClaim, error)
+
+	// Save retry environment JSON for a pending task_run
+	SaveRetryEnv(ctx context.Context, taskRunId int, envJSON string) error
+
+	// GetTaskRunStatus returns the status of a task_run row
+	GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error)
+}
+
+// TaskClaim represents a claimed task that a worker should attempt to allocate
+type TaskClaim struct {
+	TaskRunID int
+	TaskID    int
+	RunID     int
 }

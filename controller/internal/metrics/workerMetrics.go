@@ -36,18 +36,55 @@ var (
 		Name: "kontroler_worker_task_processing_total",
 		Help: "Total number of tasks processed by workers",
 	}, []string{"worker_id", "event_type"})
+
+	// Claim/lease metrics
+	TaskClaimsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "kontroler_task_claims_total",
+		Help: "Total number of task claims attempted",
+	}, []string{"worker_id", "result"})
+
+	LeaseRenewTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "kontroler_lease_renew_total",
+		Help: "Total number of lease renewals attempted",
+	}, []string{"worker_id", "result"})
+
+	LeaseExpiredTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "kontroler_lease_expired_total",
+		Help: "Total number of leases expired and recovered",
+	}, []string{"worker_id"})
+
+	ClaimedInFlight = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kontroler_claimed_in_flight",
+		Help: "Number of tasks currently claimed by a worker",
+	}, []string{"worker_id"})
 )
 
-// init function registers worker metrics with controller-runtime's metrics registry
 func init() {
-	// Register all worker metrics with controller-runtime's metrics registry
-	metrics.Registry.MustRegister(
+	// Register all worker metrics with controller-runtime's metrics registry.
+	// Use Register and ignore AlreadyRegisteredError so multiple test runs or
+	// re-imports don't panic.
+	collectors := []prometheus.Collector{
 		TaskOutcomeTotal,
 		TaskExecutionDuration,
 		TaskRetryTotal,
 		WorkerQueueSize,
 		WorkerTaskProcessingTotal,
-	)
+		TaskClaimsTotal,
+		LeaseRenewTotal,
+		LeaseExpiredTotal,
+		ClaimedInFlight,
+	}
+
+	for _, c := range collectors {
+		if err := metrics.Registry.Register(c); err != nil {
+			if _, ok := err.(prometheus.AlreadyRegisteredError); ok {
+				// already registered, ignore
+				continue
+			}
+			// other errors are fatal
+			panic(err)
+		}
+	}
 }
 
 // RecordTaskOutcome records metrics for a task outcome
@@ -73,4 +110,31 @@ func UpdateWorkerQueueSize(workerID string, size int) {
 // RecordWorkerTaskProcessing records metrics for worker task processing
 func RecordWorkerTaskProcessing(workerID, eventType string) {
 	WorkerTaskProcessingTotal.WithLabelValues(workerID, eventType).Inc()
+}
+
+// RecordTaskClaim records claim attempts and results
+func RecordTaskClaim(workerID, result string) {
+	TaskClaimsTotal.WithLabelValues(workerID, result).Inc()
+}
+
+// RecordLeaseRenew records lease renewal attempts and results
+func RecordLeaseRenew(workerID, result string) {
+	LeaseRenewTotal.WithLabelValues(workerID, result).Inc()
+}
+
+// RecordLeaseExpired records lease expirations recovered by the system
+func RecordLeaseExpired(workerID string, count int) {
+	for i := 0; i < count; i++ {
+		LeaseExpiredTotal.WithLabelValues(workerID).Inc()
+	}
+}
+
+// IncClaimed increments claimed-in-flight gauge
+func IncClaimed(workerID string) {
+	ClaimedInFlight.WithLabelValues(workerID).Inc()
+}
+
+// DecClaimed decrements claimed-in-flight gauge
+func DecClaimed(workerID string) {
+	ClaimedInFlight.WithLabelValues(workerID).Dec()
 }

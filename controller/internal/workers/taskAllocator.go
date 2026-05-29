@@ -24,9 +24,10 @@ const (
 	labelKontrolerType = "kontroler/type"
 	labelKontrolerID   = "kontroler/id"
 
-	annotationTaskRID  = "kontroler/task-rid"
-	annotationDagRunID = "kontroler/dagRun-id"
-	annotationTaskID   = "kontroler/task-id"
+	annotationTaskRID   = "kontroler/task-rid"
+	annotationDagRunID  = "kontroler/dagRun-id"
+	annotationTaskID    = "kontroler/task-id"
+	annotationClaimedBy = "kontroler/claimed-by"
 
 	finalizerLogCollection = "kontroler/logcollection"
 	initScriptCommand      = `printf %s > /script/my-script.sh && echo "Script created" || echo "Failed to write script" >&2 &&
@@ -41,8 +42,8 @@ var (
 )
 
 type TaskAllocator interface {
-	AllocateTask(context.Context, *db.Task, int, int, string) (types.UID, error)
-	AllocateTaskWithEnv(context.Context, *db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements) (types.UID, error)
+	AllocateTask(context.Context, *db.Task, int, int, string, string) (types.UID, error)
+	AllocateTaskWithEnv(context.Context, *db.Task, int, int, string, []v1.EnvVar, *v1.ResourceRequirements, string) (types.UID, error)
 	CreateEnvs(task *db.Task) *[]v1.EnvVar
 }
 
@@ -75,20 +76,20 @@ func NewTaskAllocator(clientSet *kubernetes.Clientset, id string) TaskAllocator 
 	}
 }
 
-func (t *taskAllocator) AllocateTask(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string) (types.UID, error) {
+func (t *taskAllocator) AllocateTask(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, claimedBy string) (types.UID, error) {
 	envs := t.CreateEnvs(task)
 	if envs == nil {
 		return "", fmt.Errorf("failed to create envs")
 	}
 
-	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, *envs, nil)
+	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, *envs, nil, claimedBy)
 }
 
-func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
-	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, envs, resources)
+func (t *taskAllocator) AllocateTaskWithEnv(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements, claimedBy string) (types.UID, error) {
+	return t.allocatePod(ctx, task, dagRunId, taskRunId, namespace, envs, resources, claimedBy)
 }
 
-func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements) (types.UID, error) {
+func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId, taskRunId int, namespace string, envs []v1.EnvVar, resources *v1.ResourceRequirements, claimedBy string) (types.UID, error) {
 	podSpec := t.createPodSpec(task, envs, resources)
 
 	// using pod pool to reduce struct re-creation
@@ -100,6 +101,9 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId
 	pod.ObjectMeta.Annotations[annotationTaskRID] = strconv.Itoa(taskRunId)
 	pod.ObjectMeta.Annotations[annotationDagRunID] = strconv.Itoa(dagRunId)
 	pod.ObjectMeta.Annotations[annotationTaskID] = strconv.Itoa(task.Id)
+	if claimedBy != "" {
+		pod.ObjectMeta.Annotations[annotationClaimedBy] = claimedBy
+	}
 
 	// set podspec
 	pod.Spec = *podSpec

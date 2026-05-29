@@ -915,6 +915,94 @@ func (p *postgresDAGManager) MarkTaskAsStarted(ctx context.Context, runId int, t
 	return taskRunId, nil
 }
 
+// ClaimTasks atomically claims up to `limit` pending Task_Runs across runs.
+// It sets claimed_by, claimed_at and lease_expires_at and returns the claimed rows.
+func (p *postgresDAGManager) ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]TaskClaim, error) {
+	leaseInterval := fmt.Sprintf("%d seconds", int(leaseTTL.Seconds()))
+
+	rows, err := p.pool.Query(ctx, `
+	WITH candidates AS (
+		SELECT task_run_id
+		FROM Task_Runs
+		WHERE status = 'pending' AND (scheduled_start IS NULL OR scheduled_start <= now())
+		FOR UPDATE SKIP LOCKED
+		LIMIT $1
+	)
+	UPDATE Task_Runs tr
+	SET claimed_by = $2, claimed_at = now(), lease_expires_at = now() + ($3::interval)
+	FROM candidates c
+	WHERE tr.task_run_id = c.task_run_id
+	AND tr.status = 'pending'
+	AND (tr.claimed_by IS NULL OR tr.lease_expires_at <= now())
+	RETURNING tr.task_run_id, tr.task_id, tr.run_id;`, limit, workerId, leaseInterval)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var claims []TaskClaim
+	for rows.Next() {
+		var c TaskClaim
+		if err := rows.Scan(&c.TaskRunID, &c.TaskID, &c.RunID); err != nil {
+			return nil, err
+		}
+		claims = append(claims, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+// RenewLease extends the lease for a claimed task. It only succeeds when the claim is owned by workerId.
+func (p *postgresDAGManager) RenewLease(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) error {
+	leaseInterval := fmt.Sprintf("%d seconds", int(leaseTTL.Seconds()))
+	cmd, err := p.pool.Exec(ctx, `
+	UPDATE Task_Runs
+	SET lease_expires_at = now() + ($2::interval)
+	WHERE task_run_id = $1 AND claimed_by = $3;`, taskRunId, leaseInterval, workerId)
+	if err != nil {
+		return err
+	}
+
+	if cmd.RowsAffected() == 0 {
+		return fmt.Errorf("failed to renew lease: not owner or task not claimed")
+	}
+	return nil
+}
+
+// FinalizeClaimToRunning transitions a claimed task into running state and clears the claim.
+// Optionally a podUID can be provided which will be recorded by pod watchers separately.
+func (p *postgresDAGManager) FinalizeClaimToRunning(ctx context.Context, taskRunId int, workerId string, podUID string) error {
+	var runId int
+	err := p.pool.QueryRow(ctx, `
+	UPDATE Task_Runs
+	SET status = 'running', claimed_by = NULL, claimed_at = NULL, lease_expires_at = NULL
+	WHERE task_run_id = $1 AND claimed_by = $2
+	RETURNING run_id;`, taskRunId, workerId).Scan(&runId)
+	if err != nil {
+		return err
+	}
+
+	// We don't insert Task_Pods here; pod lifecycle will be tracked by pod event handlers using MarkPodStatus.
+	return nil
+}
+
+// RecoverExpiredLeases clears claims that have expired and returns the number of rows released.
+func (p *postgresDAGManager) RecoverExpiredLeases(ctx context.Context) (int, error) {
+	cmd, err := p.pool.Exec(ctx, `
+	UPDATE Task_Runs
+	SET claimed_by = NULL, claimed_at = NULL, lease_expires_at = NULL
+	WHERE lease_expires_at <= now() AND status = 'pending';`)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(cmd.RowsAffected()), nil
+}
+
 type DagInfo struct {
 	DagId            int
 	DagName          string
@@ -1343,6 +1431,136 @@ func (p *postgresDAGManager) GetTaskScriptAndInjectorImage(ctx context.Context, 
 	}
 
 	return script, injectorImage, nil
+}
+
+func (p *postgresDAGManager) AddPendingTaskRun(ctx context.Context, runId int, dagTaskId int) (int, error) {
+	var taskRunId int
+	if err := p.pool.QueryRow(ctx, `
+	INSERT INTO Task_Runs (run_id, task_id, status, attempts)
+	VALUES ($1, $2, 'pending', 0)
+	RETURNING task_run_id`, runId, dagTaskId).Scan(&taskRunId); err != nil {
+		return 0, err
+	}
+	return taskRunId, nil
+}
+
+func (p *postgresDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTaskId int) (Task, string, string, error) {
+	var task Task
+	var podTemplateJSON sql.NullString
+	var script sql.NullString
+	var pvcName sql.NullString
+	var namespace string
+	var retryEnv *string
+
+	// For Postgres we need to scan parameter names into a temporary []string and
+	// then fetch their values from DAG_Parameters so we populate Task.Parameters correctly.
+	var paramNames []string
+	err := p.pool.QueryRow(ctx, `
+	SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate, d.namespace, dr.pvcName, tr.retry_env
+	FROM Tasks t
+	JOIN DAG_Tasks dat ON dat.task_id = t.task_id
+	JOIN DAG_Runs dr ON dat.dag_id = dr.dag_id
+	JOIN DAGs d ON dr.dag_id = d.dag_id
+	LEFT JOIN Task_Runs tr ON tr.run_id = dr.run_id AND tr.task_id = dat.dag_task_id
+	WHERE dr.run_id = $1 AND dat.dag_task_id = $2
+	LIMIT 1;
+	`, runId, dagTaskId).Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &paramNames, &task.ScriptInjectorImage, &script, &podTemplateJSON, &namespace, &pvcName, &retryEnv)
+
+	if err != nil {
+		return Task{}, "", "", err
+	}
+
+	if script.Valid {
+		task.Script = script.String
+	}
+
+	if podTemplateJSON.Valid {
+		var podTemplate v1alpha1.PodTemplateSpec
+		if err := json.Unmarshal([]byte(podTemplateJSON.String), &podTemplate); err != nil {
+			return Task{}, "", "", err
+		}
+		task.PodTemplate = &podTemplate
+	} else {
+		task.PodTemplate = &v1alpha1.PodTemplateSpec{}
+	}
+
+	if pvcName.Valid {
+		task.PodTemplate.Volumes = append(task.PodTemplate.Volumes, v1alpha1.Volume{
+			Name:                  "workspace",
+			PersistentVolumeClaim: &v1alpha1.PersistentVolumeClaimVolumeSource{ClaimName: pvcName.String},
+		})
+
+		task.PodTemplate.VolumeMounts = append(task.PodTemplate.VolumeMounts, v1alpha1.VolumeMount{
+			Name:      "workspace",
+			MountPath: "/workspace",
+		})
+	}
+
+	// Initialize parameters slice
+	if task.Parameters == nil {
+		task.Parameters = []Parameter{}
+	}
+
+	// If there are parameter names, fetch their values and populate Task.Parameters
+	if len(paramNames) > 0 {
+		// use a transaction to fetch dag id and parameter values consistently
+		err = p.withTx(ctx, func(tx pgx.Tx) error {
+			// determine dag id from run
+			dagId, err := p.getDAGIdFromRun(ctx, tx, runId)
+			if err != nil {
+				return err
+			}
+
+			// prepare a single task slice and parameters matrix for fetchTaskParameters
+			tasks := []Task{task}
+			paramsMatrix := [][]string{paramNames}
+
+			if err := p.fetchTaskParameters(ctx, tx, dagId, tasks, paramsMatrix); err != nil {
+				return err
+			}
+
+			// assign back the populated parameters
+			task.Parameters = tasks[0].Parameters
+			return nil
+		})
+		if err != nil {
+			return Task{}, "", "", err
+		}
+	}
+
+	var retry string
+	if retryEnv != nil {
+		retry = *retryEnv
+	}
+
+	return task, namespace, retry, nil
+}
+
+func (p *postgresDAGManager) SaveRetryEnv(ctx context.Context, taskRunId int, envJSON string) error {
+	_, err := p.pool.Exec(ctx, `UPDATE Task_Runs SET retry_env = $2 WHERE task_run_id = $1`, taskRunId, envJSON)
+	return err
+}
+
+func (p *postgresDAGManager) ClaimTaskByID(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) (TaskClaim, error) {
+	leaseInterval := fmt.Sprintf("%d seconds", int(leaseTTL.Seconds()))
+	var c TaskClaim
+	err := p.pool.QueryRow(ctx, `
+	UPDATE Task_Runs
+	SET claimed_by = $2, claimed_at = now(), lease_expires_at = now() + ($3::interval)
+	WHERE task_run_id = $1 AND status = 'pending' AND (claimed_by IS NULL OR lease_expires_at <= now())
+	RETURNING task_run_id, task_id, run_id;`, taskRunId, workerId, leaseInterval).Scan(&c.TaskRunID, &c.TaskID, &c.RunID)
+	if err != nil {
+		return TaskClaim{}, err
+	}
+	return c, nil
+}
+
+func (p *postgresDAGManager) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) {
+	var status string
+	if err := p.pool.QueryRow(ctx, `SELECT status FROM Task_Runs WHERE task_run_id = $1`, taskRunId).Scan(&status); err != nil {
+		return "", err
+	}
+	return status, nil
 }
 
 func (p *postgresDAGManager) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {

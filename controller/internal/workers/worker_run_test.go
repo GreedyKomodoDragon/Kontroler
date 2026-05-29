@@ -108,6 +108,39 @@ func (f *fakeDB) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, ta
 	return "d", "t", "ns", nil
 }
 
+// Claim and lease primitives (no-op stubs for worker tests)
+func (f *fakeDB) ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]db.TaskClaim, error) {
+	return []db.TaskClaim{}, nil
+}
+
+func (f *fakeDB) RenewLease(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) error {
+	return nil
+}
+
+func (f *fakeDB) FinalizeClaimToRunning(ctx context.Context, taskRunId int, workerId string, podUID string) error {
+	return nil
+}
+
+func (f *fakeDB) RecoverExpiredLeases(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeDB) AddPendingTaskRun(ctx context.Context, runId int, dagTaskId int) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeDB) GetTaskForRun(ctx context.Context, runId int, dagTaskId int) (db.Task, string, string, error) {
+	return db.Task{}, "default", "", nil
+}
+
+func (f *fakeDB) ClaimTaskByID(ctx context.Context, taskRunId int, workerId string, leaseTTL time.Duration) (db.TaskClaim, error) {
+	return db.TaskClaim{}, nil
+}
+
+func (f *fakeDB) SaveRetryEnv(ctx context.Context, taskRunId int, envJSON string) error { return nil }
+
+func (f *fakeDB) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) { return "", nil }
+
 func TestWorkerProcessesRunningPodAndWritesDB(t *testing.T) {
 	q := queue.NewMemoryQueue(context.Background())
 	fdb := &fakeDB{}

@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -81,8 +83,132 @@ func (w *worker) Push(pod *v1.Pod, event string) error {
 	})
 }
 
+// Claiming defaults
+var (
+	// defaultLeaseTTL is the lease duration for claimed tasks. Made a var to allow
+	// tests to override this value for faster unit tests.
+	defaultLeaseTTL = 60 * time.Second
+	claimBatchSize  = 5
+)
+
+func (w *worker) claimPoller(ctx context.Context) {
+	ticker := time.NewTicker(w.pollDuration)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			claims, err := w.dbManager.ClaimTasks(ctx, claimBatchSize, w.id, defaultLeaseTTL)
+			if err != nil {
+				log.Log.Error(err, "failed to claim tasks")
+				metrics.RecordTaskClaim(w.id, "error")
+				continue
+			}
+
+			if len(claims) == 0 {
+				metrics.RecordTaskClaim(w.id, "none")
+				continue
+			}
+
+			for _, c := range claims {
+				c := c
+				metrics.RecordTaskClaim(w.id, "success")
+				metrics.IncClaimed(w.id)
+				go func(cl db.TaskClaim) {
+					defer metrics.DecClaimed(w.id)
+					w.processClaim(ctx, cl)
+				}(c)
+			}
+		}
+	}
+}
+
+// processClaim handles a single claimed task: renew lease, allocate pod, and finalize claim.
+func (w *worker) processClaim(ctx context.Context, c db.TaskClaim) {
+	log.Log.Info("processing claimed task", "taskRunId", c.TaskRunID, "taskId", c.TaskID, "runId", c.RunID, "worker", w.id)
+
+	// lease renew context
+	renewCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// start lease renew goroutine
+	go func() {
+		ticker := time.NewTicker(defaultLeaseTTL / 2)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				return
+			case <-ticker.C:
+				if err := w.dbManager.RenewLease(ctx, c.TaskRunID, w.id, defaultLeaseTTL); err != nil {
+					log.Log.Error(err, "failed to renew lease", "taskRunId", c.TaskRunID)
+					metrics.RecordLeaseRenew(w.id, "error")
+					return
+				}
+				metrics.RecordLeaseRenew(w.id, "success")
+				// log a small info record so we can observe renewals in logs during testing
+				log.Log.Info("lease renewed", "taskRunId", c.TaskRunID, "worker", w.id)
+			}
+		}
+	}()
+
+	// fetch task details and namespace plus retry env
+	task, namespace, retryEnv, err := w.dbManager.GetTaskForRun(ctx, c.RunID, c.TaskID)
+	if err != nil {
+		log.Log.Error(err, "failed to get task for run", "runId", c.RunID, "taskId", c.TaskID)
+		return
+	}
+
+	// Prepare envs: if retryEnv provided, use it; otherwise let allocator create envs
+	var podUID types.UID
+	if retryEnv != "" {
+		// parse retryEnv JSON into []v1.EnvVar
+		var envPairs []map[string]string
+		if err := json.Unmarshal([]byte(retryEnv), &envPairs); err != nil {
+			log.Log.Error(err, "failed to parse retry env JSON", "taskRunId", c.TaskRunID)
+			// fall back to normal allocation
+			podUID, err = w.taskAllocator.AllocateTask(ctx, &task, c.RunID, c.TaskRunID, namespace, w.id)
+			if err != nil {
+				log.Log.Error(err, "failed to allocate pod for claimed task", "taskRunId", c.TaskRunID)
+				return
+			}
+		} else {
+			envs := []v1.EnvVar{}
+			for _, kv := range envPairs {
+				envs = append(envs, v1.EnvVar{Name: kv["name"], Value: kv["value"]})
+			}
+			podUID, err = w.taskAllocator.AllocateTaskWithEnv(ctx, &task, c.RunID, c.TaskRunID, namespace, envs, nil, w.id)
+			if err != nil {
+				log.Log.Error(err, "failed to allocate pod for claimed task with retry env", "taskRunId", c.TaskRunID)
+				return
+			}
+		}
+	} else {
+		// normal allocation path
+		podUID, err = w.taskAllocator.AllocateTask(ctx, &task, c.RunID, c.TaskRunID, namespace, w.id)
+		if err != nil {
+			log.Log.Error(err, "failed to allocate pod for claimed task", "taskRunId", c.TaskRunID)
+			// leave claim to expire or be recovered
+			return
+		}
+	}
+
+	// finalize claim: set status to running
+	if err := w.dbManager.FinalizeClaimToRunning(ctx, c.TaskRunID, w.id, string(podUID)); err != nil {
+		log.Log.Error(err, "failed to finalize claim to running", "taskRunId", c.TaskRunID)
+		return
+	}
+
+	log.Log.Info("claim finalized and pod created", "taskRunId", c.TaskRunID, "podUID", podUID)
+}
+
 func (w *worker) Run(ctx context.Context) error {
 	log.Log.Info("worker started")
+
+	// start claim poller
+	go w.claimPoller(ctx)
 
 	for {
 		select {
@@ -248,19 +374,14 @@ func (w *worker) handleDagRunCompletion(ctx context.Context, pod *v1.Pod, dagRun
 
 func (w *worker) allocateNextTasks(ctx context.Context, pod *v1.Pod, dagRunId int, tasks []db.Task) {
 	for _, task := range tasks {
-		taskRunId, err := w.dbManager.MarkTaskAsStarted(ctx, dagRunId, task.Id)
+		// create pending task run for workers to claim
+		taskRunId, err := w.dbManager.AddPendingTaskRun(ctx, dagRunId, task.Id)
 		if err != nil {
-			log.Log.Error(err, "failed to mark task as started", "dagRun_id", dagRunId, "task_id", task.Id)
+			log.Log.Error(err, "failed to add pending task run", "dagRun_id", dagRunId, "task_id", task.Id)
 			continue
 		}
 
-		newPod, err := w.taskAllocator.AllocateTask(ctx, &task, dagRunId, taskRunId, pod.Namespace)
-		if err != nil {
-			log.Log.Error(err, "failed to allocate task", "task.Id", task.Id, "task.Name", task.Name)
-			continue
-		}
-
-		log.Log.Info("allocated task", "newPodUID", newPod, "task.Id", task.Id, "task.Name", task.Name)
+		log.Log.Info("enqueued pending task", "taskRunId", taskRunId, "task.Id", task.Id, "task.Name", task.Name)
 	}
 }
 
@@ -339,28 +460,44 @@ func (t *worker) retryFailedTask(ctx context.Context, pod *v1.Pod, dagRunId, tas
 	// Record retry metric
 	metrics.RecordTaskRetry(namespace, dagName, taskName, fmt.Sprintf("exit_code_%d", exitcode))
 
+	// Create a new pending task run and save retry env
 	taskId, err := t.getTaskIdFromPod(pod)
 	if err != nil {
 		return
 	}
 
-	dbTask, err := t.createTaskFromPod(ctx, pod, taskId)
+	newTaskRunId, err := t.dbManager.AddPendingTaskRun(ctx, dagRunId, taskId)
 	if err != nil {
+		log.Log.Error(err, "failed to create pending task run for retry")
 		return
 	}
 
+	// Save retry env (serialize container env to JSON)
 	container := pod.Spec.Containers[0]
-	taskUUID, err := t.taskAllocator.AllocateTaskWithEnv(ctx, dbTask, dagRunId, taskRunId, pod.Namespace, container.Env, &container.Resources)
+	envs := make([]map[string]string, 0, len(container.Env))
+	for _, e := range container.Env {
+		envs = append(envs, map[string]string{"name": e.Name, "value": e.Value})
+	}
+	b, _ := json.Marshal(envs)
+	if err := t.dbManager.SaveRetryEnv(ctx, newTaskRunId, string(b)); err != nil {
+		log.Log.Error(err, "failed to save retry env")
+	}
+
+	// Claim the new task immediately
+	claim, err := t.dbManager.ClaimTaskByID(ctx, newTaskRunId, t.id, defaultLeaseTTL)
 	if err != nil {
-		log.Log.Error(err, "failed to allocate new pod")
+		log.Log.Error(err, "failed to claim retry task")
 		return
 	}
 
-	if err := t.dbManager.IncrementAttempts(ctx, taskRunId); err != nil {
-		log.Log.Error(err, "failed to increment attempts", "taskRunId", taskRunId)
+	// Process the claimed task (this will allocate pod and finalize)
+	go t.processClaim(ctx, claim)
+
+	if err := t.dbManager.IncrementAttempts(ctx, newTaskRunId); err != nil {
+		log.Log.Error(err, "failed to increment attempts", "taskRunId", newTaskRunId)
 	}
 
-	log.Log.Info("new task allocated allocated with env", "taskUUID", taskUUID)
+	log.Log.Info("retry task created and claimed", "newTaskRunId", newTaskRunId)
 }
 
 func (t *worker) getTaskIdFromPod(pod *v1.Pod) (int, error) {
@@ -487,10 +624,30 @@ func (w *worker) writeStatusToDB(ctx context.Context, pod *v1.Pod, stamp *time.T
 		outStamp = &now
 	}
 
-	if err := w.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name,
-		taskRunId, pod.Status.Phase, *outStamp, exitCode, pod.Namespace); err != nil {
-		log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
-		return fmt.Errorf("failed to mark pod status: %w", err)
+	// Try to write pod status with retries on transient 'pod status not updated' races.
+	const maxStatusRetries = 5
+	var lastErr error
+	for i := 0; i < maxStatusRetries; i++ {
+		if err := w.dbManager.MarkPodStatus(ctx, pod.UID, pod.Name,
+			taskRunId, pod.Status.Phase, *outStamp, exitCode, pod.Namespace); err != nil {
+			lastErr = err
+			// Treat the specific DB condition as transient and retry with backoff
+			if strings.Contains(err.Error(), "pod status not updated") {
+				backoff := time.Duration(100*(1<<i)) * time.Millisecond
+				log.Log.Info("pod status write conflicted, retrying", "pod", pod.Name, "attempt", i+1, "backoff", backoff)
+				time.Sleep(backoff)
+				continue
+			}
+
+			log.Log.Error(err, "failed to mark pod status", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
+			return fmt.Errorf("failed to mark pod status: %w", err)
+		}
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		log.Log.Error(lastErr, "failed to mark pod status after retries", "podUID", pod.UID, "name", pod.Name, "taskRunId", taskRunId, "status", pod.Status.Phase)
+		return fmt.Errorf("failed to mark pod status after retries: %w", lastErr)
 	}
 
 	webhook, err := w.dbManager.GetWebhookDetails(ctx, dagRunId)
