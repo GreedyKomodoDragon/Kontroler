@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"kontroler-controller/api/v1alpha1"
@@ -9,6 +10,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+// Sentinel error returned when a Task_Run row cannot be found.
+var ErrTaskRunNotFound = errors.New("task run not found")
 
 type Task struct {
 	Id                  int

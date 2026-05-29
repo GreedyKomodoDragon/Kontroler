@@ -494,3 +494,17 @@ func (m *metricsPostgresDAGManager) GetTaskRunStatus(ctx context.Context, taskRu
 	m.recordQueryMetrics("select", "task_runs", start, err)
 	return result, err
 }
+
+func (m *metricsPostgresDAGManager) AddPendingTaskRun(ctx context.Context, runId int, dagTaskId int) (int, error) {
+	start := time.Now()
+	result, err := m.postgresDAGManager.AddPendingTaskRun(ctx, runId, dagTaskId)
+	m.recordQueryMetrics("insert", "task_runs", start, err)
+	return result, err
+}
+
+func (m *metricsPostgresDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTaskId int) (Task, string, string, error) {
+	start := time.Now()
+	resultTask, namespace, retry, err := m.postgresDAGManager.GetTaskForRun(ctx, runId, dagTaskId)
+	m.recordQueryMetrics("select", "tasks", start, err)
+	return resultTask, namespace, retry, err
+}

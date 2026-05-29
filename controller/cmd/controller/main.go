@@ -481,6 +481,9 @@ func main() {
 			defer wg.Done()
 			if err := controller.RunOrphanReconciler(ctx, clientset, dbDAGManager, 60*time.Second); err != nil {
 				setupLog.Error(err, "orphan reconciler stopped with error")
+				// If the orphan reconciler fails, cancel the root context so the manager
+				// notices and the process can be restarted by Kubernetes.
+				rootCancel()
 			}
 		}()
 

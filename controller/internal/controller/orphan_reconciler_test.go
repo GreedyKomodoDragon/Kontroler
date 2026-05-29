@@ -59,9 +59,6 @@ func TestRunOrphanReconciler_DeletesOrphanPods(t *testing.T) {
 	cancel()
 	<-done
 
-	// give some time for deletion to propagate
-	time.Sleep(200 * time.Millisecond)
-
 	_, err = client.CoreV1().Pods("default").Get(context.Background(), "orphan-pod", metav1.GetOptions{})
 	if err == nil {
 		t.Fatalf("expected pod to be deleted, but still exists")

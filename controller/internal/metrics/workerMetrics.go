@@ -60,28 +60,76 @@ var (
 )
 
 func init() {
-	// Register all worker metrics with controller-runtime's metrics registry.
-	// Use Register and ignore AlreadyRegisteredError so multiple test runs or
-	// re-imports don't panic.
-	collectors := []prometheus.Collector{
-		TaskOutcomeTotal,
-		TaskExecutionDuration,
-		TaskRetryTotal,
-		WorkerQueueSize,
-		WorkerTaskProcessingTotal,
-		TaskClaimsTotal,
-		LeaseRenewTotal,
-		LeaseExpiredTotal,
-		ClaimedInFlight,
+	// Register each collector individually so we can rebind package-level
+	// variables to any existing registered collectors when AlreadyRegisteredError occurs.
+	if err := metrics.Registry.Register(TaskOutcomeTotal); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			TaskOutcomeTotal = ar.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			panic(err)
+		}
 	}
 
-	for _, c := range collectors {
-		if err := metrics.Registry.Register(c); err != nil {
-			if _, ok := err.(prometheus.AlreadyRegisteredError); ok {
-				// already registered, ignore
-				continue
-			}
-			// other errors are fatal
+	if err := metrics.Registry.Register(TaskExecutionDuration); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			TaskExecutionDuration = ar.ExistingCollector.(*prometheus.HistogramVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(TaskRetryTotal); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			TaskRetryTotal = ar.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(WorkerQueueSize); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			WorkerQueueSize = ar.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(WorkerTaskProcessingTotal); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			WorkerTaskProcessingTotal = ar.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(TaskClaimsTotal); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			TaskClaimsTotal = ar.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(LeaseRenewTotal); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			LeaseRenewTotal = ar.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(LeaseExpiredTotal); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			LeaseExpiredTotal = ar.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			panic(err)
+		}
+	}
+
+	if err := metrics.Registry.Register(ClaimedInFlight); err != nil {
+		if ar, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			ClaimedInFlight = ar.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
 			panic(err)
 		}
 	}

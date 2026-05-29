@@ -58,15 +58,19 @@ func RunOrphanReconciler(ctx context.Context, clientset kubernetes.Interface, db
 
 				status, err := dbManager.GetTaskRunStatus(ctx, taskRunId)
 				if err != nil {
-					// if DB says not found, treat as orphan
-					logger.Info("task run not found, deleting pod", "pod", pod.Name, "ns", pod.Namespace, "taskRunId", taskRunId)
-					// remove finalizers then delete
-					p := pod.DeepCopy()
-					p.Finalizers = []string{}
-					if _, err := clientset.CoreV1().Pods(pod.Namespace).Update(ctx, p, metav1.UpdateOptions{}); err != nil {
-						logger.Error(err, "failed to remove finalizers from orphan pod", "pod", pod.Name)
+					if err == db.ErrTaskRunNotFound {
+						// Task run not present in DB — treat as orphan and delete
+						logger.Info("task run not found, deleting pod", "pod", pod.Name, "ns", pod.Namespace, "taskRunId", taskRunId)
+						p := pod.DeepCopy()
+						p.Finalizers = []string{}
+						if _, err := clientset.CoreV1().Pods(pod.Namespace).Update(ctx, p, metav1.UpdateOptions{}); err != nil {
+							logger.Error(err, "failed to remove finalizers from orphan pod", "pod", pod.Name)
+						}
+						_ = clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+						continue
 					}
-					_ = clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+					// For other DB errors, log and skip deletion to avoid removing pods on transient DB failures
+					logger.Error(err, "failed to get task run status, skipping pod", "pod", pod.Name, "ns", pod.Namespace, "taskRunId", taskRunId)
 					continue
 				}
 

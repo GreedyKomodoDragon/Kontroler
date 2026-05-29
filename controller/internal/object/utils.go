@@ -34,7 +34,7 @@ func loadS3Config() (aws.Config, error) {
 // It performs a small retry loop on conflicts to reduce noisy "object has been
 // modified" errors that can occur when the Pod is being updated concurrently by
 // other controllers.
-func RemoveFinalizer(clientset *kubernetes.Clientset, podName, namespace, finalizer string) error {
+func RemoveFinalizer(clientset kubernetes.Interface, podName, namespace, finalizer string) error {
 	var lastErr error
 	for i := 0; i < 5; i++ {
 		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, v1.GetOptions{})
@@ -56,17 +56,7 @@ func RemoveFinalizer(clientset *kubernetes.Clientset, podName, namespace, finali
 
 		// If there is no change, we're done
 		if len(newFinalizers) == len(pod.ObjectMeta.Finalizers) {
-			// ensure the specific finalizer is absent
-			found := false
-			for _, f := range pod.ObjectMeta.Finalizers {
-				if f == finalizer {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return nil
-			}
+			return nil
 		}
 
 		pod.ObjectMeta.Finalizers = newFinalizers

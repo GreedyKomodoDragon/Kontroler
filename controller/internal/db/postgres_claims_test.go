@@ -64,9 +64,15 @@ func TestClaimTasks_NoDoubleClaim(t *testing.T) {
 	runID, err := dm.CreateDAGRun(ctx, t.Name()+"-run1", &v1alpha1.DagRunSpec{DagName: t.Name() + "-claim-batch-dag"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
+	// resolve the actual dag_task id for this DAG/run
+	tasks, err := dm.GetStartingTasks(ctx, dag.Name, runID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(tasks), 1)
+	dagTaskID := tasks[0].Id
+
 	n := 50
 	for i := 0; i < n; i++ {
-		_, err := dm.AddPendingTaskRun(ctx, runID, 1)
+		_, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
 		require.NoError(t, err)
 	}
 
@@ -128,7 +134,13 @@ func TestRecoverExpiredLeases(t *testing.T) {
 	runID, err := dm.CreateDAGRun(ctx, t.Name()+"-recover", &v1alpha1.DagRunSpec{DagName: t.Name() + "-recover-dag"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, 1)
+	// resolve task id for this DAG/run
+	tasks, err := dm.GetStartingTasks(ctx, dag.Name, runID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(tasks), 1)
+	dagTaskID := tasks[0].Id
+
+	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
 	require.NoError(t, err)
 
 	// claim it with worker A
@@ -173,7 +185,13 @@ func TestRenewLease_Ownership(t *testing.T) {
 	runID, err := dm.CreateDAGRun(ctx, t.Name()+"-renew", &v1alpha1.DagRunSpec{DagName: t.Name() + "-renew-dag"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, 1)
+	// resolve task id
+	tasks, err := dm.GetStartingTasks(ctx, dag.Name, runID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(tasks), 1)
+	dagTaskID := tasks[0].Id
+
+	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
 	require.NoError(t, err)
 
 	// claim with owner
@@ -200,7 +218,13 @@ func TestRetryEnvImmediateClaimPath(t *testing.T) {
 	runID, err := dm.CreateDAGRun(ctx, t.Name()+"-retryenv", &v1alpha1.DagRunSpec{DagName: t.Name() + "-retryenv-dag"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, 1)
+	// resolve task id
+	tasks, err := dm.GetStartingTasks(ctx, dag.Name, runID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(tasks), 1)
+	dagTaskID := tasks[0].Id
+
+	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
 	require.NoError(t, err)
 
 	envJSON := `[{"name":"FOO","value":"bar"}]`

@@ -1647,9 +1647,11 @@ func (s *sqliteDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTask
 	var pvcName sql.NullString
 	var namespace string
 	var retryEnv sql.NullString
+	var dagId int
 
+	var paramStr sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-	SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate, d.namespace, dr.pvcName, tr.retry_env
+	SELECT dat.dag_task_id, dat.name, t.image, t.command, t.args, t.parameters, t.scriptInjectorImage, t.script, t.podTemplate, d.namespace, dr.pvcName, tr.retry_env, dr.dag_id
 	FROM Tasks t
 	JOIN DAG_Tasks dat ON dat.task_id = t.task_id
 	JOIN DAG_Runs dr ON dat.dag_id = dr.dag_id
@@ -1657,7 +1659,7 @@ func (s *sqliteDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTask
 	LEFT JOIN Task_Runs tr ON tr.run_id = dr.run_id AND tr.task_id = dat.dag_task_id
 	WHERE dr.run_id = ? AND dat.dag_task_id = ?
 	LIMIT 1;
-	`, runId, dagTaskId).Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &task.Parameters, &task.ScriptInjectorImage, &script, &podTemplateJSON, &namespace, &pvcName, &retryEnv)
+	`, runId, dagTaskId).Scan(&task.Id, &task.Name, &task.Image, &task.Command, &task.Args, &paramStr, &task.ScriptInjectorImage, &script, &podTemplateJSON, &namespace, &pvcName, &retryEnv, &dagId)
 
 	if err != nil {
 		return Task{}, "", "", err
@@ -1689,6 +1691,30 @@ func (s *sqliteDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTask
 		})
 	}
 
+	// The parameters column is stored as JSON in SQLite. Unmarshal into a []string of parameter names
+	params := []string{}
+	if paramStr.Valid && paramStr.String != "" {
+		if err := json.Unmarshal([]byte(paramStr.String), &params); err != nil {
+			return Task{}, "", "", err
+		}
+	}
+
+	// Fetch full parameter values using a transaction to ensure consistency
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, "", "", err
+	}
+	defer tx.Rollback()
+
+	tasks := []Task{task}
+	paramsMatrix := [][]string{params}
+	if err := s.fetchTaskParameters(ctx, tx, dagId, tasks, paramsMatrix); err != nil {
+		return Task{}, "", "", err
+	}
+
+	// update task with populated parameters
+	task = tasks[0]
+
 	if task.Parameters == nil {
 		task.Parameters = []Parameter{}
 	}
@@ -1696,6 +1722,10 @@ func (s *sqliteDAGManager) GetTaskForRun(ctx context.Context, runId int, dagTask
 	var retry string
 	if retryEnv.Valid {
 		retry = retryEnv.String
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Task{}, "", "", err
 	}
 
 	return task, namespace, retry, nil
@@ -1730,6 +1760,9 @@ func (s *sqliteDAGManager) ClaimTaskByID(ctx context.Context, taskRunId int, wor
 func (s *sqliteDAGManager) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) {
 	var status string
 	if err := s.db.QueryRowContext(ctx, `SELECT status FROM Task_Runs WHERE task_run_id = ?`, taskRunId).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return "", ErrTaskRunNotFound
+		}
 		return "", err
 	}
 	return status, nil

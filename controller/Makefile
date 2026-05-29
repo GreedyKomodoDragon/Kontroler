@@ -220,9 +220,9 @@ kind-deploy-postgres: ## Deploy PostgreSQL via bitnami helm chart
 		--set primary.persistence.enabled=false \
 		--set tls.enabled=false
 	@echo "Waiting for Postgres deployment to become ready..."
-	# bitnami chart creates deployment named postgres-postgresql by default
-	kubectl -n default wait deployment/postgres-postgresql --for condition=Available --timeout=180s || \
-		echo "Warning: Postgres deployment did not become ready within timeout"
+	# bitnami chart creates a statefulset named postgres-postgresql by default
+	kubectl -n default wait statefulset/postgres-postgresql --for condition=Ready --timeout=180s || \
+		echo "Warning: Postgres statefulset did not become ready within timeout"
 
 .PHONY: kind-deploy-cert-manager
 kind-deploy-cert-manager: ## Deploy cert-manager (waits for webhook to be ready)
@@ -322,7 +322,7 @@ kind-deploy-kontroler: kind-load-all ## Deploy Kontroler via helm chart
 		echo "Warning: kontroler-server deployment did not become ready within timeout"
 
 .PHONY: kind-bootstrap
-kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-create-secrets kind-deploy-kontroler kind-create-db ## Full kind cluster setup with all services
+kind-bootstrap: kind-deploy-postgres kind-deploy-cert-manager kind-create-secrets kind-create-db kind-deploy-kontroler ## Full kind cluster setup with all services
 	@echo "Kind cluster ready with Kontroler deployed!"
 	@echo "Controller logs: kubectl logs -l app=kontroler-controller -n default -f"
 	@echo "Server logs: kubectl logs -l app=kontroler-server -n default -f"

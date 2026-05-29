@@ -103,6 +103,9 @@ func (t *taskAllocator) allocatePod(ctx context.Context, task *db.Task, dagRunId
 	pod.ObjectMeta.Annotations[annotationTaskID] = strconv.Itoa(task.Id)
 	if claimedBy != "" {
 		pod.ObjectMeta.Annotations[annotationClaimedBy] = claimedBy
+	} else {
+		// Ensure we don't leave an empty claimed-by annotation on reused pod objects
+		delete(pod.ObjectMeta.Annotations, annotationClaimedBy)
 	}
 
 	// set podspec

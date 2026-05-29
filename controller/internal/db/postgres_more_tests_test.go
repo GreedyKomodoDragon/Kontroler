@@ -22,7 +22,13 @@ func TestFinalizeClaimToRunning_Ownership(t *testing.T) {
 	runID, err := dm.CreateDAGRun(ctx, t.Name()+"-finalize-run", &v1alpha1.DagRunSpec{DagName: t.Name() + "-finalize-dag"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, 1)
+	// resolve task id
+	tasks, err := dm.GetStartingTasks(ctx, dag.Name, runID)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(tasks), 1)
+	dagTaskID := tasks[0].Id
+
+	taskRunID, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
 	require.NoError(t, err)
 
 	owner := uuid.NewString()
@@ -53,10 +59,16 @@ func TestClaimTasks_RespectScheduledStart(t *testing.T) {
 	runID, err := dm.CreateDAGRun(ctx, t.Name()+"-sched-run", &v1alpha1.DagRunSpec{DagName: t.Name() + "-sched-dag"}, map[string]v1alpha1.ParameterSpec{}, nil)
 	require.NoError(t, err)
 
-	// create two pending tasks
-	r1, err := dm.AddPendingTaskRun(ctx, runID, 1)
+	// determine dag task id
+	tasksList, err := dm.GetStartingTasks(ctx, dag.Name, runID)
 	require.NoError(t, err)
-	r2, err := dm.AddPendingTaskRun(ctx, runID, 1)
+	require.GreaterOrEqual(t, len(tasksList), 1)
+	dagTaskID := tasksList[0].Id
+
+	// create two pending tasks
+	r1, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
+	require.NoError(t, err)
+	r2, err := dm.AddPendingTaskRun(ctx, runID, dagTaskID)
 	require.NoError(t, err)
 
 	// set scheduled_start for r2 to future via raw SQL

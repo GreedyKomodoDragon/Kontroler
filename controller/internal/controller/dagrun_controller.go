@@ -191,7 +191,8 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		taskRunId, err := r.DbManager.AddPendingTaskRun(ctx, runId, task.Id)
 		if err != nil {
 			log.Log.Error(err, "failed to add pending task run", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
-			continue
+			// Treat enqueue failure as a reconcile failure so the controller will retry
+			return ctrl.Result{}, fmt.Errorf("failed to add pending task run for dag %s task %d: %w", dagRun.Spec.DagName, task.Id, err)
 		}
 
 		log.Log.Info("enqueued pending task", "dag_id", dagRun.Spec.DagName, "task_id", task.Id, "taskRunId", taskRunId)

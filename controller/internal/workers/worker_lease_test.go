@@ -9,7 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	v1alpha1 "kontroler-controller/api/v1alpha1"
 	"kontroler-controller/internal/db"
+	"kontroler-controller/internal/queue"
+	"kontroler-controller/internal/webhook"
 )
 
 // fakeDBLease implements the minimal DBDAGManager methods used by processClaim
@@ -73,7 +76,7 @@ func (f *fakeDBLease) DeleteTask(ctx context.Context, taskName string, namespace
 func (f *fakeDBLease) GetTaskRefsParameters(ctx context.Context, taskRefs []db.TaskRef) (map[db.TaskRef][]string, error) {
 	return nil, nil
 }
-func (f *fakeDBLease) GetWebhookDetails(ctx context.Context, dagRunID int) (*db.Webhook, error) {
+func (f *fakeDBLease) GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error) {
 	return nil, nil
 }
 func (f *fakeDBLease) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*db.PVC, error) {
@@ -157,7 +160,8 @@ func TestRenewLeaseCalledDuringSlowAllocation(t *testing.T) {
 	alloc := &fakeAllocator{delay: 700 * time.Millisecond} // longer than defaultLeaseTTL so renew should happen
 	q := queue.NewMemoryQueue(context.Background())
 	webhookChan := make(chan webhook.WebhookPayload, 1)
-	w := NewWorker(q, nil, webhookChan, fdb, nil, alloc, 10*time.Millisecond)
+	wIface := NewWorker(q, nil, webhookChan, fdb, nil, alloc, 10*time.Millisecond)
+	w := wIface.(*worker)
 
 	// run processClaim directly with a fake claim
 	cl := db.TaskClaim{TaskRunID: 1, TaskID: 1, RunID: 1}

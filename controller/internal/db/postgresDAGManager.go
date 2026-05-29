@@ -925,6 +925,7 @@ func (p *postgresDAGManager) ClaimTasks(ctx context.Context, limit int, workerId
 		SELECT task_run_id
 		FROM Task_Runs
 		WHERE status = 'pending' AND (scheduled_start IS NULL OR scheduled_start <= now())
+		AND (claimed_by IS NULL OR lease_expires_at <= now())
 		FOR UPDATE SKIP LOCKED
 		LIMIT $1
 	)
@@ -1558,6 +1559,9 @@ func (p *postgresDAGManager) ClaimTaskByID(ctx context.Context, taskRunId int, w
 func (p *postgresDAGManager) GetTaskRunStatus(ctx context.Context, taskRunId int) (string, error) {
 	var status string
 	if err := p.pool.QueryRow(ctx, `SELECT status FROM Task_Runs WHERE task_run_id = $1`, taskRunId).Scan(&status); err != nil {
+		if err == pgx.ErrNoRows {
+			return "", ErrTaskRunNotFound
+		}
 		return "", err
 	}
 	return status, nil

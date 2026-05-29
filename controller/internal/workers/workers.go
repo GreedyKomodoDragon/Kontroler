@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"kontroler-controller/api/v1alpha1"
@@ -51,6 +52,7 @@ type worker struct {
 	webhookNotifier webhook.WebhookNotifier
 	id              string
 	pollDuration    time.Duration
+	inFlight        int32
 }
 
 func NewWorker(queue queue.Queue, logStore object.LogStore, webhookChan chan webhook.WebhookPayload,
@@ -95,12 +97,27 @@ func (w *worker) claimPoller(ctx context.Context) {
 	ticker := time.NewTicker(w.pollDuration)
 	defer ticker.Stop()
 
+	const maxConcurrentClaims = 50
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			claims, err := w.dbManager.ClaimTasks(ctx, claimBatchSize, w.id, defaultLeaseTTL)
+			// limit concurrent claim processing to avoid unbounded goroutine growth
+			inFlight := atomic.LoadInt32(&w.inFlight)
+			allowed := maxConcurrentClaims - inFlight
+			if allowed <= 0 {
+				// nothing to do this tick
+				continue
+			}
+
+			limit := claimBatchSize
+			if int32(limit) > allowed {
+				limit = int(allowed)
+			}
+
+			claims, err := w.dbManager.ClaimTasks(ctx, limit, w.id, defaultLeaseTTL)
 			if err != nil {
 				log.Log.Error(err, "failed to claim tasks")
 				metrics.RecordTaskClaim(w.id, "error")
@@ -116,8 +133,10 @@ func (w *worker) claimPoller(ctx context.Context) {
 				c := c
 				metrics.RecordTaskClaim(w.id, "success")
 				metrics.IncClaimed(w.id)
+				atomic.AddInt32(&w.inFlight, 1)
 				go func(cl db.TaskClaim) {
 					defer metrics.DecClaimed(w.id)
+					defer atomic.AddInt32(&w.inFlight, -1)
 					w.processClaim(ctx, cl)
 				}(c)
 			}
@@ -142,9 +161,11 @@ func (w *worker) processClaim(ctx context.Context, c db.TaskClaim) {
 			case <-renewCtx.Done():
 				return
 			case <-ticker.C:
-				if err := w.dbManager.RenewLease(ctx, c.TaskRunID, w.id, defaultLeaseTTL); err != nil {
+				if err := w.dbManager.RenewLease(renewCtx, c.TaskRunID, w.id, defaultLeaseTTL); err != nil {
 					log.Log.Error(err, "failed to renew lease", "taskRunId", c.TaskRunID)
 					metrics.RecordLeaseRenew(w.id, "error")
+					// abort allocation/finalization on lease renewal failure
+					cancel()
 					return
 				}
 				metrics.RecordLeaseRenew(w.id, "success")
@@ -164,9 +185,9 @@ func (w *worker) processClaim(ctx context.Context, c db.TaskClaim) {
 	// Prepare envs: if retryEnv provided, use it; otherwise let allocator create envs
 	var podUID types.UID
 	if retryEnv != "" {
-		// parse retryEnv JSON into []v1.EnvVar
-		var envPairs []map[string]string
-		if err := json.Unmarshal([]byte(retryEnv), &envPairs); err != nil {
+		// parse retryEnv JSON into []v1.EnvVar to preserve ValueFrom fields
+		var envs []v1.EnvVar
+		if err := json.Unmarshal([]byte(retryEnv), &envs); err != nil {
 			log.Log.Error(err, "failed to parse retry env JSON", "taskRunId", c.TaskRunID)
 			// fall back to normal allocation
 			podUID, err = w.taskAllocator.AllocateTask(ctx, &task, c.RunID, c.TaskRunID, namespace, w.id)
@@ -175,10 +196,6 @@ func (w *worker) processClaim(ctx context.Context, c db.TaskClaim) {
 				return
 			}
 		} else {
-			envs := []v1.EnvVar{}
-			for _, kv := range envPairs {
-				envs = append(envs, v1.EnvVar{Name: kv["name"], Value: kv["value"]})
-			}
 			podUID, err = w.taskAllocator.AllocateTaskWithEnv(ctx, &task, c.RunID, c.TaskRunID, namespace, envs, nil, w.id)
 			if err != nil {
 				log.Log.Error(err, "failed to allocate pod for claimed task with retry env", "taskRunId", c.TaskRunID)
@@ -198,6 +215,14 @@ func (w *worker) processClaim(ctx context.Context, c db.TaskClaim) {
 	// finalize claim: set status to running
 	if err := w.dbManager.FinalizeClaimToRunning(ctx, c.TaskRunID, w.id, string(podUID)); err != nil {
 		log.Log.Error(err, "failed to finalize claim to running", "taskRunId", c.TaskRunID)
+		// best-effort: try to delete the created pod to avoid orphaned pods if we can find it
+		if w.clientSet != nil && podUID != "" {
+			// List pods by UID to find the pod name
+			pods, listErr := w.clientSet.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{FieldSelector: "metadata.uid=" + string(podUID)})
+			if listErr == nil && len(pods.Items) > 0 {
+				_ = w.clientSet.CoreV1().Pods(namespace).Delete(ctx, pods.Items[0].Name, metav1.DeleteOptions{})
+			}
+		}
 		return
 	}
 
