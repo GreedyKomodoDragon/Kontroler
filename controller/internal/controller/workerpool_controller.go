@@ -26,6 +26,10 @@ type WorkerPoolReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+const (
+	workerPoolFinalizer = "workerpool.finalizers.kontroler.greedykomodo"
+)
+
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=workerpools,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=workerpools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -56,6 +60,72 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				"workerpool": wp.Name,
 			},
 		},
+	}
+
+	// Ensure finalizer present on create/update
+	if dep == nil {
+		dep = &appsv1.Deployment{}
+	}
+
+	if dep.ObjectMeta.Annotations == nil {
+		dep.ObjectMeta.Annotations = map[string]string{}
+	}
+
+	// Add finalizer to WorkerPool if not present
+	if wp.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !containsString(wp.ObjectMeta.Finalizers, workerPoolFinalizer) {
+			wp.ObjectMeta.Finalizers = append(wp.ObjectMeta.Finalizers, workerPoolFinalizer)
+			if err := r.Update(ctx, &wp); err != nil {
+				log.Error(err, "failed to add finalizer to WorkerPool")
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	// If deletion timestamp is set, handle graceful shutdown
+	if !wp.ObjectMeta.DeletionTimestamp.IsZero() {
+		// reconcile deletion: scale deployment to zero and wait for pods to terminate
+		var existing appsv1.Deployment
+		if err := r.Get(ctx, types.NamespacedName{Name: wp.Name + "-workers", Namespace: wp.Namespace}, &existing); err == nil {
+			zero := int32(0)
+			if existing.Spec.Replicas == nil || *existing.Spec.Replicas != 0 {
+				existing.Spec.Replicas = &zero
+				if err := r.Update(ctx, &existing); err != nil {
+					log.Error(err, "failed to scale deployment to zero during WorkerPool deletion")
+					return ctrl.Result{}, err
+				}
+			}
+
+			// determine graceful timeout
+			timeout := int64(60)
+			if wp.Spec.GracefulShutdownSeconds != nil {
+				timeout = int64(*wp.Spec.GracefulShutdownSeconds)
+			}
+
+			// if readyReplicas still > 0, requeue and wait
+			if existing.Status.ReadyReplicas > 0 {
+				log.Info("waiting for deployment readyReplicas to become 0 before removing finalizer", "readyReplicas", existing.Status.ReadyReplicas)
+				return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+			}
+
+			// remove finalizer and allow deletion to continue
+			wp.ObjectMeta.Finalizers = removeString(wp.ObjectMeta.Finalizers, workerPoolFinalizer)
+			if err := r.Update(ctx, &wp); err != nil {
+				log.Error(err, "failed to remove finalizer from WorkerPool")
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{}, nil
+		}
+		// if deployment not found, simply remove finalizer
+		if containsString(wp.ObjectMeta.Finalizers, workerPoolFinalizer) {
+			wp.ObjectMeta.Finalizers = removeString(wp.ObjectMeta.Finalizers, workerPoolFinalizer)
+			if err := r.Update(ctx, &wp); err != nil {
+				log.Error(err, "failed to remove finalizer from WorkerPool (no deployment present)")
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
 	}
 
 	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, dep, func() error {
@@ -262,6 +332,15 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		_ = r.Status().Update(ctx, &wp)
 	}
 
+	// Ensure finalizer is present on the resource if not deleting
+	if wp.ObjectMeta.DeletionTimestamp.IsZero() && !containsString(wp.ObjectMeta.Finalizers, workerPoolFinalizer) {
+		wp.ObjectMeta.Finalizers = append(wp.ObjectMeta.Finalizers, workerPoolFinalizer)
+		if err := r.Update(ctx, &wp); err != nil {
+			log.Error(err, "failed to add finalizer to WorkerPool during reconcile")
+			return ctrl.Result{}, err
+		}
+	}
+
 	log.Info("reconciled workerpool", "name", wp.Name, "result", opResult)
 	return ctrl.Result{}, nil
 }
@@ -284,4 +363,24 @@ func fmtIntPtr(p *int32) string {
 // intstrFromInt returns an IntOrString for a numeric port
 func intstrFromInt(i int) metav1.IntOrString {
 	return metav1.IntOrString{Type: metav1.Int, IntVal: int32(i)}
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) []string {
+	out := []string{}
+	for _, v := range slice {
+		if v == s {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
 }

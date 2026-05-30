@@ -2,11 +2,15 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -148,6 +152,60 @@ var _ = Describe("WorkerPool Controller", func() {
 			Expect(reqs[corev1.ResourceMemory].String()).To(Equal("128Mi"))
 			// affinity presence
 			Expect(dep.Spec.Template.Spec.Affinity).NotTo(BeNil())
+		})
+
+		It("should scale down and remove finalizer on deletion", func() {
+			// create WP
+			n := "test-delete"
+			nn3 := types.NamespacedName{Name: n, Namespace: "default"}
+			wp := &kontrolerv1alpha1.WorkerPool{
+				ObjectMeta: metav1.ObjectMeta{Name: n, Namespace: "default"},
+				Spec: kontrolerv1alpha1.WorkerPoolSpec{
+					Replicas:                ptrInt32(1),
+					GracefulShutdownSeconds: ptrInt32(30),
+				},
+			}
+			Expect(k8sClient.Create(ctx, wp)).To(Succeed())
+
+			reconciler := &WorkerPoolReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nn3})
+			Expect(err).NotTo(HaveOccurred())
+
+			// ensure deployment exists
+			dep := &appsv1.Deployment{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: n + "-workers", Namespace: "default"}, dep)
+			}, 5*time.Second, 250*time.Millisecond).Should(Succeed())
+
+			// simulate ready replicas present
+			dep.Status.ReadyReplicas = 1
+			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
+
+			// delete the WorkerPool (sets deletionTimestamp)
+			Expect(k8sClient.Delete(ctx, wp)).To(Succeed())
+
+			// first reconcile should scale deployment to 0
+			_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nn3})
+			Expect(err).NotTo(HaveOccurred())
+
+			// fetch deployment and assert replicas = 0
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: n + "-workers", Namespace: "default"}, dep)).To(Succeed())
+			Expect(dep.Spec.Replicas).NotTo(BeNil())
+			Expect(*dep.Spec.Replicas).To(Equal(int32(0)))
+
+			// still has readyReplicas, simulate pods terminated
+			dep.Status.ReadyReplicas = 0
+			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
+
+			// second reconcile should remove finalizer and allow deletion
+			_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nn3})
+			Expect(err).NotTo(HaveOccurred())
+
+			// object should be deleted (not found)
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, nn3, &kontrolerv1alpha1.WorkerPool{})
+				return apierrors.IsNotFound(err)
+			}, 5*time.Second, 250*time.Millisecond).Should(BeTrue())
 		})
 	})
 })
