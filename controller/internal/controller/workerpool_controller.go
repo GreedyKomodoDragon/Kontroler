@@ -2,13 +2,15 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
@@ -112,15 +114,133 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			},
 		}
 
-		// merge PodTemplate from spec if provided (only a few fields for now)
+		// merge PodTemplate from spec if provided
 		if wp.Spec.PodTemplate != nil {
-			if wp.Spec.PodTemplate.NodeSelector != nil {
-				dep.Spec.Template.Spec.NodeSelector = wp.Spec.PodTemplate.NodeSelector
+			pt := wp.Spec.PodTemplate
+
+			// node selector
+			if pt.NodeSelector != nil {
+				dep.Spec.Template.Spec.NodeSelector = pt.NodeSelector
 			}
-			if wp.Spec.PodTemplate.ServiceAccountName != "" {
-				dep.Spec.Template.Spec.ServiceAccountName = wp.Spec.PodTemplate.ServiceAccountName
+
+			// service account
+			if pt.ServiceAccountName != "" {
+				dep.Spec.Template.Spec.ServiceAccountName = pt.ServiceAccountName
 			}
-			// TODO: merge tolerations, resources, affinity if needed
+
+			// automount service account token
+			if pt.AutomountServiceAccountToken != nil {
+				a := *pt.AutomountServiceAccountToken
+				dep.Spec.Template.Spec.AutomountServiceAccountToken = &a
+			}
+
+			// active deadline seconds
+			if pt.ActiveDeadlineSeconds != nil {
+				dep.Spec.Template.Spec.ActiveDeadlineSeconds = pt.ActiveDeadlineSeconds
+			}
+
+			// image pull secrets
+			if len(pt.ImagePullSecrets) > 0 {
+				ips := make([]corev1.LocalObjectReference, 0, len(pt.ImagePullSecrets))
+				for _, s := range pt.ImagePullSecrets {
+					ips = append(ips, corev1.LocalObjectReference{Name: s.Name})
+				}
+				dep.Spec.Template.Spec.ImagePullSecrets = ips
+			}
+
+			// tolerations
+			if len(pt.Tolerations) > 0 {
+				tols := make([]corev1.Toleration, 0, len(pt.Tolerations))
+				for _, t := range pt.Tolerations {
+					tols = append(tols, corev1.Toleration{
+						Key:               t.Key,
+						Operator:          corev1.TolerationOperator(t.Operator),
+						Value:             t.Value,
+						Effect:            corev1.TaintEffect(t.Effect),
+						TolerationSeconds: t.TolerationSeconds,
+					})
+				}
+				dep.Spec.Template.Spec.Tolerations = tols
+			}
+
+			// volumes
+			if len(pt.Volumes) > 0 {
+				vols := dep.Spec.Template.Spec.Volumes
+				for _, v := range pt.Volumes {
+					vol := corev1.Volume{Name: v.Name}
+					if v.EmptyDir != nil {
+						vol.VolumeSource = corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+					} else if v.PersistentVolumeClaim != nil {
+						vol.VolumeSource = corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: v.PersistentVolumeClaim.ClaimName}}
+					}
+					vols = append(vols, vol)
+				}
+				dep.Spec.Template.Spec.Volumes = vols
+			}
+
+			// container volume mounts
+			if len(pt.VolumeMounts) > 0 {
+				mounts := dep.Spec.Template.Spec.Containers[0].VolumeMounts
+				for _, vm := range pt.VolumeMounts {
+					mounts = append(mounts, corev1.VolumeMount{Name: vm.Name, MountPath: vm.MountPath, ReadOnly: vm.ReadOnly})
+				}
+				dep.Spec.Template.Spec.Containers[0].VolumeMounts = mounts
+			}
+
+			// security context (only FSGroup supported)
+			if pt.SecurityContext != nil {
+				psc := &corev1.PodSecurityContext{}
+				if pt.SecurityContext.FSGroup != nil {
+					psc.FSGroup = pt.SecurityContext.FSGroup
+				}
+				dep.Spec.Template.Spec.SecurityContext = psc
+			}
+
+			// resources for the first container if provided
+			if pt.Resources != nil {
+				req := corev1.ResourceList{}
+				lim := corev1.ResourceList{}
+				for k, v := range pt.Resources.Requests {
+					if r, err := resource.ParseQuantity(v); err == nil {
+						req[corev1.ResourceName(k)] = r
+					}
+				}
+				for k, v := range pt.Resources.Limits {
+					if r, err := resource.ParseQuantity(v); err == nil {
+						lim[corev1.ResourceName(k)] = r
+					}
+				}
+				if dep.Spec.Template.Spec.Containers[0].Resources.Requests == nil {
+					dep.Spec.Template.Spec.Containers[0].Resources.Requests = req
+				} else {
+					for k, q := range req {
+						dep.Spec.Template.Spec.Containers[0].Resources.Requests[k] = q
+					}
+				}
+				if dep.Spec.Template.Spec.Containers[0].Resources.Limits == nil {
+					dep.Spec.Template.Spec.Containers[0].Resources.Limits = lim
+				} else {
+					for k, q := range lim {
+						dep.Spec.Template.Spec.Containers[0].Resources.Limits[k] = q
+					}
+				}
+			}
+
+			// affinity: provided as raw JSON; attempt to unmarshal into corev1.Affinity parts
+			if pt.Affinity != nil {
+				var af corev1.Affinity
+				// nodeAffinity
+				if pt.Affinity.NodeAffinity != nil {
+					_ = json.Unmarshal(pt.Affinity.NodeAffinity.Raw, &af.NodeAffinity)
+				}
+				if pt.Affinity.PodAffinity != nil {
+					_ = json.Unmarshal(pt.Affinity.PodAffinity.Raw, &af.PodAffinity)
+				}
+				if pt.Affinity.PodAntiAffinity != nil {
+					_ = json.Unmarshal(pt.Affinity.PodAntiAffinity.Raw, &af.PodAntiAffinity)
+				}
+				dep.Spec.Template.Spec.Affinity = &af
+			}
 		}
 
 		return nil
