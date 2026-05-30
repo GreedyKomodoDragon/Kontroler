@@ -154,6 +154,28 @@ var _ = Describe("WorkerPool Controller", func() {
 			Expect(dep.Spec.Template.Spec.Affinity).NotTo(BeNil())
 		})
 
+		It("should add finalizer on create", func() {
+			// create simple WP
+			n := "test-finalizer"
+			nnF := types.NamespacedName{Name: n, Namespace: "default"}
+			wp := &kontrolerv1alpha1.WorkerPool{
+				ObjectMeta: metav1.ObjectMeta{Name: n, Namespace: "default"},
+				Spec: kontrolerv1alpha1.WorkerPoolSpec{
+					Replicas: ptrInt32(1),
+				},
+			}
+			Expect(k8sClient.Create(ctx, wp)).To(Succeed())
+
+			reconciler := &WorkerPoolReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nnF})
+			Expect(err).NotTo(HaveOccurred())
+
+			// fetch and assert finalizer present
+			got := &kontrolerv1alpha1.WorkerPool{}
+			Expect(k8sClient.Get(ctx, nnF, got)).To(Succeed())
+			Expect(containsString(got.ObjectMeta.Finalizers, workerPoolFinalizer)).To(BeTrue())
+		})
+
 		It("should scale down and remove finalizer on deletion", func() {
 			// create WP
 			n := "test-delete"
