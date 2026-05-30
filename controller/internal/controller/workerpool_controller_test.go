@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -11,11 +12,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("WorkerPool Controller", func() {
@@ -229,7 +233,132 @@ var _ = Describe("WorkerPool Controller", func() {
 				return apierrors.IsNotFound(err)
 			}, 5*time.Second, 250*time.Millisecond).Should(BeTrue())
 		})
+
+		It("should return error when adding finalizer fails", func() {
+			// create WP
+			n := "test-fail-finalizer"
+			nnF := types.NamespacedName{Name: n, Namespace: "default"}
+			wp := &kontrolerv1alpha1.WorkerPool{
+				ObjectMeta: metav1.ObjectMeta{Name: n, Namespace: "default"},
+				Spec:       kontrolerv1alpha1.WorkerPoolSpec{Replicas: ptrInt32(1)},
+			}
+			Expect(k8sClient.Create(ctx, wp)).To(Succeed())
+
+			fcli := newFailingClient(k8sClient)
+			fcli.FailOnUpdateKind("WorkerPool")
+			reconciler := &WorkerPoolReconciler{Client: fcli, Scheme: k8sClient.Scheme()}
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nnF})
+			Expect(err).To(HaveOccurred())
+
+			// fetch original object: finalizer should not be present
+			got := &kontrolerv1alpha1.WorkerPool{}
+			Expect(k8sClient.Get(ctx, nnF, got)).To(Succeed())
+			Expect(containsString(got.ObjectMeta.Finalizers, workerPoolFinalizer)).To(BeFalse())
+		})
+
+		It("should return error when scaling deployment to zero fails", func() {
+			// create WP and reconcile to create deployment
+			n := "test-fail-scale"
+			nnS := types.NamespacedName{Name: n, Namespace: "default"}
+			wp := &kontrolerv1alpha1.WorkerPool{ObjectMeta: metav1.ObjectMeta{Name: n, Namespace: "default"}, Spec: kontrolerv1alpha1.WorkerPoolSpec{Replicas: ptrInt32(1)}}
+			Expect(k8sClient.Create(ctx, wp)).To(Succeed())
+			reconciler := &WorkerPoolReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nnS})
+			Expect(err).NotTo(HaveOccurred())
+
+			// delete WP to set deletionTimestamp
+			Expect(k8sClient.Delete(ctx, wp)).To(Succeed())
+
+			// create failing client that errors on Deployment updates
+			fcli := newFailingClient(k8sClient)
+			fcli.FailOnUpdateKind("Deployment")
+			reconcilerErr := &WorkerPoolReconciler{Client: fcli, Scheme: k8sClient.Scheme()}
+			_, err = reconcilerErr.Reconcile(ctx, ctrl.Request{NamespacedName: nnS})
+			Expect(err).To(HaveOccurred())
+
+			// finalizer should still be present
+			got := &kontrolerv1alpha1.WorkerPool{}
+			Expect(k8sClient.Get(ctx, nnS, got)).To(Succeed())
+			Expect(containsString(got.ObjectMeta.Finalizers, workerPoolFinalizer)).To(BeTrue())
+		})
+
+		It("should return error when removing finalizer fails", func() {
+			// create WP and reconcile to create deployment
+			n := "test-fail-remove-finalizer"
+			nnR := types.NamespacedName{Name: n, Namespace: "default"}
+			wp := &kontrolerv1alpha1.WorkerPool{ObjectMeta: metav1.ObjectMeta{Name: n, Namespace: "default"}, Spec: kontrolerv1alpha1.WorkerPoolSpec{Replicas: ptrInt32(1)}}
+			Expect(k8sClient.Create(ctx, wp)).To(Succeed())
+			reconciler := &WorkerPoolReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nnR})
+			Expect(err).NotTo(HaveOccurred())
+
+			// simulate deployment ready=0
+			dep := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: n + "-workers", Namespace: "default"}, dep)).To(Succeed())
+			// delete WP
+			Expect(k8sClient.Delete(ctx, wp)).To(Succeed())
+			// set dep ready replicas to 0 to allow finalizer removal path
+			dep.Status.ReadyReplicas = 0
+			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
+
+			// failing client that errors when updating WorkerPool (removing finalizer)
+			fcli := newFailingClient(k8sClient)
+			fcli.FailOnUpdateKind("WorkerPool")
+			reconcilerErr := &WorkerPoolReconciler{Client: fcli, Scheme: k8sClient.Scheme()}
+			_, err = reconcilerErr.Reconcile(ctx, ctrl.Request{NamespacedName: nnR})
+			Expect(err).To(HaveOccurred())
+
+			// finalizer should still be present
+			got := &kontrolerv1alpha1.WorkerPool{}
+			Expect(k8sClient.Get(ctx, nnR, got)).To(Succeed())
+			Expect(containsString(got.ObjectMeta.Finalizers, workerPoolFinalizer)).To(BeTrue())
+		})
+
 	})
 })
 
+// helper ptrs
 func ptrInt32(i int32) *int32 { return &i }
+
+func ptrInt64(i int64) *int64 { return &i }
+
+func ptrBool(b bool) *bool { return &b }
+
+// failingClient wraps a real client and injects failures for Update on specific resources
+type failingClient struct {
+	client.Client
+	failOnUpdateNames map[string]struct{}
+	failOnUpdateKinds map[string]struct{}
+}
+
+func newFailingClient(base client.Client) *failingClient {
+	return &failingClient{Client: base, failOnUpdateNames: map[string]struct{}{}, failOnUpdateKinds: map[string]struct{}{}}
+}
+
+func (f *failingClient) FailOnUpdateName(name string) { f.failOnUpdateNames[name] = struct{}{} }
+func (f *failingClient) FailOnUpdateKind(kind string) { f.failOnUpdateKinds[kind] = struct{}{} }
+
+func (f *failingClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	// name-based failure
+	if obj != nil {
+		if accessor, err := meta.Accessor(obj); err == nil {
+			if _, ok := f.failOnUpdateNames[accessor.GetName()]; ok {
+				return fmt.Errorf("injected update error for name %s", accessor.GetName())
+			}
+		}
+	}
+
+	// kind/type based failure
+	switch obj.(type) {
+	case *kontrolerv1alpha1.WorkerPool:
+		if _, ok := f.failOnUpdateKinds["WorkerPool"]; ok {
+			return fmt.Errorf("injected update error for kind WorkerPool")
+		}
+	case *appsv1.Deployment:
+		if _, ok := f.failOnUpdateKinds["Deployment"]; ok {
+			return fmt.Errorf("injected update error for kind Deployment")
+		}
+	}
+
+	return f.Client.Update(ctx, obj, opts...)
+}
