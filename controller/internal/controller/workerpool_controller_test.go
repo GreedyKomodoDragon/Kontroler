@@ -211,8 +211,10 @@ var _ = Describe("WorkerPool Controller", func() {
 			Expect(k8sClient.Delete(ctx, wp)).To(Succeed())
 
 			// first reconcile should scale deployment to 0
-			_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nn3})
+			res, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: nn3})
 			Expect(err).NotTo(HaveOccurred())
+			// expect reconcile to request a requeue while waiting for pods to drain
+			Expect(res.RequeueAfter).To(BeNumerically(">=", 2*time.Second))
 
 			// fetch deployment and assert replicas = 0
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: n + "-workers", Namespace: "default"}, dep)).To(Succeed())
