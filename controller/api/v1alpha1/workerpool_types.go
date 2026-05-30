@@ -109,3 +109,21 @@ type WorkerPoolList struct {
 func init() {
 	SchemeBuilder.Register(&WorkerPool{}, &WorkerPoolList{})
 }
+
+// DeepCopyObject implements runtime.Object for WorkerPool
+func (in *WorkerPool) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+// DeepCopyObject implements runtime.Object for WorkerPoolList
+func (in *WorkerPoolList) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
