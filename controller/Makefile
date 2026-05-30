@@ -190,6 +190,11 @@ docker-push-server: ## Push docker image for the server.
 
 ##@ Kind Cluster Management
 
+.PHONY: kind-integration-workerpool
+kind-integration-workerpool: ## Run integration test for WorkerPool controller inside kind (requires kind, kubectl, helm)
+	./test/integration/workerpool_integration.sh
+
+
 KIND_CLUSTER_NAME ?= kind
 
 .PHONY: kind-create
