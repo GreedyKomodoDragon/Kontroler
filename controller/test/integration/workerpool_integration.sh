@@ -19,6 +19,10 @@ echo "==> Building and loading controller image into kind"
 make -C controller docker-build
 make -C controller kind-load-controller
 
+echo "==> Building and loading worker image into kind"
+make -C controller docker-build-worker
+make -C controller kind-load-worker
+
 # Ensure operator namespace exists
 kubectl create ns operator-system || true
 
@@ -52,6 +56,22 @@ if ! kubectl -n operator-system get secret kontroler-db-secret >/dev/null 2>&1; 
   kubectl -n operator-system create secret generic kontroler-db-secret --from-literal=password=postgres >/dev/null 2>&1 || true
 fi
 
+# Deploy a test PostgreSQL instance for end-to-end DB-backed runs
+if ! helm ls -q | rg -x "postgres" >/dev/null 2>&1; then
+  echo "==> Deploying test Postgres via Helm (bitnami/postgresql)"
+  helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
+  helm upgrade --install postgres bitnami/postgresql \
+    --set auth.postgresPassword=postgres \
+    --set primary.persistence.enabled=false \
+    --wait --timeout 3m || true
+fi
+
+# Wait for Postgres statefulset to be ready
+kubectl -n default wait statefulset/postgres-postgresql --for condition=Ready --timeout=120s || true
+
+# Copy the Postgres password into operator-system namespace so the chart can use it
+kubectl -n operator-system create secret generic postgres-postgresql --from-literal=postgres-password=postgres --dry-run=client -o yaml | kubectl apply -f -
+
 # Install CRDs + chart via Helm (disable cert-manager integration for this integration test)
 helm upgrade --install kontroler helm/kontroler \
   --namespace operator-system --create-namespace \
@@ -59,7 +79,12 @@ helm upgrade --install kontroler helm/kontroler \
   --set certManager.enabled=false \
   --set controller.image=greedykomodo/kontroler-controller:0.0.1 \
   --set controller.enabled=true \
-  --set db.type=sqlite \
+  --set db.type=postgresql \
+  --set db.postgresql.endpoint=postgres-postgresql.default.svc.cluster.local:5432 \
+  --set controller.db.ssl.mode=disable \
+  --set server.db.ssl.mode=disable \
+  --set controller.db.password.secret=postgres-postgresql \
+  --set controller.db.password.key=postgres-password \
   --wait --timeout 3m || true
 
 # Ensure the Helm deployment is applied and wait for rollout
@@ -86,14 +111,33 @@ EOF
 echo "==> Creating WorkerPool"
 kubectl apply -f "$WP_MANIFEST"
 
+# label node so worker nodeSelector matches in kind
+kubectl label node kind-control-plane node-role.kubernetes.io/worker=true --overwrite || true
+
+# wait for worker pod to appear
 echo "==> Waiting for generated Deployment to appear"
-for i in {1..30}; do
+for i in {1..60}; do
   if kubectl -n ${NAMESPACE} get deployment ${DEP_NAME} >/dev/null 2>&1; then
     echo "Deployment ${DEP_NAME} created"
     break
   fi
   sleep 2
 done
+
+# wait for worker pod to be Running
+echo "==> Waiting for worker pod to become Running"
+for i in {1..60}; do
+  POD=$(kubectl -n ${NAMESPACE} get pods -l workerpool=${WP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+  if [ -n "$POD" ]; then
+    PHASE=$(kubectl -n ${NAMESPACE} get pod $POD -o jsonpath='{.status.phase}' 2>/dev/null || true)
+    if [ "$PHASE" = "Running" ]; then
+      echo "Worker pod $POD is Running"
+      break
+    fi
+  fi
+  sleep 2
+done
+
 
 # helper to set deployment status.readyReplicas in a kubectl-version-portable way
 set_deployment_ready_replicas() {
@@ -107,9 +151,9 @@ set_deployment_ready_replicas() {
     python3 - <<PY > /tmp/dep2.json
 import sys, json
 obj = json.load(sys.stdin)
-obj.setdefault('status', {})['readyReplicas'] = int(sys.argv[1])
+obj.setdefault('status', {})['readyReplicas'] = int("$val")
 json.dump(obj, sys.stdout)
-PY $val < /tmp/dep.json 2>/dev/null || true
+PY
     if kubectl replace --raw "/apis/apps/v1/namespaces/$ns/deployments/$name/status" -f /tmp/dep2.json >/dev/null 2>&1; then
       return 0
     fi
@@ -121,6 +165,67 @@ PY $val < /tmp/dep.json 2>/dev/null || true
 # simulate a ready replica so the controller will requeue during deletion
 echo "==> Simulating deployment readyReplicas=1"
 set_deployment_ready_replicas ${NAMESPACE} ${DEP_NAME} 1 || true
+
+# Create a sample DAG and trigger a DagRun to exercise end-to-end task execution
+DAG_MANIFEST=$(mktemp -t dag-XXXX.yaml)
+cat > "$DAG_MANIFEST" <<EOF
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: e2e-sample
+  namespace: ${NAMESPACE}
+spec:
+  schedule: "" # event-driven
+  task:
+    - name: say-hello
+      command: ["sh", "-c"]
+      args: ["echo hello from task && sleep 1"]
+      image: alpine:3.18
+      backoff:
+        limit: 0
+EOF
+
+echo "==> Applying DAG manifest"
+kubectl apply -f "$DAG_MANIFEST"
+
+# Wait a moment for controller to pick up DAG
+sleep 2
+
+# Create a DagRun to trigger execution
+DAGRUN_MANIFEST=$(mktemp -t dagrun-XXXX.yaml)
+cat > "$DAGRUN_MANIFEST" <<EOF
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagRun
+metadata:
+  name: e2e-sample-run
+  namespace: ${NAMESPACE}
+spec:
+  dagName: e2e-sample
+EOF
+
+echo "==> Creating DagRun to trigger DAG"
+kubectl apply -f "$DAGRUN_MANIFEST"
+
+# wait for task pod (image alpine) to appear and complete
+echo "==> Waiting for task pod created by scheduler"
+for i in {1..60}; do
+  ALPINE_POD=$(kubectl -n ${NAMESPACE} get pods -o jsonpath='{range .items[*]}{.metadata.name} {.spec.containers[0].image}{"\n"}{end}' 2>/dev/null | rg "alpine" -n -m 1 || true)
+  if [ -n "$ALPINE_POD" ]; then
+    POD_NAME=$(echo "$ALPINE_POD" | awk '{print $1}')
+    echo "Found task pod: $POD_NAME"
+    break
+  fi
+  sleep 2
+done
+
+if [ -n "$POD_NAME" ]; then
+  echo "==> Waiting for task pod to finish"
+  kubectl -n ${NAMESPACE} wait --for=condition=Succeeded pod/$POD_NAME --timeout=120s || true
+  echo "==> Task pod logs:"
+  kubectl -n ${NAMESPACE} logs $POD_NAME || true
+else
+  echo "Warning: could not find task pod running alpine image"
+fi
 
 # delete WorkerPool and verify graceful scale down and finalizer behavior
 echo "==> Deleting WorkerPool (trigger finalizer/graceful shutdown)"
