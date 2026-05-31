@@ -188,6 +188,17 @@ docker-build-server: ## Build docker image for the server.
 docker-push-server: ## Push docker image for the server.
 	$(CONTAINER_TOOL) push ${SERVER_IMG}
 
+# Worker image helpers
+WORKER_IMG ?= greedykomodo/kontroler-worker:latest
+DOCKERFILE_WORKER ?= Dockerfile.worker
+.PHONY: docker-build-worker
+docker-build-worker: ## Build docker image for the worker binary.
+	$(CONTAINER_TOOL) build -t ${WORKER_IMG} -f controller/$(DOCKERFILE_WORKER) controller
+
+.PHONY: kind-load-worker
+kind-load-worker: docker-build-worker ## Build & load worker image to kind
+	kind load docker-image $(WORKER_IMG) --name $(KIND_CLUSTER_NAME)
+
 ##@ Kind Cluster Management
 
 .PHONY: kind-integration-workerpool
