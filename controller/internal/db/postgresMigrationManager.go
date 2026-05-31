@@ -22,6 +22,13 @@ func NewMigrationManager(pool *pgxpool.Pool) migrations.MigrationsManager {
 }
 
 func (m *postgresMigrationManager) RegisterMigration(version int, description, up string) {
+	// Avoid registering the same version multiple times
+	for _, existing := range m.migrations {
+		if existing.version == version {
+			return
+		}
+	}
+
 	m.migrations = append(m.migrations, migration{
 		version:     version,
 		description: description,

@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 //go:embed postgresql/*.up.sql sqlite/*.up.sql
@@ -57,10 +59,12 @@ func RegisterMigrations(manager MigrationsManager, dbType string) error {
 
 		// Convert underscore description back to spaces
 		desc := strings.ReplaceAll(matches[2], "-", " ")
+		filename := fmt.Sprintf("%s/%s", dbType, entry.Name())
+		log.Log.Info("found migration file", "filename", filename, "version", version, "desc", desc)
 		migrations = append(migrations, migrationInfo{
 			version:     version,
 			description: desc,
-			filename:    fmt.Sprintf("%s/%s", dbType, entry.Name()),
+			filename:    filename,
 		})
 	}
 
@@ -69,13 +73,22 @@ func RegisterMigrations(manager MigrationsManager, dbType string) error {
 		return migrations[i].version < migrations[j].version
 	})
 
-	// Register migrations in order
+	// Register migrations in order, but avoid duplicate versions being registered twice
+	seen := make(map[int]bool)
 	for _, m := range migrations {
+		if seen[m.version] {
+			// Log and skip duplicate migration files with the same version
+			fmt.Printf("debug: skipping duplicate migration version=%d filename=%s\n", m.version, m.filename)
+			continue
+		}
+
 		sql, err := migrationFiles.ReadFile(m.filename)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %w", m.filename, err)
 		}
+		fmt.Printf("debug: registering migration version=%d filename=%s\n", m.version, m.filename)
 		manager.RegisterMigration(m.version, m.description, string(sql))
+		seen[m.version] = true
 	}
 
 	return nil

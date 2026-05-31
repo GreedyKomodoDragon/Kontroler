@@ -22,6 +22,32 @@ rules:
 - apiGroups:
   - kontroler.greedykomodo
   resources:
+  - workerpools
+  - workerpools/status
+  - workerpools/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kontroler.greedykomodo
+  resources:
   - dagruns/finalizers
   verbs:
   - update

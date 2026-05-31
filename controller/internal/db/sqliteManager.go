@@ -89,6 +89,8 @@ func NewSqliteManager(ctx context.Context, parser *cron.Parser, config *SQLiteCo
 		db.Close()
 		return nil, nil, fmt.Errorf("failed to register migrations: %w", err)
 	}
+	// Log number of migrations registered (for debugging)
+	log.Log.Info("sqlite migrations registered", "count", len(migrationManager.(*sqliteMigrationManager).migrations))
 
 	return &sqliteDAGManager{
 		db:         db,

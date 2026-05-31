@@ -12,7 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -62,6 +61,9 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		},
 	}
 
+	// Ensure the selector is set to match the labels (required by k8s)
+	dep.Spec.Selector = &metav1.LabelSelector{MatchLabels: dep.Labels}
+
 	// Ensure finalizer present on create/update
 	if dep == nil {
 		dep = &appsv1.Deployment{}
@@ -94,12 +96,6 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					log.Error(err, "failed to scale deployment to zero during WorkerPool deletion")
 					return ctrl.Result{}, err
 				}
-			}
-
-			// determine graceful timeout
-			timeout := int64(60)
-			if wp.Spec.GracefulShutdownSeconds != nil {
-				timeout = int64(*wp.Spec.GracefulShutdownSeconds)
 			}
 
 			// if readyReplicas still > 0, requeue and wait
@@ -167,6 +163,8 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 
 		// build container spec
+		// ensure selector matches labels
+		dep.Spec.Selector = &metav1.LabelSelector{MatchLabels: dep.Labels}
 		dep.Spec.Template.ObjectMeta = metav1.ObjectMeta{Labels: dep.Labels}
 		dep.Spec.Template.Spec = corev1.PodSpec{
 			Containers: []corev1.Container{
@@ -175,11 +173,6 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					Image: containerImage,
 					Env:   envs,
 					Ports: []corev1.ContainerPort{{ContainerPort: 9100, Name: "metrics"}},
-					ReadinessProbe: &corev1.Probe{
-						Handler:             corev1.Handler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstrFromInt(8080)}},
-						InitialDelaySeconds: 5,
-						PeriodSeconds:       10,
-					},
 				},
 			},
 		}
@@ -358,29 +351,4 @@ func fmtIntPtr(p *int32) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", *p)
-}
-
-// intstrFromInt returns an IntOrString for a numeric port
-func intstrFromInt(i int) metav1.IntOrString {
-	return metav1.IntOrString{Type: metav1.Int, IntVal: int32(i)}
-}
-
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func removeString(slice []string, s string) []string {
-	out := []string{}
-	for _, v := range slice {
-		if v == s {
-			continue
-		}
-		out = append(out, v)
-	}
-	return out
 }
