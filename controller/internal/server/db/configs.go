@@ -67,13 +67,8 @@ func ConfigurePostgres() (*pgxpool.Config, error) {
 	// Log the effective DB SSL mode and connection targets for debugging using zerolog
 	log.Info().Str("sslMode", sslMode).Str("endpoint", pgEndpoint).Str("db", dbName).Str("user", dbUser).Msg("DB connection info")
 
-	// Build DSN; omit sslmode parameter when disabling TLS to force a plain connection
-	var dsn string
-	if sslMode == "disable" {
-		dsn = fmt.Sprintf("postgres://%s:%s@%s/%s", dbUser, dbPassword, pgEndpoint, dbName)
-	} else {
-		dsn = fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode)
-	}
+	// Build DSN including sslmode explicitly to make pgx behavior deterministic
+	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=%s", dbUser, dbPassword, pgEndpoint, dbName, sslMode)
 
 	pgConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

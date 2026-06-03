@@ -1,0 +1,34 @@
+# Sample WorkerPool that uses the worker image built from controller/Dockerfile.worker
+# Build & tag the worker image locally before applying:
+#   cd controller
+#   docker build -t greedykomodo/kontroler-worker:latest -f Dockerfile.worker .
+#   docker push greedykomodo/kontroler-worker:latest    # (optional) push to your registry
+
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: WorkerPool
+metadata:
+  name: sample-workerpool
+  namespace: default
+spec:
+  # Desired number of worker replicas
+  replicas: 1
+
+  # Image built from controller/Dockerfile.worker
+  image: greedykomodo/kontroler-worker:latest
+
+  # Optional: podTemplate will be merged into the generated Deployment's pod spec
+  podTemplate:
+    serviceAccountName: default
+    nodeSelector:
+      # change or remove to match your cluster nodes
+      "node-role.kubernetes.io/worker": "true"
+    # Example: pass a DB secret name if your worker needs DB access
+    # dbSecretRef: kontroler-db-secret
+
+  # Optional graceful shutdown window (seconds)
+  gracefulShutdownSeconds: 30
+
+# Notes:
+# - Ensure the WorkerPool CRD is installed (chart/crds or make deploy installs it).
+# - This example assumes the controller will create a Deployment named <name>-workers
+#   and will use the container image specified above (built from controller/Dockerfile.worker).

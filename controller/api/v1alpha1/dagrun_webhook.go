@@ -18,6 +18,8 @@ var dagrunlog = logf.Log.WithName("dagrun-resource")
 func (r *DagRun) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 

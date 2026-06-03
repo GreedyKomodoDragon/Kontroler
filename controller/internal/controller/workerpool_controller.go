@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -33,6 +34,9 @@ const (
 //+kubebuilder:rbac:groups=kontroler.greedykomodo,resources=workerpools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
 func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithName("workerpool-reconciler").WithValues("workerpool", req.NamespacedName)
@@ -47,6 +51,17 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	replicas := int32(1)
 	if wp.Spec.Replicas != nil {
 		replicas = *wp.Spec.Replicas
+	}
+
+	// ensure service account + role + rolebinding exist for worker pods
+	defaultSA := ""
+	if wp.Spec.PodTemplate == nil || wp.Spec.PodTemplate.ServiceAccountName == "" {
+		saName, err := r.ensureWorkerRBAC(ctx, &wp)
+		if err != nil {
+			log.Error(err, "failed to ensure worker RBAC resources")
+			return ctrl.Result{}, err
+		}
+		defaultSA = saName
 	}
 
 	// construct desired Deployment
@@ -144,6 +159,38 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			{Name: "WORKERPOOL_NAME", Value: wp.Name},
 		}
 
+		// propagate DB settings from controller environment into worker pods for distributed mode
+		// If the controller is configured with DB envs (via Helm), copy them so workers can connect
+		if dbType := os.Getenv("DB_TYPE"); dbType != "" {
+			envs = append(envs, corev1.EnvVar{Name: "DB_TYPE", Value: dbType})
+		}
+		if dbEndpoint := os.Getenv("DB_ENDPOINT"); dbEndpoint != "" {
+			envs = append(envs, corev1.EnvVar{Name: "DB_ENDPOINT", Value: dbEndpoint})
+		}
+		if dbName := os.Getenv("DB_NAME"); dbName != "" {
+			envs = append(envs, corev1.EnvVar{Name: "DB_NAME", Value: dbName})
+		}
+		if dbUser := os.Getenv("DB_USER"); dbUser != "" {
+			envs = append(envs, corev1.EnvVar{Name: "DB_USER", Value: dbUser})
+		}
+		// DB_PASSWORD via secret reference; prefer env var DB_PASSWORD_SECRET else default to postgres-postgresql
+		secretName := os.Getenv("DB_PASSWORD_SECRET")
+		if secretName == "" {
+			secretName = "postgres-postgresql"
+		}
+		secretKey := os.Getenv("DB_PASSWORD_KEY")
+		if secretKey == "" {
+			secretKey = "postgres-password"
+		}
+		// Add DB_PASSWORD env var from secret if secret exists in cluster
+		envs = append(envs, corev1.EnvVar{
+			Name: "DB_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+				Key:                  secretKey,
+			}},
+		})
+
 		if wp.Spec.Concurrency != nil {
 			if wp.Spec.Concurrency.ClaimBatchSize != nil {
 				envs = append(envs, corev1.EnvVar{Name: "CLAIM_BATCH_SIZE", Value: fmtIntPtr(wp.Spec.Concurrency.ClaimBatchSize)})
@@ -169,10 +216,11 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		dep.Spec.Template.Spec = corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:  "worker",
-					Image: containerImage,
-					Env:   envs,
-					Ports: []corev1.ContainerPort{{ContainerPort: 9100, Name: "metrics"}},
+					Name:            "worker",
+					Image:           containerImage,
+					Env:             envs,
+					Ports:           []corev1.ContainerPort{{ContainerPort: 9100, Name: "metrics"}},
+					ImagePullPolicy: corev1.PullIfNotPresent,
 				},
 			},
 		}
@@ -189,6 +237,8 @@ func (r *WorkerPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			// service account
 			if pt.ServiceAccountName != "" {
 				dep.Spec.Template.Spec.ServiceAccountName = pt.ServiceAccountName
+			} else if defaultSA != "" {
+				dep.Spec.Template.Spec.ServiceAccountName = defaultSA
 			}
 
 			// automount service account token

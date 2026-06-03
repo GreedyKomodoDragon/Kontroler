@@ -1,0 +1,59 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: realistic-pipeline
+  namespace: default
+spec:
+  schedule: ""
+  task:
+    - name: fetch-data
+      image: alpine:3.18
+      command: ["sh", "-c"]
+      args: ["echo '{\"message\": \"hello from fetch\"}' > /workspace/data.json && echo fetched"]
+      backoff:
+        limit: 1
+      podTemplate:
+        volumes:
+          - name: workspace
+            persistentVolumeClaim:
+              claimName: example-claim
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+    - name: process-data
+      image: python:3.11-alpine
+      command: ["python", "-c"]
+      args: ["import json; print('processing:', json.load(open('/workspace/data.json'))['message'])"]
+      runAfter: ["fetch-data"]
+      backoff:
+        limit: 2
+      podTemplate:
+        volumes:
+          - name: workspace
+            persistentVolumeClaim:
+              claimName: example-claim
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+    - name: analyze
+      image: alpine:3.18
+      command: ["sh", "-c"]
+      args: ["echo analyzing results && sleep 1"]
+      runAfter: ["process-data"]
+    - name: notify
+      image: alpine:3.18
+      command: ["sh", "-c"]
+      args: ["echo notifying stakeholders && sleep 1"]
+      runAfter: ["analyze"]
+      backoff:
+        limit: 0
+
+---
+
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagRun
+metadata:
+  name: realistic-pipeline-run
+  namespace: default
+spec:
+  dagName: realistic-pipeline
