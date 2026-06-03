@@ -8,12 +8,12 @@ nameOverride: ""
 fullnameOverride: ""
 
 crds:
-  install: true
+  install: false
   retain: false
 
 db:
   # sqlite or postgresql
-  type: sqlite
+  type: postgresql
   sqlite:
     path: /data
     fileName: database.db
@@ -218,7 +218,6 @@ server:
   jwt:
     secret: jwt-kontroller-key
     key: jwt
-  imagePullPolicy: Always
   # Assumes some local port forwarding is being applied
   uiAddress: http://localhost:3000
   auditLogs: true
