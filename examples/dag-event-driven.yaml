@@ -1,0 +1,26 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: event-driven
+spec:
+  schedule: ""
+  task:
+    - name: "start"
+      command: ["sh", "-c"]
+      args: ["echo 'event-driven DAG started'"]
+      image: "alpine:latest"
+      backoff:
+        limit: 3
+      conditional:
+        enabled: false
+        retryCodes: []
+    - name: "finish"
+      command: ["sh", "-c"]
+      args: ["echo 'event-driven DAG finished'"]
+      image: "alpine:latest"
+      runAfter: ["start"]
+      backoff:
+        limit: 3
+      conditional:
+        enabled: false
+        retryCodes: []

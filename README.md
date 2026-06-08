@@ -77,6 +77,10 @@ Planned Features:
 
 Here are two examples, one event-driven & one that runs on a schedule:
 
+Canonical manifests for the README examples live in [`examples/`](examples/).
+See [`examples/README.md`](examples/README.md) for a short QuickStart that shows
+how to apply the DAG and DagRun manifests with `kubectl`.
+
 Event Driven
 ```yaml
 apiVersion: kontroler.greedykomodo/v1alpha1

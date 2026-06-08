@@ -1,0 +1,7 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DagRun
+metadata:
+  name: dagrun-sample
+spec:
+  dagName: dag-schedule
+  parameters: []

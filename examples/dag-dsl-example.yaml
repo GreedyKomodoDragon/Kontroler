@@ -1,0 +1,30 @@
+apiVersion: kontroler.greedykomodo/v1alpha1
+kind: DAG
+metadata:
+  name: dag-dsl-example
+spec:
+  dsl: |
+    schedule "*/5 * * * *"
+
+    graph {
+      start -> process -> finish
+    }
+
+    task start {
+      image "alpine:latest"
+      script "echo 'Starting job'"
+      backoff 3
+    }
+
+    task process {
+      image "alpine:latest"
+      script "echo 'Processing data'"
+      backoff 3
+      retry [1, 2]
+    }
+
+    task finish {
+      image "alpine:latest"
+      script "echo 'Job completed'"
+      backoff 3
+    }
