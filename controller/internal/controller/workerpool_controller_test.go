@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	kontrolerv1alpha1 "kontroler-controller/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -152,8 +151,10 @@ var _ = Describe("WorkerPool Controller", func() {
 			Expect(*dep.Spec.Template.Spec.SecurityContext.FSGroup).To(Equal(int64(1000)))
 			// resources
 			reqs := dep.Spec.Template.Spec.Containers[0].Resources.Requests
-			Expect(reqs[corev1.ResourceCPU].String()).To(Equal("100m"))
-			Expect(reqs[corev1.ResourceMemory].String()).To(Equal("128Mi"))
+			cpu := reqs[corev1.ResourceCPU]
+			memory := reqs[corev1.ResourceMemory]
+			Expect(cpu.String()).To(Equal("100m"))
+			Expect(memory.String()).To(Equal("128Mi"))
 			// affinity presence
 			Expect(dep.Spec.Template.Spec.Affinity).NotTo(BeNil())
 		})

@@ -55,6 +55,8 @@ type DBDAGManager interface {
 	CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error)
 	// Get all the tasks in the DAG that do not have any dependencies
 	GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error)
+	// TaskRunExists reports whether a Task_Run row already exists for the run/task pair.
+	TaskRunExists(ctx context.Context, runId, dagTaskId int) (bool, error)
 	// Add an update to show the task has been started
 	MarkTaskAsStarted(ctx context.Context, runId, taskId int) (int, error)
 	// Mark the outcome of the taskRun

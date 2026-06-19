@@ -539,6 +539,7 @@ func main() {
 	// Close all watcher channels
 	for i := 0; i < len(configController.Workers.Workers); i++ {
 		close(closeChannels[i])
+		close(closeEventChannels[i])
 	}
 
 	// Wait for all goroutines to finish

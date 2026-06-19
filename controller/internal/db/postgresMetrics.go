@@ -270,6 +270,13 @@ func (m *metricsPostgresDAGManager) CreateDAGRun(ctx context.Context, name strin
 	return result, err
 }
 
+func (m *metricsPostgresDAGManager) TaskRunExists(ctx context.Context, runId, dagTaskId int) (bool, error) {
+	start := time.Now()
+	result, err := m.postgresDAGManager.TaskRunExists(ctx, runId, dagTaskId)
+	m.recordQueryMetrics("select", "task_runs", start, err)
+	return result, err
+}
+
 func (m *metricsPostgresDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {
 	start := time.Now()
 	result, err := m.postgresDAGManager.GetStartingTasks(ctx, dagName, dagrun)

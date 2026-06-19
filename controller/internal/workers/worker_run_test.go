@@ -107,6 +107,9 @@ func (f *fakeDB) DagrunExists(ctx context.Context, dagrunId int) (bool, error) {
 func (f *fakeDB) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error) {
 	return "d", "t", "ns", nil
 }
+func (f *fakeDB) TaskRunExists(ctx context.Context, runId, dagTaskId int) (bool, error) {
+	return false, nil
+}
 
 // Claim and lease primitives (no-op stubs for worker tests)
 func (f *fakeDB) ClaimTasks(ctx context.Context, limit int, workerId string, leaseTTL time.Duration) ([]db.TaskClaim, error) {

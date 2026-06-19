@@ -28,8 +28,10 @@ func (f *fakeDBLease) GetID(ctx context.Context) (string, error)   { return "fak
 func (f *fakeDBLease) GetDAGsToStartAndUpdate(ctx context.Context, tm time.Time) ([]*db.DagInfo, error) {
 	return nil, nil
 }
-func (f *fakeDBLease) InsertDAG(ctx context.Context, dag *v1.Pod, namespace string) error { return nil }
-func (f *fakeDBLease) CreateDAGRun(ctx context.Context, name string, dag *db.DagRunSpec, parameters map[string]db.Parameter, pvcName *string) (int, error) {
+func (f *fakeDBLease) InsertDAG(ctx context.Context, dag *v1alpha1.DAG, namespace string) error {
+	return nil
+}
+func (f *fakeDBLease) CreateDAGRun(ctx context.Context, name string, dag *v1alpha1.DagRunSpec, parameters map[string]v1alpha1.ParameterSpec, pvcName *string) (int, error) {
 	return 0, nil
 }
 
@@ -69,17 +71,19 @@ func (f *fakeDBLease) FindExistingDAGRun(ctx context.Context, name string) (bool
 func (f *fakeDBLease) GetTaskScriptAndInjectorImage(ctx context.Context, taskId int) (*string, *string, error) {
 	return nil, nil, nil
 }
-func (f *fakeDBLease) AddTask(ctx context.Context, task *v1.Pod, namespace string) error { return nil }
+func (f *fakeDBLease) AddTask(ctx context.Context, task *v1alpha1.DagTask, namespace string) error {
+	return nil
+}
 func (f *fakeDBLease) DeleteTask(ctx context.Context, taskName string, namespace string) error {
 	return nil
 }
-func (f *fakeDBLease) GetTaskRefsParameters(ctx context.Context, taskRefs []db.TaskRef) (map[db.TaskRef][]string, error) {
+func (f *fakeDBLease) GetTaskRefsParameters(ctx context.Context, taskRefs []v1alpha1.TaskRef) (map[v1alpha1.TaskRef][]string, error) {
 	return nil, nil
 }
 func (f *fakeDBLease) GetWebhookDetails(ctx context.Context, dagRunID int) (*v1alpha1.Webhook, error) {
 	return nil, nil
 }
-func (f *fakeDBLease) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*db.PVC, error) {
+func (f *fakeDBLease) GetWorkspacePVCTemplate(ctx context.Context, dagId int) (*v1alpha1.PVC, error) {
 	return nil, nil
 }
 func (f *fakeDBLease) CheckIfAllTasksDone(ctx context.Context, dagRunID int) (bool, error) {
@@ -100,6 +104,9 @@ func (f *fakeDBLease) DagrunExists(ctx context.Context, dagrunId int) (bool, err
 }
 func (f *fakeDBLease) GetTaskRunInfo(ctx context.Context, taskRunId int) (dagName, taskName, namespace string, err error) {
 	return "d", "t", "ns", nil
+}
+func (f *fakeDBLease) TaskRunExists(ctx context.Context, runId, dagTaskId int) (bool, error) {
+	return false, nil
 }
 
 // Claim/lease primitives
