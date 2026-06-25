@@ -103,18 +103,6 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	// Check if a DagRun with the same parameters already exists
-	alreadyExists, err := r.DbManager.FindExistingDAGRun(ctx, dagRun.Name)
-	if err != nil {
-		log.Log.Error(err, "failed to check for existing DagRun", "dag_id", dagRun.Spec.DagName)
-		return ctrl.Result{}, err
-	}
-
-	if alreadyExists {
-		// log.Log.Info("DagRun with the same name already exists", "dagRun_id", dagRun.Spec.DagName, "dag_name", dagRun.Name)
-		return ctrl.Result{}, nil
-	}
-
 	parameters, err := r.DbManager.GetDagParameters(ctx, dagRun.Spec.DagName)
 	if err != nil {
 		log.Log.Error(err, "failed to find parameters", "dag_id", dagRun.Spec.DagName)
@@ -186,6 +174,16 @@ func (r *DagRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					task.Parameters[i].Value = param.Value
 				}
 			}
+		}
+
+		exists, err := r.DbManager.TaskRunExists(ctx, runId, task.Id)
+		if err != nil {
+			log.Log.Error(err, "failed to check for existing pending task run", "dag_id", dagRun.Spec.DagName, "task_id", task.Id)
+			return ctrl.Result{}, err
+		}
+		if exists {
+			log.Log.Info("pending task run already exists, skipping", "dag_id", dagRun.Spec.DagName, "task_id", task.Id, "runId", runId)
+			continue
 		}
 
 		taskRunId, err := r.DbManager.AddPendingTaskRun(ctx, runId, task.Id)
@@ -283,17 +281,12 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 		return ctrl.Result{}, err
 	}
 
-	// Remove the finalizer
-	old := dagRun.DeepCopy()
-	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
-	if err := r.Patch(ctx, dagRun, client.MergeFrom(old)); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	// remove logs
-	if err := r.LogStore.DeleteLogs(ctx, dagRun.Status.DagRunId); err != nil {
-		log.Log.Error(err, "failed to delete logs", "dagRunId", dagRun.Status.DagRunId)
-		return ctrl.Result{}, err
+	if r.LogStore != nil {
+		if err := r.LogStore.DeleteLogs(ctx, dagRun.Status.DagRunId); err != nil {
+			log.Log.Error(err, "failed to delete logs", "dagRunId", dagRun.Status.DagRunId)
+			return ctrl.Result{}, err
+		}
 	}
 
 	// delete the PVC
@@ -303,6 +296,13 @@ func (r *DagRunReconciler) handleDeletion(ctx context.Context, dagRun *kontroler
 			log.Log.Error(err, "failed to delete pvc", "pvcName", pvcName, "namespace", dagRun.Namespace)
 			return ctrl.Result{}, err
 		}
+	}
+
+	// Remove the finalizer only after all cleanup succeeded.
+	old := dagRun.DeepCopy()
+	dagRun.Finalizers = removeString(dagRun.Finalizers, dagRunFinalizer)
+	if err := r.Patch(ctx, dagRun, client.MergeFrom(old)); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil

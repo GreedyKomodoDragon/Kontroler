@@ -352,6 +352,13 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 		return 0, err
 	}
 
+	var existingRunID int
+	if err := p.pool.QueryRow(ctx, `SELECT run_id FROM DAG_Runs WHERE name = $1`, name).Scan(&existingRunID); err == nil {
+		return existingRunID, nil
+	} else if err != pgx.ErrNoRows {
+		return 0, err
+	}
+
 	var dagRunID int
 	if err := p.withTx(ctx, func(tx pgx.Tx) error {
 		// Map the task to the DAG
@@ -395,6 +402,21 @@ func (p *postgresDAGManager) CreateDAGRun(ctx context.Context, name string, dag 
 	}
 
 	return dagRunID, nil
+}
+
+func (p *postgresDAGManager) TaskRunExists(ctx context.Context, runId, dagTaskId int) (bool, error) {
+	var exists bool
+	if err := p.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM Task_Runs
+			WHERE run_id = $1 AND task_id = $2
+		);
+	`, runId, dagTaskId).Scan(&exists); err != nil {
+		return false, err
+	}
+
+	return exists, nil
 }
 
 func (p *postgresDAGManager) GetStartingTasks(ctx context.Context, dagName string, dagrun int) ([]Task, error) {

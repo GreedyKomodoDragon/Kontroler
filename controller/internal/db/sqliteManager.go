@@ -522,6 +522,13 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 		return 0, err
 	}
 
+	var existingRunID int
+	if err := s.db.QueryRowContext(ctx, `SELECT run_id FROM DAG_Runs WHERE name = ?`, name).Scan(&existingRunID); err == nil {
+		return existingRunID, nil
+	} else if err != sql.ErrNoRows {
+		return 0, err
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -554,6 +561,21 @@ func (s *sqliteDAGManager) CreateDAGRun(ctx context.Context, name string, dag *v
 	}
 
 	return dagRunID, nil
+}
+
+func (s *sqliteDAGManager) TaskRunExists(ctx context.Context, runId, dagTaskId int) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM Task_Runs
+			WHERE run_id = ? AND task_id = ?
+		);
+	`, runId, dagTaskId).Scan(&exists); err != nil {
+		return false, err
+	}
+
+	return exists, nil
 }
 
 func (s *sqliteDAGManager) dagNameToDagId(ctx context.Context, dagName string) (int, error) {
